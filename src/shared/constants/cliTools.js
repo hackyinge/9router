@@ -103,9 +103,9 @@ export const MITM_TOOLS = {
     mitmDomain: "openrouter.ai",
     modelAliases: [
       "openai/gpt-5.4",
+      "openai/gpt-5.5",
       "anthropic/claude-sonnet-4.6",
-      "anthropic/claude-sonnet-4",
-      "anthropic/claude-opus-4",
+      "anthropic/claude-sonnet-4.7",
     ],
     defaultModels: [
       {
@@ -114,19 +114,19 @@ export const MITM_TOOLS = {
         alias: "openai/gpt-5.4",
       },
       {
+        id: "openai/gpt-5.5",
+        name: "OpenAI: GPT-5.5",
+        alias: "openai/gpt-5.5",
+      },
+      {
         id: "anthropic/claude-sonnet-4.6",
         name: "Anthropic: Claude-Sonnet-4.6",
         alias: "anthropic/claude-sonnet-4.6",
       },
       {
-        id: "anthropic/claude-sonnet-4",
-        name: "Anthropic: Claude Sonnet 4",
-        alias: "anthropic/claude-sonnet-4",
-      },
-      {
-        id: "anthropic/claude-opus-4",
-        name: "Anthropic: Claude Opus 4",
-        alias: "anthropic/claude-opus-4",
+        id: "anthropic/claude-sonnet-4.7",
+        name: "Anthropic: Claude Sonnet 4.7",
+        alias: "anthropic/claude-sonnet-4.7",
       },
     ],
   },

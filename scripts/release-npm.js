@@ -92,11 +92,11 @@ function ensureSourceContract() {
 function createPublishPackageJson() {
   const rootPkg = readJson(path.join(rootDir, "package.json"));
   return {
-    name: "9router",
+    name: "@yina-npm/openrouterx",
     version: rootPkg.version,
-    description: "9Router CLI - Start and manage 9Router server",
+    description: "openrouterX CLI - Start and manage 9Router server",
     bin: {
-      "9router": "./cli.js",
+      openrouterX: "./cli.js",
     },
     files: [
       "cli.js",
@@ -118,7 +118,7 @@ function createPublishPackageJson() {
     engines: {
       node: ">=18.0.0",
     },
-    keywords: ["9router", "cli", "proxy", "ai", "api"],
+    keywords: ["openrouterx", "9router", "cli", "proxy", "ai", "api"],
     license: "MIT",
   };
 }
@@ -240,6 +240,7 @@ function prepareStagingPackage() {
   copy(path.join(rootDir, "public"), path.join(appDir, "public"));
 
   if (fs.existsSync(path.join(rootDir, "src", "mitm"))) {
+    remove(path.join(appDir, "src", "mitm"));
     copy(path.join(rootDir, "src", "mitm"), path.join(appDir, "src", "mitm"));
   }
 

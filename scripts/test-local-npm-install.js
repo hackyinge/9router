@@ -36,9 +36,9 @@ function readJson(filePath) {
 
 function getBinPath(prefixDir) {
   if (process.platform === "win32") {
-    return path.join(prefixDir, "9router.cmd");
+    return path.join(prefixDir, "openrouterX.cmd");
   }
-  return path.join(prefixDir, "bin", "9router");
+  return path.join(prefixDir, "bin", "openrouterX");
 }
 
 function waitForHttp(url, timeoutMs) {
@@ -90,10 +90,11 @@ async function main() {
     const binPath = getBinPath(prefixDir);
     assert(fs.existsSync(binPath), `missing installed bin: ${binPath}`);
 
-    const installedPkgPath = path.join(prefixDir, "lib", "node_modules", "9router", "package.json");
-    const installedAppPath = path.join(prefixDir, "lib", "node_modules", "9router", "app", "server.js");
-    const installedHookPath = path.join(prefixDir, "lib", "node_modules", "9router", "hooks", "postinstall.js");
-    const installedCliSrcPath = path.join(prefixDir, "lib", "node_modules", "9router", "src", "cli", "terminalUI.js");
+    const installedRoot = path.join(prefixDir, "lib", "node_modules", "@yina-npm", "openrouterx");
+    const installedPkgPath = path.join(installedRoot, "package.json");
+    const installedAppPath = path.join(installedRoot, "app", "server.js");
+    const installedHookPath = path.join(installedRoot, "hooks", "postinstall.js");
+    const installedCliSrcPath = path.join(installedRoot, "src", "cli", "terminalUI.js");
 
     assert(fs.existsSync(installedPkgPath), `missing installed package.json: ${installedPkgPath}`);
     assert(fs.existsSync(installedAppPath), `missing installed app server: ${installedAppPath}`);
@@ -101,8 +102,8 @@ async function main() {
     assert(fs.existsSync(installedCliSrcPath), `missing installed cli src: ${installedCliSrcPath}`);
 
     const installedPkg = readJson(installedPkgPath);
-    assert(installedPkg.name === "9router", "installed package name must be 9router");
-    assert(installedPkg.bin?.["9router"] === "./cli.js", "installed bin must be ./cli.js");
+    assert(installedPkg.name === "@yina-npm/openrouterx", "installed package name must be @yina-npm/openrouterx");
+    assert(installedPkg.bin?.openrouterX === "./cli.js", "installed bin must be ./cli.js");
 
     const port = String(23000 + Math.floor(Math.random() * 10000));
     const env = {

@@ -59,38 +59,7 @@ function resolveBundledServerPath() {
   return fromCwd;
 }
 
-// Copy bundled server.js into DATA_DIR so MITM doesn't lock node_modules
-// (prevents EBUSY on `npm i -g 9router@latest` while MITM is running).
-function ensureRuntimeServer(bundledPath) {
-  try {
-    if (!bundledPath || !fs.existsSync(bundledPath)) return bundledPath;
-
-    // Dev mode: source file has relative requires (./logger, ./config...),
-    // only the bundled file inside node_modules is self-contained + safe to copy.
-    if (!bundledPath.includes(`${path.sep}node_modules${path.sep}`)) {
-      return bundledPath;
-    }
-
-    const runtimeDir = path.join(DATA_DIR, "runtime", "mitm");
-    const runtimeServer = path.join(runtimeDir, "server.js");
-
-    // Skip copy if sizes match (bundle unchanged since last run)
-    if (fs.existsSync(runtimeServer)) {
-      try {
-        if (fs.statSync(bundledPath).size === fs.statSync(runtimeServer).size) return runtimeServer;
-      } catch { /* recopy */ }
-    }
-
-    fs.mkdirSync(runtimeDir, { recursive: true });
-    fs.copyFileSync(bundledPath, runtimeServer);
-    return runtimeServer;
-  } catch (e) {
-    try { log(`[MITM] runtime copy failed: ${e.message}`); } catch { /* ignore */ }
-    return bundledPath;
-  }
-}
-
-const SERVER_PATH = ensureRuntimeServer(resolveBundledServerPath());
+const SERVER_PATH = resolveBundledServerPath();
 const ENCRYPT_ALGO = "aes-256-gcm";
 const ENCRYPT_SALT = "9router-mitm-pwd";
 

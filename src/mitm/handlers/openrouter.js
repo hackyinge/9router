@@ -1,3 +1,5 @@
+const fs = require("node:fs");
+const path = require("node:path");
 const { err } = require("../logger");
 const { fetchRouter, pipeSSE } = require("./base");
 
@@ -17,6 +19,21 @@ function resolveRouterPath(reqUrl) {
 
 function isModelsRequest(reqUrl) {
   return reqUrl.includes("/models") || reqUrl.includes("/api/v1/models");
+}
+
+function getLocalModelsPayload() {
+  const modelsPath = path.join(__dirname, "..", "models.json");
+  return fs.readFileSync(modelsPath, "utf8");
+}
+
+function sendJsonPayload(res, payload) {
+  if (res.writableEnded) return;
+  res.writeHead(200, {
+    "Content-Type": "application/json; charset=utf-8",
+    "Cache-Control": "public, max-age=300",
+    "Content-Length": Buffer.byteLength(payload),
+  });
+  res.end(payload);
 }
 
 function buildInjectedModel(publicModelId) {
@@ -70,24 +87,14 @@ function injectPublicModels(payload, aliasMappings = {}) {
 }
 
 async function handleModelsRequest(req, res, bodyBuffer, passthrough, aliasMappings) {
-  if (typeof passthrough !== "function") {
+  try {
+    const payload = getLocalModelsPayload();
+    sendJsonPayload(res, payload);
+  } catch (error) {
+    err(`[openrouter] local models response failed: ${error.message}`);
     if (!res.headersSent) res.writeHead(500, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ error: { message: "Passthrough unavailable for models request", type: "mitm_error" } }));
-    return;
+    if (!res.writableEnded) res.end(JSON.stringify({ error: { message: error.message, type: "mitm_error" } }));
   }
-
-  await passthrough(req, res, bodyBuffer, (rawBuffer) => {
-    try {
-      const upstream = JSON.parse(rawBuffer.toString() || "{}");
-      const merged = injectPublicModels(upstream, aliasMappings);
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify(merged));
-    } catch (error) {
-      err(`[openrouter] models response rewrite failed: ${error.message}`);
-      if (!res.headersSent) res.writeHead(500, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: { message: error.message, type: "mitm_error" } }));
-    }
-  });
 }
 
 /**
