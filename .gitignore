@@ -2,6 +2,8 @@
 
 # dependencies
 /node_modules
+npm/
+npm-local/
 /.pnp
 .pnp.*
 .yarn/*
@@ -22,6 +24,9 @@ product
 .idea/
 
 # misc
+.*
+!.gitignore
+!.env.example
 .DS_Store
 *.pem
 

@@ -6,6 +6,8 @@ const TARGET_HOSTS = [
   "api.individual.githubcopilot.com",
   "q.us-east-1.amazonaws.com",
   "api2.cursor.sh",
+  "openrouter.ai",
+  "api.openrouter.ai",
 ];
 
 const URL_PATTERNS = {
@@ -13,6 +15,7 @@ const URL_PATTERNS = {
   copilot: ["/chat/completions", "/v1/messages", "/responses"],
   kiro: ["/generateAssistantResponse"],
   cursor: ["/BidiAppend", "/RunSSE", "/RunPoll", "/Run"],
+  openrouter: ["/models", "/api/v1/models", "/chat/completions", "/v1/chat/completions", "/v1/messages", "/responses"],
 };
 
 function getToolForHost(host) {
@@ -21,6 +24,7 @@ function getToolForHost(host) {
   if (h === "daily-cloudcode-pa.googleapis.com" || h === "cloudcode-pa.googleapis.com") return "antigravity";
   if (h === "q.us-east-1.amazonaws.com") return "kiro";
   if (h === "api2.cursor.sh") return "cursor";
+  if (h === "openrouter.ai" || h === "api.openrouter.ai") return "openrouter";
   return null;
 }
 

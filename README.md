@@ -1,7 +1,7 @@
 <div align="center">
-  <img src="./images/9router.png?1" alt="9Router Dashboard" width="800"/>
+  <img src="./images/9router.png?1" alt="openrouterx Dashboard" width="800"/>
   
-  # 9Router - Free AI Router
+  # openrouterx - Free AI Router
   
   **Never stop coding. Auto-route to FREE & cheap AI models with smart fallback.**
   
@@ -18,7 +18,7 @@
 
 ---
 
-## 🤔 Why 9Router?
+## 🤔 Why openrouterx?
 
 **Stop wasting money and hitting limits:**
 
@@ -27,7 +27,7 @@
 - ❌ Expensive APIs ($20-50/month per provider)
 - ❌ Manual switching between providers
 
-**9Router solves this:**
+**openrouterx solves this:**
 
 - ✅ **Maximize subscriptions** - Track quota, use every bit before reset
 - ✅ **Auto fallback** - Subscription → Cheap → Free, zero downtime

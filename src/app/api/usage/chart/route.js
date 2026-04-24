@@ -6,7 +6,7 @@ const VALID_PERIODS = new Set(["24h", "7d", "30d", "60d"]);
 export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
-    const period = searchParams.get("period") || "7d";
+    const period = searchParams.get("period") || "24h";
 
     if (!VALID_PERIODS.has(period)) {
       return NextResponse.json({ error: "Invalid period" }, { status: 400 });

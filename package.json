@@ -1,18 +1,35 @@
 {
-  "name": "9router-app",
-  "version": "0.3.96",
-  "description": "9Router web dashboard",
-  "private": true,
+  "name": "9router",
+  "version": "0.4.3",
+  "description": "9Router CLI - Start and manage 9Router server",
+  "private": false,
+  "files": [
+    "cli.js",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "bin": {
+    "9router": "./cli.js"
+  },
   "scripts": {
     "dev": "next dev --webpack --port 20128",
     "build": "NODE_ENV=production next build --webpack",
     "start": "NODE_ENV=production next start",
     "dev:bun": "bun --bun next dev --webpack --port 20128",
     "build:bun": "NODE_ENV=production bun --bun next build --webpack",
-    "start:bun": "NODE_ENV=production bun ./.next/standalone/server.js"
+    "start:bun": "NODE_ENV=production bun ./.next/standalone/server.js",
+    "release:npm:prepare": "node scripts/release-npm.js --prepare-only",
+    "release:npm:dry": "node scripts/release-npm.js --dry-run",
+    "release:npm:test-install": "node scripts/test-local-npm-install.js",
+    "release:npm:test-install:fast": "node scripts/test-local-npm-install.js --skip-build",
+    "release:npm:install-local": "node scripts/install-local-openrouterx.js",
+    "release:npm:install-local:fast": "node scripts/install-local-openrouterx.js --skip-build",
+    "release:npm": "node scripts/release-npm.js"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",
+    "@tailwindcss/postcss": "^4.1.18",
     "@xyflow/react": "^12.10.1",
     "bcryptjs": "^3.0.3",
     "confbox": "^0.2.4",
@@ -28,6 +45,7 @@
     "node-machine-id": "^1.1.12",
     "open": "^11.0.0",
     "ora": "^9.1.0",
+    "postcss": "^8.5.6",
     "proper-lockfile": "^4.1.2",
     "react": "19.2.4",
     "react-dom": "19.2.4",
@@ -36,6 +54,7 @@
     "selfsigned": "^5.5.0",
     "socks-proxy-agent": "^8.0.5",
     "sql.js": "^1.14.1",
+    "tailwindcss": "^4",
     "undici": "^7.19.2",
     "uuid": "^13.0.0",
     "zustand": "^5.0.10"

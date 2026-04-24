@@ -28,6 +28,7 @@ const handlers = {
   copilot: loadHandler("copilot"),
   kiro: loadHandler("kiro"),
   cursor: loadHandler("cursor"),
+  openrouter: loadHandler("openrouter"),
 };
 
 // ── SSL / SNI ─────────────────────────────────────────────────
@@ -205,13 +206,15 @@ const server = https.createServer(sslOptions, async (req, res) => {
     log(`🔍 [${tool}] model="${model}"`);
 
     const mappedModel = getMappedModel(tool, model);
-    if (!mappedModel) {
+    const db = fs.existsSync(DB_FILE) ? JSON.parse(fs.readFileSync(DB_FILE, "utf-8")) : {};
+    const aliasMappings = db.mitmAlias?.[tool] || {};
+    if (!mappedModel && tool !== "openrouter" && !req.url.includes("/models")) {
       log(`⏩ passthrough | no mapping | ${tool} | ${model || "unknown"}`);
       return passthrough(req, res, bodyBuffer);
     }
 
-    log(`⚡ intercept | ${tool} | ${model} → ${mappedModel}`);
-    return handlers[tool].intercept(req, res, bodyBuffer, mappedModel, passthrough);
+    log(`⚡ intercept | ${tool} | ${model || req.url} → ${mappedModel || "dynamic"}`);
+    return handlers[tool].intercept(req, res, bodyBuffer, mappedModel, passthrough, aliasMappings);
   } catch (e) {
     err(`Unhandled error: ${e.message}`);
     if (!res.headersSent) res.writeHead(500, { "Content-Type": "application/json" });

@@ -3,16 +3,17 @@ data/
 **/data/
 **/db.json
 
-# Development
-src/
+# Development docs and non-runtime directories
 docs/
 test/
+tests/
 agents/
-scripts/
 worker/
 shared-sse/
 copilot-api/
 CLIProxyAPI/
+.omc/
+scripts/.omc/
 
 # Config files
 *.md
@@ -22,10 +23,6 @@ CLIProxyAPI/
 jsconfig.json
 eslint.config.mjs
 postcss.config.mjs
-next.config.mjs
-tsconfig.json
 
 # Build artifacts that shouldn't be published
-.next/cache/
-.next/standalone/data/
-
+.next/
