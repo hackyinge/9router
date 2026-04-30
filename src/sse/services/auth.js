@@ -15,11 +15,12 @@ let selectionMutex = Promise.resolve();
  * @param {Set<string>|string|null} excludeConnectionIds - Connection ID(s) to exclude (for retry with next account)
  * @param {string|null} model - Model name for per-model rate limit filtering
  */
-export async function getProviderCredentials(provider, excludeConnectionIds = null, model = null) {
+export async function getProviderCredentials(provider, excludeConnectionIds = null, model = null, options = {}) {
   // Normalize to Set for consistent handling
   const excludeSet = excludeConnectionIds instanceof Set
     ? excludeConnectionIds
     : (excludeConnectionIds ? new Set([excludeConnectionIds]) : new Set());
+  const preferredConnectionId = options?.preferredConnectionId || null;
   // Acquire mutex to prevent race conditions
   const currentMutex = selectionMutex;
   let resolveMutex;
@@ -31,9 +32,24 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     // Resolve alias to provider ID (e.g., "kc" -> "kilocode")
     const providerId = resolveProviderId(provider);
 
-    // Inject a virtual connection for no-auth free providers
+    // Inject a virtual connection for no-auth free providers (with optional proxy pool from settings)
     if (FREE_PROVIDERS[providerId]?.noAuth) {
-      return { id: "noauth", connectionName: "Public", isActive: true, accessToken: "public" };
+      const settings = await getSettings();
+      const override = (settings.providerStrategies || {})[providerId] || {};
+      const resolvedProxy = await resolveConnectionProxyConfig({ proxyPoolId: override.proxyPoolId || "" });
+      return {
+        id: "noauth",
+        connectionName: "Public",
+        isActive: true,
+        accessToken: "public",
+        providerSpecificData: {
+          connectionProxyEnabled: resolvedProxy.connectionProxyEnabled,
+          connectionProxyUrl: resolvedProxy.connectionProxyUrl,
+          connectionNoProxy: resolvedProxy.connectionNoProxy,
+          connectionProxyPoolId: resolvedProxy.proxyPoolId || null,
+          vercelRelayUrl: resolvedProxy.vercelRelayUrl || "",
+        },
+      };
     }
 
     const connections = await getProviderConnections({ provider: providerId, isActive: true });
@@ -87,7 +103,16 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     const strategy = providerOverride.fallbackStrategy || settings.fallbackStrategy || "fill-first";
 
     let connection;
-    if (strategy === "round-robin") {
+    // Pin to preferred connection if specified and available
+    if (preferredConnectionId) {
+      connection = availableConnections.find((c) => c.id === preferredConnectionId);
+      if (connection) {
+        log.info("AUTH", `${provider} | pinned to ${connection.id?.slice(0, 8)} (${connection.name || connection.email || "unnamed"})`);
+      }
+    }
+    if (connection) {
+      // skip strategy
+    } else if (strategy === "round-robin") {
       const stickyLimit = providerOverride.stickyRoundRobinLimit || settings.stickyRoundRobinLimit || 3;
 
       // Sort by lastUsed (most recent first) to find current candidate

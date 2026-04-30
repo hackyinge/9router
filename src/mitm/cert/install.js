@@ -2,11 +2,13 @@ const fs = require("fs");
 const crypto = require("crypto");
 const { exec } = require("child_process");
 const { execWithPassword, isSudoAvailable } = require("../dns/dnsConfig.js");
+const { runElevatedPowerShell, quotePs } = require("../winElevated.js");
 const { log, err } = require("../logger");
 
 const IS_WIN = process.platform === "win32";
 const IS_MAC = process.platform === "darwin";
 const LINUX_CERT_DIR = "/usr/local/share/ca-certificates";
+const ROOT_CA_CN = "9Router MITM Root CA";
 
 // Get SHA1 fingerprint from cert file using Node.js crypto
 function getCertFingerprint(certPath) {
@@ -44,8 +46,14 @@ function checkCertInstalledMac(certPath) {
 
 function checkCertInstalledWindows(certPath) {
   return new Promise((resolve) => {
-    // Check Root store for our Root CA by common name
-    exec("certutil -store Root \"9Router MITM Root CA\"", { windowsHide: true }, (error) => {
+    // Check by SHA1 fingerprint — detects stale cert with same CN but different key
+    let fingerprint;
+    try {
+      fingerprint = getCertFingerprint(certPath).replace(/:/g, "");
+    } catch {
+      return resolve(false);
+    }
+    exec(`certutil -store Root ${fingerprint}`, { windowsHide: true }, (error) => {
       resolve(!error);
     });
   });
@@ -88,17 +96,19 @@ async function installCertMac(sudoPassword, certPath) {
 }
 
 async function installCertWindows(certPath) {
-  // Process already has admin rights — run certutil directly, no UAC needed
-  return new Promise((resolve, reject) => {
-    exec(
-      `certutil -addstore Root "${certPath}"`,
-      { windowsHide: true },
-      (error) => {
-        if (error) reject(new Error(`Failed to install certificate: ${error.message}`));
-        else { log("🔐 Cert: ✅ installed to Windows Root store"); resolve(); }
-      }
-    );
-  });
+  // Auto-elevate via UAC popup if not admin (zero popup if already admin).
+  // Delete any stale cert with same CN before adding to avoid duplicates.
+  const script = `
+    certutil -delstore Root ${quotePs(ROOT_CA_CN)} 2>$null | Out-Null
+    $exit = & certutil -addstore Root ${quotePs(certPath)} 2>&1
+    if ($LASTEXITCODE -ne 0) { throw "certutil exit $LASTEXITCODE" }
+  `;
+  try {
+    await runElevatedPowerShell(script);
+    log("🔐 Cert: ✅ installed to Windows Root store");
+  } catch (e) {
+    throw new Error(`Failed to install certificate: ${e.message}`);
+  }
 }
 
 /**
@@ -132,17 +142,14 @@ async function uninstallCertMac(sudoPassword, certPath) {
 }
 
 async function uninstallCertWindows() {
-  // Process already has admin rights — run certutil directly, no UAC needed
-  return new Promise((resolve, reject) => {
-    exec(
-      `certutil -delstore Root "9Router MITM Root CA"`,
-      { windowsHide: true },
-      (error) => {
-        if (error) reject(new Error(`Failed to uninstall certificate: ${error.message}`));
-        else { log("🔐 Cert: ✅ uninstalled from Windows Root store"); resolve(); }
-      }
-    );
-  });
+  // Auto-elevate via UAC popup if not admin
+  const script = `certutil -delstore Root ${quotePs(ROOT_CA_CN)}`;
+  try {
+    await runElevatedPowerShell(script);
+    log("🔐 Cert: ✅ uninstalled from Windows Root store");
+  } catch (e) {
+    throw new Error(`Failed to uninstall certificate: ${e.message}`);
+  }
 }
 
 function checkCertInstalledLinux() {

@@ -3,62 +3,14 @@ const fs = require("fs");
 const path = require("path");
 const os = require("os");
 const { log, err } = require("../logger");
-
-// Per-tool DNS hosts mapping
-const TOOL_HOSTS = {
-  antigravity: ["daily-cloudcode-pa.googleapis.com", "cloudcode-pa.googleapis.com"],
-  copilot: ["api.individual.githubcopilot.com"],
-  kiro: ["q.us-east-1.amazonaws.com", "codewhisperer.us-east-1.amazonaws.com"],
-  cursor: ["api2.cursor.sh"],
-  openrouter: ["openrouter.ai", "api.openrouter.ai"],
-};
+const { TOOL_HOSTS } = require("../../shared/constants/mitmToolHosts");
+const { runElevatedPowerShell, quotePs, isAdmin } = require("../winElevated.js");
 
 const IS_WIN = process.platform === "win32";
 const IS_MAC = process.platform === "darwin";
 const HOSTS_FILE = IS_WIN
   ? path.join(process.env.SystemRoot || "C:\\Windows", "System32", "drivers", "etc", "hosts")
   : "/etc/hosts";
-
-/**
- * Execute elevated PowerShell script on Windows via Start-Process -Verb RunAs.
- * Only UAC consent dialog appears, no CMD/PS window popup.
- */
-function executeElevatedPowerShell(psScriptPath, timeoutMs = 30000) {
-  const flagFile = path.join(os.tmpdir(), `ps_done_${Date.now()}.flag`);
-  const psSQ = (s) => s.replace(/'/g, "''");
-  
-  let psContent = fs.readFileSync(psScriptPath, "utf8");
-  psContent += `\nSet-Content -Path '${psSQ(flagFile)}' -Value 'done' -Encoding UTF8\n`;
-  fs.writeFileSync(psScriptPath, psContent, "utf8");
-
-  const outerCmd = `Start-Process powershell -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-WindowStyle','Hidden','-File','${psSQ(psScriptPath)}' -Verb RunAs -WindowStyle Hidden`;
-
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    const settle = (fn, arg) => { if (!settled) { settled = true; fn(arg); } };
-
-    exec(
-      `powershell -NoProfile -NonInteractive -WindowStyle Hidden -Command "${outerCmd}"`,
-      { windowsHide: true },
-      () => {}
-    );
-
-    const deadline = Date.now() + timeoutMs;
-    const poll = () => {
-      if (settled) return;
-      if (fs.existsSync(flagFile)) {
-        try { fs.unlinkSync(flagFile); fs.unlinkSync(psScriptPath); } catch { /* ignore */ }
-        return settle(resolve);
-      }
-      if (Date.now() > deadline) {
-        try { fs.unlinkSync(psScriptPath); } catch { /* ignore */ }
-        return settle(reject, new Error("Timed out waiting for UAC confirmation"));
-      }
-      setTimeout(poll, 500);
-    };
-    setTimeout(poll, 300);
-  });
-}
 
 /** True when `sudo` exists (e.g. missing on minimal Docker images like Alpine). */
 function isSudoAvailable() {
@@ -158,17 +110,20 @@ async function addDNSEntry(tool, sudoPassword) {
 
   try {
     if (IS_WIN) {
-      // Process already has admin rights — edit hosts file directly
-      const toAppend = entriesToAdd.map(h => `127.0.0.1 ${h}`).join("\r\n") + "\r\n";
-      fs.appendFileSync(HOSTS_FILE, toAppend, "utf8");
-      require("child_process").execSync("ipconfig /flushdns", { windowsHide: true });
+      const toAppend = entriesToAdd.map(h => `127.0.0.1 ${h}`).join("`r`n");
+      // Single elevated script: append to hosts + flush DNS (1 UAC popup, or zero if admin)
+      const script = `
+        Add-Content -LiteralPath ${quotePs(HOSTS_FILE)} -Value ${quotePs(toAppend)}
+        ipconfig /flushdns | Out-Null
+      `;
+      await runElevatedPowerShell(script);
     } else {
       await execWithPassword(`echo "${entries}" >> ${HOSTS_FILE}`, sudoPassword);
       await flushDNS(sudoPassword);
     }
     log(`🌐 DNS ${tool}: ✅ added ${entriesToAdd.join(", ")}`);
   } catch (error) {
-    const msg = error.message?.includes("incorrect password") ? "Wrong sudo password" : "Failed to add DNS entry";
+    const msg = error.message?.includes("incorrect password") ? "Wrong sudo password" : `Failed to add DNS entry: ${error.message}`;
     throw new Error(msg);
   }
 }
@@ -188,11 +143,19 @@ async function removeDNSEntry(tool, sudoPassword) {
 
   try {
     if (IS_WIN) {
-      // Process already has admin rights — edit hosts file directly
-      const content = fs.readFileSync(HOSTS_FILE, "utf8");
-      const filtered = content.split(/\r?\n/).filter(l => !entriesToRemove.some(h => l.includes(h))).join("\r\n");
-      fs.writeFileSync(HOSTS_FILE, filtered, "utf8");
-      require("child_process").execSync("ipconfig /flushdns", { windowsHide: true });
+      // Build PowerShell list literal of hosts to strip
+      const hostsList = entriesToRemove.map(quotePs).join(",");
+      const script = `
+        $hosts = @(${hostsList})
+        $lines = Get-Content -LiteralPath ${quotePs(HOSTS_FILE)}
+        $filtered = $lines | Where-Object {
+          $line = $_
+          -not ($hosts | Where-Object { $line -match [regex]::Escape($_) })
+        }
+        Set-Content -LiteralPath ${quotePs(HOSTS_FILE)} -Value $filtered
+        ipconfig /flushdns | Out-Null
+      `;
+      await runElevatedPowerShell(script);
     } else {
       for (const host of entriesToRemove) {
         const sedCmd = IS_MAC
@@ -204,7 +167,7 @@ async function removeDNSEntry(tool, sudoPassword) {
     }
     log(`🌐 DNS ${tool}: ✅ removed ${entriesToRemove.join(", ")}`);
   } catch (error) {
-    const msg = error.message?.includes("incorrect password") ? "Wrong sudo password" : "Failed to remove DNS entry";
+    const msg = error.message?.includes("incorrect password") ? "Wrong sudo password" : `Failed to remove DNS entry: ${error.message}`;
     throw new Error(msg);
   }
 }
@@ -222,14 +185,37 @@ async function removeAllDNSEntries(sudoPassword) {
   }
 }
 
+/**
+ * Sync removal of ALL tool DNS entries — for use during process shutdown
+ * when async ops aren't safe. Assumes caller already has root/admin rights.
+ */
+function removeAllDNSEntriesSync() {
+  try {
+    if (!fs.existsSync(HOSTS_FILE)) return;
+    const allHosts = Object.values(TOOL_HOSTS).flat();
+    const content = fs.readFileSync(HOSTS_FILE, "utf8");
+    const eol = IS_WIN ? "\r\n" : "\n";
+    const filtered = content.split(/\r?\n/).filter(l => !allHosts.some(h => l.includes(h))).join(eol);
+    if (filtered === content) return;
+    fs.writeFileSync(HOSTS_FILE, filtered, "utf8");
+    if (IS_WIN) {
+      try { execSync("ipconfig /flushdns", { windowsHide: true, stdio: "ignore" }); } catch { /* ignore */ }
+    } else if (IS_MAC) {
+      try { execSync("dscacheutil -flushcache && killall -HUP mDNSResponder", { stdio: "ignore" }); } catch { /* ignore */ }
+    } else {
+      try { execSync("resolvectl flush-caches 2>/dev/null || true", { stdio: "ignore" }); } catch { /* ignore */ }
+    }
+  } catch { /* best effort during shutdown */ }
+}
+
 module.exports = {
   TOOL_HOSTS,
   addDNSEntry,
   removeDNSEntry,
   removeAllDNSEntries,
+  removeAllDNSEntriesSync,
   execWithPassword,
   isSudoAvailable,
-  executeElevatedPowerShell,
   checkDNSEntry,
   checkAllDNSStatus,
 };

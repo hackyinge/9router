@@ -11,6 +11,7 @@ const BINARY_NAME = "cloudflared";
 const IS_WINDOWS = os.platform() === "win32";
 const BIN_NAME = IS_WINDOWS ? `${BINARY_NAME}.exe` : BINARY_NAME;
 const BIN_PATH = path.join(BIN_DIR, BIN_NAME);
+const POWERSHELL_HIDDEN_COMMAND = "powershell -NoProfile -NonInteractive -WindowStyle Hidden -Command";
 
 const GITHUB_BASE_URL = "https://github.com/cloudflare/cloudflared/releases/latest/download";
 
@@ -360,7 +361,21 @@ export async function spawnQuickTunnel(localPort, onUrlUpdate) {
   });
 }
 
-export function killCloudflared() {
+// Kill cloudflared processes whose command line targets the given port (any host).
+// Boundary check ensures :20128 doesn't match :201280 or :202128.
+function killCloudflaredByPort(port) {
+  if (!port) return;
+  try {
+    if (IS_WINDOWS) {
+      const psCmd = `Get-CimInstance Win32_Process -Filter \\"Name='cloudflared.exe'\\" | Where-Object { $_.CommandLine -match ':${port}(\\D|$)' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }`;
+      execSync(`${POWERSHELL_HIDDEN_COMMAND} "${psCmd}"`, { stdio: "ignore", windowsHide: true });
+    } else {
+      execSync(`pkill -f "cloudflared.*:${port}([^0-9]|$)" 2>/dev/null || true`, { stdio: "ignore", windowsHide: true });
+    }
+  } catch (e) { /* ignore */ }
+}
+
+export function killCloudflared(localPort) {
   if (cloudflaredProcess) {
     try {
       cloudflaredProcess.kill();
@@ -376,10 +391,7 @@ export function killCloudflared() {
     clearPid();
   }
 
-  // Kill any remaining cloudflared processes
-  try {
-    execSync("pkill -f cloudflared 2>/dev/null || true", { stdio: "ignore", windowsHide: true });
-  } catch (e) { /* ignore */ }
+  killCloudflaredByPort(localPort);
 }
 
 export function isCloudflaredRunning() {
