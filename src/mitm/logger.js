@@ -11,8 +11,21 @@ function time() {
 const log = (msg) => console.log(`[${time()}] [MITM] ${msg}`);
 const err = (msg) => console.error(`[${time()}] ❌ [MITM] ${msg}`);
 
-const DUMP_DIR = path.join(DATA_DIR, "logs", "mitm");
-if (!fs.existsSync(DUMP_DIR)) fs.mkdirSync(DUMP_DIR, { recursive: true });
+function ensureDumpDir() {
+  const candidates = [
+    path.join(DATA_DIR, "logs", "mitm"),
+    path.join(require("os").tmpdir(), "9router", "logs", "mitm"),
+  ];
+  for (const dir of candidates) {
+    try {
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      return dir;
+    } catch { /* try next writable location */ }
+  }
+  return candidates[1];
+}
+
+const DUMP_DIR = ensureDumpDir();
 
 const EMPTY_BODY_RE = /^\s*(\{\s*\}|\[\s*\]|null)?\s*$/;
 

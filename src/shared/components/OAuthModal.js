@@ -14,6 +14,7 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
   const [step, setStep] = useState("waiting"); // waiting | input | success | error
   const [authData, setAuthData] = useState(null);
   const [callbackUrl, setCallbackUrl] = useState("");
+  const [sessionJson, setSessionJson] = useState("");
   const [error, setError] = useState(null);
   const [isDeviceCode, setIsDeviceCode] = useState(false);
   const [deviceData, setDeviceData] = useState(null);
@@ -30,9 +31,11 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
   // Detect if running on localhost (client-side only)
   useEffect(() => {
     if (typeof window !== "undefined") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setIsLocalhost(
         window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
       );
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setPlaceholderUrl(`${window.location.origin}/callback?code=...`);
     }
   }, []);
@@ -226,12 +229,20 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
   // Reset state and start OAuth when modal opens
   useEffect(() => {
     if (isOpen && provider) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setAuthData(null);
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setCallbackUrl("");
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setError(null);
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setIsDeviceCode(false);
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setDeviceData(null);
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setPolling(false);
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setSessionJson("");
       pollingAbortRef.current = false;
       startOAuthFlow();
     } else if (!isOpen) {
@@ -328,7 +339,9 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
   const handleManualSubmit = async () => {
     try {
       setError(null);
-      const url = new URL(callbackUrl);
+      const text = callbackUrl.trim();
+      
+      const url = new URL(text);
       const code = url.searchParams.get("code");
       const state = url.searchParams.get("state");
       const errorParam = url.searchParams.get("error");
@@ -342,6 +355,43 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
       }
 
       await exchangeTokens(code, state);
+    } catch (err) {
+      setError(err.message);
+      setStep("error");
+    }
+  };
+
+  // Handle Codex Session JSON parsing
+  const handleParseSession = async () => {
+    try {
+      setError(null);
+      const text = sessionJson.trim();
+      
+      if (!text) {
+        throw new Error("Please paste the session JSON first");
+      }
+
+      let parsed;
+      try {
+        parsed = JSON.parse(text);
+      } catch (e) {
+        throw new Error("Invalid JSON format");
+      }
+
+      if (!parsed.accessToken || !parsed.sessionToken) {
+        throw new Error("JSON must contain accessToken and sessionToken");
+      }
+
+      const res = await fetch(`/api/oauth/${provider}/import-session`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(parsed),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      
+      setStep("success");
+      onSuccess?.();
     } catch (err) {
       setError(err.message);
       setStep("error");
@@ -375,7 +425,7 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
               Complete the authorization in the popup window.
             </p>
             <Button variant="ghost" onClick={() => setStep("input")}>
-              Popup blocked? Enter URL manually
+              {provider === "codex" ? "Popup blocked or use Session JSON?" : "Popup blocked? Enter URL manually"}
             </Button>
           </div>
         )}
@@ -456,13 +506,31 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
                   placeholder={placeholderUrl}
                   className="font-mono text-xs"
                 />
+                <Button onClick={handleManualSubmit} fullWidth disabled={!callbackUrl} className="mt-3">
+                  Connect
+                </Button>
               </div>
+
+              {provider === "codex" && (
+                <div className="pt-4 border-t border-border">
+                  <p className="text-sm font-medium mb-2">Alternative: Session JSON</p>
+                  <p className="text-xs text-text-muted mb-2">
+                    Visit <a href="https://chatgpt.com/api/auth/session" target="_blank" rel="noreferrer" className="text-primary hover:underline">https://chatgpt.com/api/auth/session</a> and paste the JSON response below.
+                  </p>
+                  <textarea
+                    value={sessionJson}
+                    onChange={(e) => setSessionJson(e.target.value)}
+                    placeholder='{ "accessToken": "...", "user": {...} }'
+                    className="w-full h-24 py-2 px-3 text-xs font-mono text-text-main bg-white dark:bg-white/5 border border-black/10 dark:border-white/10 rounded-md placeholder-text-muted/60 focus:ring-1 focus:ring-primary/30 focus:border-primary/50 focus:outline-none transition-all shadow-inner resize-none"
+                  />
+                  <Button onClick={handleParseSession} fullWidth disabled={!sessionJson} className="mt-2" variant="secondary">
+                    Parse and Connect
+                  </Button>
+                </div>
+              )}
             </div>
 
             <div className="flex gap-2">
-              <Button onClick={handleManualSubmit} fullWidth disabled={!callbackUrl}>
-                Connect
-              </Button>
               <Button onClick={handleClose} variant="ghost" fullWidth>
                 Cancel
               </Button>

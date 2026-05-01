@@ -104,6 +104,45 @@ export async function POST(request, { params }) {
       return NextResponse.json({ error: "Invalid or empty request body" }, { status: 400 });
     }
 
+    if (action === "import-session") {
+      if (provider !== "codex") {
+        return NextResponse.json({ error: "Import session only supported for codex" }, { status: 400 });
+      }
+
+      const { accessToken, sessionToken, user, account, expires } = body;
+      
+      if (!accessToken || !sessionToken) {
+        return NextResponse.json({ error: "Missing accessToken or sessionToken" }, { status: 400 });
+      }
+
+      // Save to database
+      const connection = await createProviderConnection({
+        provider: "codex",
+        authType: "oauth",
+        accessToken,
+        refreshToken: sessionToken,
+        expiresAt: expires || null,
+        email: user?.email,
+        displayName: user?.name,
+        providerSpecificData: {
+          chatgptAccountId: account?.id,
+          chatgptPlanType: account?.planType,
+          authMethod: "imported_session"
+        },
+        testStatus: "active",
+      });
+
+      return NextResponse.json({ 
+        success: true, 
+        connection: {
+          id: connection.id,
+          provider: connection.provider,
+          email: connection.email,
+          displayName: connection.displayName,
+        }
+      });
+    }
+
     if (action === "exchange") {
       const { code, redirectUri, codeVerifier, state, meta } = body;
 

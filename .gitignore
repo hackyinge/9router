@@ -74,3 +74,4 @@ deploy*.sh
 ecosystem.config.*
 
 scripts/agSniffer/*
+.omx/

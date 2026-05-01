@@ -258,6 +258,43 @@ describe("handleImageGenerationCore", () => {
     expect(responseBody.data[0].b64_json).toBeTruthy();
   });
 
+  it("generates gpt-image-2 through Codex image tool with reference images", async () => {
+    const enc = new TextEncoder();
+    const stream = new ReadableStream({
+      start(controller) {
+        controller.enqueue(enc.encode('event: response.output_item.done\ndata: {"item":{"type":"image_generation_call","result":"base64codex"}}\n\n'));
+        controller.close();
+      },
+    });
+    global.fetch.mockResolvedValueOnce(
+      new Response(stream, { status: 200, headers: { "Content-Type": "text/event-stream" } })
+    );
+
+    const result = await handleImageGenerationCore({
+      body: {
+        model: "gpt-image-2",
+        prompt: "生成直播间海报",
+        n: 1,
+        size: "1024x1536",
+        reference_images: ["iVBORw0KGgo="],
+      },
+      modelInfo: { provider: "codex", model: "gpt-image-2" },
+      credentials: { accessToken: "test-token", providerSpecificData: { chatgptAccountId: "acc_123" } },
+      log: null,
+    });
+
+    expect(result.success).toBe(true);
+    const fetchCall = global.fetch.mock.calls[0];
+    const requestBody = JSON.parse(fetchCall[1].body);
+    expect(requestBody.model).toBe("gpt-5.4");
+    expect(requestBody.tools[0]).toMatchObject({ type: "image_generation", size: "1024x1536" });
+    const content = requestBody.input[0].content;
+    expect(content.some((part) => part.type === "input_image" && part.image_url.startsWith("data:image/png;base64,"))).toBe(true);
+
+    const responseBody = await result.response.json();
+    expect(responseBody.data[0].b64_json).toBe("base64codex");
+  });
+
   it("handles provider error responses", async () => {
     global.fetch.mockResolvedValueOnce(
       new Response(

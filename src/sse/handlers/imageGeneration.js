@@ -47,7 +47,11 @@ export async function handleImageGeneration(request) {
   const modelInfo = await getModelInfo(modelStr);
   if (!modelInfo.provider) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid model format");
 
-  const { provider, model } = modelInfo;
+  let { provider, model } = modelInfo;
+  if ((provider === "openai" || provider === "codex") && model === "gpt-image-2") {
+    provider = "codex";
+    model = "gpt-image-2";
+  }
 
   // noAuth providers — no credential needed
   if (NO_AUTH_PROVIDERS.has(provider)) {

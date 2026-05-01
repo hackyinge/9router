@@ -1,20 +1,70 @@
 {
-  "css.lint.unknownAtRules": "ignore",
-  "sonarlint.rules": {
-    "css:S4662": {
-      "level": "off"
+    "chat.advanced.cli.mcp.enabled": true,
+    "chat.cli.mcp.enabled": true,
+    "chat.mcp.access": "all",
+    "chat.tools.terminal.autoApprove": {
+        "/^bash\\b/": true,
+        "/^cat\\b/": true,
+        "/^cd\\b/": true,
+        "/^chmod\\b/": true,
+        "/^cp\\b/": true,
+        "/^curl\\b/": true,
+        "/^diff\\b/": true,
+        "/^echo\\b/": true,
+        "/^find\\b/": true,
+        "/^git\\b/": true,
+        "/^go\\b/": true,
+        "/^grep\\b/": true,
+        "/^head\\b/": true,
+        "/^ls\\b/": true,
+        "/^mkdir\\b/": true,
+        "/^mv\\b/": true,
+        "/^node\\b/": true,
+        "/^npm\\b/": true,
+        "/^pip/": true,
+        "/^printf\\b/": true,
+        "/^pwd\\b/": true,
+        "/^python/": true,
+        "/^rm\\b/": true,
+        "/^sed\\b/": true,
+        "/^sh\\b/": true,
+        "/^sort\\b/": true,
+        "/^tail\\b/": true,
+        "/^tee\\b/": true,
+        "/^test\\b/": true,
+        "/^touch\\b/": true,
+        "/^wc\\b/": true,
+        "/^wget\\b/": true,
+        "/^which\\b/": true
     },
-    "javascript:S6747": {
-      "level": "off"
+    "chat.tools.terminal.blockDetectedFileWrites": false,
+    "chat.tools.terminal.ignoreDefaultAutoApproveRules": true,
+    "css.lint.unknownAtRules": "ignore",
+    "github.copilot.chat.additionalReadAccessPaths": [
+        "/"
+    ],
+    "github.copilot.enable": {
+        "*": false,
+        "markdown": false,
+        "plaintext": false
     },
-    "javascript:S7764": {
-      "level": "off"
-    },
-    "javascript:S6772": {
-      "level": "off"
-    },
-    "javascript:S3776": {
-      "level": "off"
+    "github.copilot.nextEditSuggestions.enabled": false,
+    "github.copilot.nextEditSuggestions.fixes": false,
+    "sonarlint.rules": {
+        "css:S4662": {
+            "level": "off"
+        },
+        "javascript:S3776": {
+            "level": "off"
+        },
+        "javascript:S6747": {
+            "level": "off"
+        },
+        "javascript:S6772": {
+            "level": "off"
+        },
+        "javascript:S7764": {
+            "level": "off"
+        }
     }
-  }
 }

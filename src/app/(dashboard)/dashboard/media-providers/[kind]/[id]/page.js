@@ -2,7 +2,7 @@
 
 import { useParams, notFound, useRouter } from "next/navigation";
 import Link from "next/link";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Card, Badge, Button, AddCustomEmbeddingModal, NoAuthProxyCard, ProviderInfoCard } from "@/shared/components";
 import ProviderIcon from "@/shared/components/ProviderIcon";
 import { MEDIA_PROVIDER_KINDS, AI_PROVIDERS, getProviderAlias, isCustomEmbeddingProvider } from "@/shared/constants/providers";
@@ -14,14 +14,34 @@ import { TTS_PROVIDER_CONFIG } from "@/shared/constants/ttsProviders";
 import { getTtsVoicesForModel } from "open-sse/config/ttsModels.js";
 
 // Shared row layout — defined outside components to avoid re-mount on re-render
-function Row({ label, children }) {
+function Row({ label, children, align = "center" }) {
   return (
-    <div className="flex items-center gap-3">
+    <div className={`flex ${align === "start" ? "items-start" : "items-center"} gap-3`}>
       <span className="text-xs text-text-muted w-20 shrink-0">{label}</span>
       <div className="flex-1">{children}</div>
     </div>
   );
 }
+
+// Utility: convert File to data URL
+function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error(`Failed to read ${file.name}`));
+    reader.readAsDataURL(file);
+  });
+}
+
+function createRefImageId() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+}
+
+const MAX_REF_IMAGE_COUNT = 4;
+const MAX_REF_IMAGE_BYTES = 20 * 1024 * 1024;
 
 const DEFAULT_TTS_RESPONSE_EXAMPLE = `// Audio will appear here after running.
 // Example JSON response (response_format=json):
@@ -890,7 +910,9 @@ function GenericExampleCard({ providerId, kind }) {
   const supportsEdit = !!selectedModelObj?.capabilities?.includes("edit");
 
   const [input, setInput] = useState(safeExConfig.defaultInput || "");
-  const [refImage, setRefImage] = useState("");
+  const [refImages, setRefImages] = useState([]); // [{ id, name, type, dataUrl, size }]
+  const [refImageUrl, setRefImageUrl] = useState(""); // URL input field
+  const fileInputRef = useRef(null);
   const [extraValues, setExtraValues] = useState(() =>
     (safeExConfig.extraFields || []).reduce((acc, f) => { acc[f.key] = f.default ?? ""; return acc; }, {})
   );
@@ -909,6 +931,44 @@ function GenericExampleCard({ providerId, kind }) {
   const [pinnedConnectionId, setPinnedConnectionId] = useState("");
   const { copied: copiedCurl, copy: copyCurl } = useCopyToClipboard();
   const { copied: copiedRes, copy: copyRes } = useCopyToClipboard();
+
+  const addRefImageUrl = () => {
+    const url = refImageUrl.trim();
+    if (!url || refImages.length >= MAX_REF_IMAGE_COUNT) return;
+    setRefImages((prev) => [
+      ...prev,
+      { id: createRefImageId(), name: url, type: "url", dataUrl: url, size: 0 },
+    ]);
+    setRefImageUrl("");
+  };
+
+  // Handle file selection for ref images (multi-select)
+  const handleRefImageFiles = async (event) => {
+    const availableSlots = MAX_REF_IMAGE_COUNT - refImages.length;
+    const files = Array.from(event.target.files || [])
+      .filter((file) => file.type.startsWith("image/"))
+      .filter((file) => file.size <= MAX_REF_IMAGE_BYTES)
+      .slice(0, Math.max(availableSlots, 0));
+
+    event.target.value = ""; // reset so same file can be re-selected
+    if (files.length === 0) return;
+
+    const newImages = await Promise.all(
+      files.map(async (file) => ({
+        id: createRefImageId(),
+        name: file.name,
+        type: file.type,
+        size: file.size,
+        dataUrl: await fileToDataUrl(file),
+      }))
+    );
+    setRefImages((prev) => [...prev, ...newImages]);
+  };
+
+  // Remove a ref image by id
+  const removeRefImage = (id) => {
+    setRefImages((prev) => prev.filter((img) => img.id !== id));
+  };
 
   useEffect(() => {
     setLocalEndpoint(window.location.origin);
@@ -945,12 +1005,18 @@ function GenericExampleCard({ providerId, kind }) {
     acc[k] = v;
     return acc;
   }, {});
+  // Build reference_images from uploaded files plus the pending URL input.
+  const pendingRefImageUrl = refImageUrl.trim();
+  const refImageUrls = refImages.map((img) => img.dataUrl).filter(Boolean);
+  const allRefUrls = pendingRefImageUrl && refImageUrls.length < MAX_REF_IMAGE_COUNT
+    ? [pendingRefImageUrl, ...refImageUrls]
+    : refImageUrls;
   const requestBody = {
     model: modelFull,
     [exConfig.bodyKey]: input,
     ...exConfig.extraBody,
     ...extraBodyFromFields,
-    ...(supportsEdit && refImage.trim() ? { image: refImage.trim() } : {}),
+    ...(supportsEdit && allRefUrls.length > 0 ? { reference_images: allRefUrls.slice(0, MAX_REF_IMAGE_COUNT) } : {}),
   };
 
   // Streaming supported for codex image (Plus/Pro accounts) — disabled when binary output requested
@@ -1146,35 +1212,83 @@ function GenericExampleCard({ providerId, kind }) {
           </div>
         </Row>
 
-        {/* Reference image (only for edit-capable image models) */}
+        {/* Reference images (only for edit-capable image models) — supports URL + local upload */}
         {supportsEdit && (
-          <Row label="Ref Image (URL)">
-            <div className="flex flex-col gap-2">
-              <div className="relative">
+          <Row label="Ref Image" align="start">
+            <div className="flex flex-col gap-2 w-full">
+              {/* URL input row + upload button */}
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <div className="relative flex-1">
+                  <input
+                    value={refImageUrl}
+                    onChange={(e) => setRefImageUrl(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        addRefImageUrl();
+                      }
+                    }}
+                    placeholder="https://example.com/source.png"
+                    className="w-full px-3 py-1.5 pr-7 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary"
+                  />
+                  {refImageUrl && (
+                    <button
+                      type="button"
+                      onClick={() => setRefImageUrl("")}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-text-muted hover:text-primary transition-colors"
+                    >
+                      <span className="material-symbols-outlined text-[14px]">close</span>
+                    </button>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={addRefImageUrl}
+                  disabled={!refImageUrl.trim() || refImages.length >= MAX_REF_IMAGE_COUNT}
+                  className="shrink-0 px-3 py-1.5 text-sm border border-border rounded-lg hover:border-primary hover:text-primary transition-colors disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-border disabled:hover:text-inherit"
+                >
+                  Add URL
+                </button>
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={refImages.length >= MAX_REF_IMAGE_COUNT}
+                  className="shrink-0 px-3 py-1.5 text-sm border border-border rounded-lg hover:border-primary hover:text-primary transition-colors flex items-center gap-1 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-border disabled:hover:text-inherit"
+                >
+                  <span className="material-symbols-outlined text-[14px]">upload</span>
+                  Upload
+                </button>
                 <input
-                  value={refImage}
-                  onChange={(e) => setRefImage(e.target.value)}
-                  placeholder="https://example.com/source.png"
-                  className="w-full px-3 py-1.5 pr-7 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary"
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  className="hidden"
+                  onChange={handleRefImageFiles}
                 />
-                {refImage && (
-                  <button
-                    type="button"
-                    onClick={() => setRefImage("")}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-text-muted hover:text-primary transition-colors"
-                  >
-                    <span className="material-symbols-outlined text-[14px]">close</span>
-                  </button>
-                )}
               </div>
-              {refImage.trim() && (
-                <img
-                  src={refImage.trim()}
-                  alt="Reference"
-                  className="max-h-40 rounded-lg border border-border object-contain bg-sidebar"
-                  onError={(e) => { e.currentTarget.style.display = "none"; }}
-                  onLoad={(e) => { e.currentTarget.style.display = "block"; }}
-                />
+              {/* Thumbnail grid */}
+              {refImages.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {refImages.map((img) => (
+                    <div key={img.id} className="relative group">
+                      <img
+                        src={img.dataUrl}
+                        alt={img.name}
+                        title={img.name}
+                        className="h-16 w-16 object-cover rounded-lg border border-border bg-sidebar"
+                        onError={(e) => { e.currentTarget.style.display = "none"; }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeRefImage(img.id)}
+                        className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center text-[10px] opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
           </Row>

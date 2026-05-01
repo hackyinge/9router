@@ -68,6 +68,7 @@ function decodeCodexAccountId(idToken) {
 
 // Strip "-image" suffix to get the underlying chat model
 function stripCodexImageModel(model) {
+  if (model === "gpt-image-2") return "gpt-5.4";
   return model.endsWith(CODEX_MODEL_SUFFIX)
     ? model.slice(0, -CODEX_MODEL_SUFFIX.length)
     : model;
@@ -92,6 +93,21 @@ function buildCodexContent(prompt, refs, detail = CODEX_REF_DETAIL) {
   });
   content.push({ type: "input_text", text: prompt });
   return content;
+}
+
+function collectReferenceImages(body) {
+  const refs = [];
+  const push = (value) => {
+    const url = toCodexDataUrl(value);
+    if (url) refs.push(url);
+  };
+  if (Array.isArray(body.reference_images)) body.reference_images.forEach(push);
+  if (Array.isArray(body.reference_image)) body.reference_image.forEach(push);
+  push(body.reference_image);
+  if (Array.isArray(body.images)) body.images.forEach(push);
+  if (Array.isArray(body.image)) body.image.forEach(push);
+  push(body.image);
+  return refs.slice(0, 4);
 }
 
 // Parse Codex SSE stream, log progress, return final base64 image.
@@ -276,10 +292,7 @@ function buildImageBody(provider, model, body) {
 
   switch (provider) {
     case "codex": {
-      const refs = [];
-      if (Array.isArray(images)) images.forEach((i) => { const u = toCodexDataUrl(i); if (u) refs.push(u); });
-      const single = toCodexDataUrl(image);
-      if (single) refs.push(single);
+      const refs = collectReferenceImages(body);
       const detail = body.image_detail || CODEX_REF_DETAIL;
       const imgTool = { type: "image_generation", output_format: (body.output_format || "png").toLowerCase() };
       if (body.size && body.size !== "") imgTool.size = body.size;
@@ -339,6 +352,43 @@ function buildImageBody(provider, model, body) {
       if (style) requestBody.style = style;
       if (response_format) requestBody.response_format = response_format;
       return requestBody;
+  }
+}
+
+async function fetchCodexImage({ url, headers, requestBody, provider, model, log }) {
+  let providerResponse;
+  try {
+    providerResponse = await fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(requestBody),
+    });
+  } catch (error) {
+    const errMsg = formatProviderError(error, provider, model, HTTP_STATUS.BAD_GATEWAY);
+    log?.debug?.("IMAGE", `Fetch error: ${errMsg}`);
+    return { error: createErrorResult(HTTP_STATUS.BAD_GATEWAY, errMsg) };
+  }
+
+  if (!providerResponse.ok) {
+    const { statusCode, message } = await parseUpstreamError(providerResponse);
+    const errMsg = formatProviderError(new Error(message), provider, model, statusCode);
+    log?.debug?.("IMAGE", `Provider error: ${errMsg}`);
+    return { error: createErrorResult(statusCode, errMsg) };
+  }
+
+  try {
+    const b64 = await parseCodexImageStream(providerResponse, log);
+    if (!b64) {
+      return {
+        error: createErrorResult(
+          HTTP_STATUS.BAD_GATEWAY,
+          "Codex did not return an image. Account may not be entitled (Plus/Pro required)."
+        ),
+      };
+    }
+    return { b64 };
+  } catch {
+    return { error: createErrorResult(HTTP_STATUS.BAD_GATEWAY, `Invalid response from ${provider}`) };
   }
 }
 
@@ -443,6 +493,68 @@ export async function handleImageGenerationCore({
     const errMsg = formatProviderError(error, provider, model, HTTP_STATUS.BAD_GATEWAY);
     log?.debug?.("IMAGE", `Fetch error: ${errMsg}`);
     return createErrorResult(HTTP_STATUS.BAD_GATEWAY, errMsg);
+  }
+
+  if (provider === "codex" && providerResponse.ok && !streamToClient) {
+    const imageCount = Math.min(Math.max(Number(body.n) || 1, 1), 4);
+    try {
+      const firstB64 = await parseCodexImageStream(providerResponse, log);
+      if (!firstB64) {
+        return createErrorResult(
+          HTTP_STATUS.BAD_GATEWAY,
+          "Codex did not return an image. Account may not be entitled (Plus/Pro required)."
+        );
+      }
+
+      const images = [{ b64_json: firstB64 }];
+      if (imageCount > 1) {
+        const additional = await Promise.all(
+          Array.from({ length: imageCount - 1 }, () =>
+            fetchCodexImage({ url, headers: buildImageHeaders(provider, credentials), requestBody, provider, model, log })
+          )
+        );
+        for (const item of additional) {
+          if (item.b64) images.push({ b64_json: item.b64 });
+        }
+      }
+
+      if (onRequestSuccess) {
+        await onRequestSuccess();
+      }
+
+      const normalized = {
+        created: Math.floor(Date.now() / 1000),
+        data: images,
+      };
+
+      if (binaryOutput) {
+        const buf = Buffer.from(images[0].b64_json, "base64");
+        const fmt = (body.output_format || "png").toLowerCase();
+        const mime = fmt === "jpeg" || fmt === "jpg" ? "image/jpeg" : fmt === "webp" ? "image/webp" : "image/png";
+        return {
+          success: true,
+          response: new Response(buf, {
+            headers: {
+              "Content-Type": mime,
+              "Content-Disposition": `inline; filename="image.${fmt === "jpeg" ? "jpg" : fmt}"`,
+              "Access-Control-Allow-Origin": "*",
+            },
+          }),
+        };
+      }
+
+      return {
+        success: true,
+        response: new Response(JSON.stringify(normalized), {
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          },
+        }),
+      };
+    } catch (parseError) {
+      return createErrorResult(HTTP_STATUS.BAD_GATEWAY, `Invalid response from ${provider}`);
+    }
   }
 
   // Handle 401/403 — try token refresh

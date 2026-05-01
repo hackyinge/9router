@@ -1,6 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: "standalone",
+  distDir: process.env.NEXT_DIST_DIR || ".next",
+  outputFileTracingRoot: new URL(".", import.meta.url).pathname,
   serverExternalPackages: ["better-sqlite3"],
   images: {
     unoptimized: true
