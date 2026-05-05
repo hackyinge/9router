@@ -6,11 +6,22 @@ import { promisify } from "util";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
+import { getAuthPayload } from "@/dashboardGuard";
 
 const execAsync = promisify(exec);
 
+async function requirePayload(request) {
+  const payload = await getAuthPayload(request);
+  if (!payload) {
+    return { payload: null, response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
+  }
+  return { payload, response: null };
+}
+
 const getConfigDir = () => path.join(os.homedir(), ".config", "opencode");
 const getConfigPath = () => path.join(getConfigDir(), "opencode.json");
+const PROVIDER_KEY = "openrouterx";
+const MODEL_PREFIX_RE = /^openrouterx\//;
 
 // Check if opencode CLI is installed (via which/where or config file exists)
 const checkOpenCodeInstalled = async () => {
@@ -42,14 +53,17 @@ const readConfig = async () => {
   }
 };
 
-const has9RouterConfig = (config) => {
+const hasOpenRouterXConfig = (config) => {
   if (!config?.provider) return false;
-  return !!config.provider["9router"];
+  return !!config.provider[PROVIDER_KEY];
 };
 
 // GET - Check opencode CLI and read current settings
-export async function GET() {
+export async function GET(request) {
   try {
+    const { response } = await requirePayload(request);
+    if (response) return response;
+
     const isInstalled = await checkOpenCodeInstalled();
 
     if (!isInstalled) {
@@ -61,17 +75,17 @@ export async function GET() {
     }
 
     const config = await readConfig();
-    const providerConfig = config?.provider?.["9router"];
+    const providerConfig = config?.provider?.[PROVIDER_KEY];
     const modelMap = providerConfig?.models || {};
 
     return NextResponse.json({
       installed: true,
       config,
-      has9Router: has9RouterConfig(config),
+      hasOpenRouterX: hasOpenRouterXConfig(config),
       configPath: getConfigPath(),
         opencode: {
           models: Object.keys(modelMap),
-          activeModel: config?.model?.startsWith("9router/") ? config.model.replace(/^9router\//, "") : null,
+          activeModel: MODEL_PREFIX_RE.test(config?.model || "") ? config.model.replace(MODEL_PREFIX_RE, "") : null,
           baseURL: providerConfig?.options?.baseURL || null,
         },
     });
@@ -81,9 +95,15 @@ export async function GET() {
   }
 }
 
-// POST - Apply 9Router as openai-compatible provider (multi-model support)
+// POST - Apply OpenRouterX as openai-compatible provider (multi-model support)
 export async function POST(request) {
   try {
+    const { payload, response } = await requirePayload(request);
+    if (response) return response;
+    if (payload.role !== "super_admin") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     const { baseUrl, apiKey, model, models, activeModel, subagentModel } = await request.json();
 
     // Accept either `model` (string, legacy) or `models` (array of strings)
@@ -106,14 +126,14 @@ export async function POST(request) {
     } catch { /* No existing config */ }
 
     const normalizedBaseUrl = baseUrl.endsWith("/v1") ? baseUrl : `${baseUrl}/v1`;
-    const keyToUse = apiKey || "sk_9router";
+    const keyToUse = apiKey || "sk_openrouterx";
     const effectiveSubagentModel = subagentModel || modelsArray[0];
 
     // Ensure provider object
     if (!config.provider) config.provider = {};
 
-    // Preserve any existing 9router provider entry and its models
-    const existingProvider = config.provider["9router"] || { npm: "@ai-sdk/openai-compatible", options: {}, models: {} };
+    // Preserve any existing openrouterx provider entry and its models
+    const existingProvider = config.provider[PROVIDER_KEY] || { npm: "@ai-sdk/openai-compatible", options: {}, models: {} };
 
     // Merge options (overwrite baseURL/apiKey)
     existingProvider.options = {
@@ -132,7 +152,7 @@ export async function POST(request) {
     }
 
     // Save merged provider back
-    config.provider["9router"] = existingProvider;
+    config.provider[PROVIDER_KEY] = existingProvider;
 
     // Set the active model: prefer explicit activeModel, else first of modelsArray
     // If activeModel is explicitly empty string, clear the model
@@ -141,7 +161,7 @@ export async function POST(request) {
     } else {
       const finalActive = activeModel || modelsArray[0];
       if (finalActive) {
-        config.model = `9router/${finalActive}`;
+        config.model = `${PROVIDER_KEY}/${finalActive}`;
       }
     }
 
@@ -150,7 +170,7 @@ export async function POST(request) {
     config.agent.explorer = {
       description: "Fast explorer subagent for codebase exploration",
       mode: "subagent",
-      model: `9router/${effectiveSubagentModel}`,
+      model: `${PROVIDER_KEY}/${effectiveSubagentModel}`,
     };
 
     await fs.writeFile(configPath, JSON.stringify(config, null, 2));
@@ -169,6 +189,12 @@ export async function POST(request) {
 // PATCH - Update specific settings (e.g., clear active model)
 export async function PATCH(request) {
   try {
+    const { payload, response } = await requirePayload(request);
+    if (response) return response;
+    if (payload.role !== "super_admin") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     const { clearActiveModel } = await request.json();
     const configPath = getConfigPath();
 
@@ -185,7 +211,7 @@ export async function PATCH(request) {
 
     if (clearActiveModel === true) {
       // Clear active model but keep models in the list
-      if (config.model?.startsWith("9router/")) {
+      if (MODEL_PREFIX_RE.test(config.model || "")) {
         config.model = "";
       }
     }
@@ -202,9 +228,15 @@ export async function PATCH(request) {
   }
 }
 
-// DELETE - Remove 9Router provider or specific models from config
+// DELETE - Remove OpenRouterX provider or specific models from config
 export async function DELETE(request) {
   try {
+    const { payload, response } = await requirePayload(request);
+    if (response) return response;
+    if (payload.role !== "super_admin") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     const { searchParams } = new URL(request.url);
     const modelToRemove = searchParams.get("model");
     const configPath = getConfigPath();
@@ -221,26 +253,27 @@ export async function DELETE(request) {
     }
 
     // If specific model provided, remove just that model
-    if (modelToRemove && config.provider?.["9router"]?.models) {
-      delete config.provider["9router"].models[modelToRemove];
+    const providerConfig = config.provider?.[PROVIDER_KEY];
+    if (modelToRemove && providerConfig?.models) {
+      delete providerConfig.models[modelToRemove];
       
       // If no models left, remove the provider
-      if (Object.keys(config.provider["9router"].models).length === 0) {
-        delete config.provider["9router"];
-        if (config.model?.startsWith("9router/")) delete config.model;
-      } else if (config.model === `9router/${modelToRemove}`) {
-        // If removed model was active, switch to first remaining model
-        const remainingModels = Object.keys(config.provider["9router"].models);
-        config.model = `9router/${remainingModels[0]}`;
-      }
+      if (Object.keys(providerConfig.models).length === 0) {
+        if (config.provider) { delete config.provider[PROVIDER_KEY]; }
+        if (MODEL_PREFIX_RE.test(config.model || "")) delete config.model;
+      } else if (MODEL_PREFIX_RE.test(config.model || "") && config.model.replace(MODEL_PREFIX_RE, "") === modelToRemove) {
+        const remainingModels = Object.keys(providerConfig.models);
+        config.model = `${PROVIDER_KEY}/${remainingModels[0]}`;
+        config.provider[PROVIDER_KEY] = providerConfig;
+          }
     } else {
-      // No specific model - remove entire 9router provider
-      if (config.provider) delete config.provider["9router"];
-      if (config.model?.startsWith("9router/")) delete config.model;
+      // No specific model - remove entire openrouterx provider
+      if (config.provider) { delete config.provider[PROVIDER_KEY]; }
+      if (MODEL_PREFIX_RE.test(config.model || "")) delete config.model;
     }
 
     // Remove subagent configuration
-    if (config.agent?.explorer?.model?.startsWith("9router/")) {
+    if (MODEL_PREFIX_RE.test(config.agent?.explorer?.model || "")) {
       delete config.agent.explorer;
       // Clean up empty agent object
       if (Object.keys(config.agent).length === 0) delete config.agent;
@@ -250,7 +283,7 @@ export async function DELETE(request) {
 
     return NextResponse.json({
       success: true,
-      message: modelToRemove ? `Model "${modelToRemove}" removed` : "9Router settings removed from OpenCode",
+      message: modelToRemove ? `Model "${modelToRemove}" removed` : "OpenRouterX settings removed from OpenCode",
     });
   } catch (error) {
     console.log("Error resetting opencode settings:", error);

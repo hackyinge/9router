@@ -64,6 +64,11 @@ export default function APIPageClient({ machineId }) {
   }, [tsInstallLog]);
 
   useEffect(() => {
+    // Guard: redirect sub_user to usage dashboard
+    fetch("/api/auth/me")
+      .then(r => r.json())
+      .then(data => { if (data.role === "sub_user") window.location.href = "/dashboard/usage"; })
+      .catch(() => {});
     fetchData();
     loadSettings();
   }, []);

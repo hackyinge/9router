@@ -24,7 +24,6 @@ export default function OverviewCards({ stats }) {
       <Card className="px-4 py-3 flex flex-col gap-1">
         <span className="text-text-muted text-sm uppercase font-semibold">Est. Cost</span>
         <span className="text-2xl font-bold text-warning">~{fmtCost(stats.totalCost)}</span>
-        <span className="text-[10px] text-text-muted">Estimated, not actual billing</span>
       </Card>
     </div>
   );

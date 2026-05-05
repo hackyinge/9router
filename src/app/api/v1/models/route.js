@@ -1,6 +1,8 @@
 import { PROVIDER_MODELS, PROVIDER_ID_TO_ALIAS } from "@/shared/constants/models";
 import { getProviderAlias, isAnthropicCompatibleProvider, isOpenAICompatibleProvider } from "@/shared/constants/providers";
 import { getProviderConnections, getCombos } from "@/lib/localDb";
+import { isProviderAllowedForSubUser, resolveSubUserAccessContext } from "@/lib/subUserAccess";
+import { getModelInfo } from "@/sse/services/model";
 
 const parseOpenAIStyleModels = (data) => {
   if (Array.isArray(data)) return data;
@@ -84,14 +86,20 @@ export async function OPTIONS() {
  * GET /v1/models - OpenAI compatible models list
  * Returns models from all active providers and combos in OpenAI format
  */
-export async function GET() {
+export async function GET(request) {
   try {
+    const subUserContext = await resolveSubUserAccessContext(request);
     // Get active provider connections
     let connections = [];
     try {
       connections = await getProviderConnections();
       // Filter to only active connections
       connections = connections.filter(c => c.isActive !== false);
+      if (subUserContext) {
+        connections = connections.filter((connection) =>
+          isProviderAllowedForSubUser(subUserContext, connection.provider)
+        );
+      }
     } catch (e) {
       // If database not available, return all models
       console.log("Could not fetch providers, returning all models");
@@ -119,6 +127,18 @@ export async function GET() {
 
     // Add combos first (they appear at the top)
     for (const combo of combos) {
+      if (subUserContext) {
+        let comboAllowed = true;
+        for (const comboModel of combo.models || []) {
+          const comboModelInfo = await getModelInfo(comboModel);
+          if (!comboModelInfo?.provider || !isProviderAllowedForSubUser(subUserContext, comboModelInfo.provider)) {
+            comboAllowed = false;
+            break;
+          }
+        }
+        if (!comboAllowed) continue;
+      }
+
       models.push({
         id: combo.name,
         object: "model",
@@ -134,6 +154,12 @@ export async function GET() {
     if (connections.length === 0) {
       // DB unavailable or no active providers -> return all static models
       for (const [alias, providerModels] of Object.entries(PROVIDER_MODELS)) {
+        const providerId = Object.entries(PROVIDER_ID_TO_ALIAS).find(
+          ([id, providerAlias]) => providerAlias === alias
+        )?.[0] || alias;
+        if (!isProviderAllowedForSubUser(subUserContext, providerId)) {
+          continue;
+        }
         for (const model of providerModels) {
           models.push({
             id: `${alias}/${model.id}`,
@@ -148,6 +174,9 @@ export async function GET() {
       }
     } else {
       for (const [providerId, conn] of activeConnectionByProvider.entries()) {
+        if (!isProviderAllowedForSubUser(subUserContext, providerId)) {
+          continue;
+        }
         const staticAlias = PROVIDER_ID_TO_ALIAS[providerId] || providerId;
         const outputAlias = (
           conn?.providerSpecificData?.prefix

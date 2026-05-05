@@ -63,6 +63,21 @@ async function isAuthenticated(request) {
   return false;
 }
 
+/**
+ * Extract and return JWT payload from request cookie.
+ * Returns null if not authenticated.
+ */
+export async function getAuthPayload(request) {
+  const token = request.cookies.get("auth_token")?.value;
+  if (!token) return null;
+  try {
+    const { payload } = await jwtVerify(token, SECRET);
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
 export async function proxy(request) {
   const { pathname } = request.nextUrl;
 
@@ -109,17 +124,35 @@ export async function proxy(request) {
     // If login not required, allow through
     if (!requireLogin) return NextResponse.next();
 
-    // Verify JWT token
+    // Verify JWT token and extract payload
     const token = request.cookies.get("auth_token")?.value;
-    if (token) {
-      try {
-        await jwtVerify(token, SECRET);
-        return NextResponse.next();
-      } catch {
-        return NextResponse.redirect(new URL("/login", request.url));
-      }
+    if (!token) return NextResponse.redirect(new URL("/login", request.url));
+
+    let payload;
+    try {
+      const result = await jwtVerify(token, SECRET);
+      payload = result.payload;
+    } catch {
+      return NextResponse.redirect(new URL("/login", request.url));
     }
 
+    // Super admin: unrestricted dashboard access
+    if (payload.role === "super_admin") return NextResponse.next();
+
+    // Sub-user: allow specific routes
+    if (payload.role === "sub_user") {
+      const subUserAllowed = [
+        "/dashboard/user",
+        "/dashboard/usage",
+        "/dashboard/cli-tools",
+      ];
+      if (subUserAllowed.some(p => pathname === p || pathname.startsWith(p + "/"))) {
+        return NextResponse.next();
+      }
+      return NextResponse.redirect(new URL("/dashboard/user", request.url));
+    }
+
+    // Other roles → redirect to login
     return NextResponse.redirect(new URL("/login", request.url));
   }
 

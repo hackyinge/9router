@@ -117,6 +117,27 @@ const pendingTimers = global._pendingTimers;
 
 const PENDING_TIMEOUT_MS = 60 * 1000; // 1 minute
 
+async function getUserKeyScope(userId) {
+  if (!userId) return { keys: [], keySet: new Set() };
+  try {
+    const { getApiKeys } = await import("@/lib/localDb.js");
+    const keys = await getApiKeys({ userId });
+    return {
+      keys,
+      keySet: new Set(keys.map((key) => key.key).filter(Boolean)),
+    };
+  } catch {
+    return { keys: [], keySet: new Set() };
+  }
+}
+
+async function filterHistoryByUserId(history, userId) {
+  if (!userId) return history;
+  const { keySet } = await getUserKeyScope(userId);
+  if (keySet.size === 0) return [];
+  return history.filter((entry) => entry.apiKey && keySet.has(entry.apiKey));
+}
+
 /**
  * Track a pending request
  * @param {string} model
@@ -173,27 +194,30 @@ export function trackPendingRequest(model, provider, connectionId, started, erro
 /**
  * Lightweight: get only activeRequests + recentRequests without full stats recalc
  */
-export async function getActiveRequests() {
+export async function getActiveRequests(filter = {}) {
   const activeRequests = [];
+  const userId = filter.userId;
 
   // Build active requests from pending state
-  let connectionMap = {};
-  try {
-    const { getProviderConnections } = await import("@/lib/localDb.js");
-    const allConnections = await getProviderConnections();
-    for (const conn of allConnections) {
-      connectionMap[conn.id] = conn.name || conn.email || conn.id;
-    }
-  } catch {}
+  if (!userId) {
+    let connectionMap = {};
+    try {
+      const { getProviderConnections } = await import("@/lib/localDb.js");
+      const allConnections = await getProviderConnections();
+      for (const conn of allConnections) {
+        connectionMap[conn.id] = conn.name || conn.email || conn.id;
+      }
+    } catch {}
 
-  for (const [connectionId, models] of Object.entries(pendingRequests.byAccount)) {
-    for (const [modelKey, count] of Object.entries(models)) {
-      if (count > 0) {
-        const accountName = connectionMap[connectionId] || `Account ${connectionId.slice(0, 8)}...`;
-        const match = modelKey.match(/^(.*) \((.*)\)$/);
-        const modelName = match ? match[1] : modelKey;
-        const providerName = match ? match[2] : "unknown";
-        activeRequests.push({ model: modelName, provider: providerName, account: accountName, count });
+    for (const [connectionId, models] of Object.entries(pendingRequests.byAccount)) {
+      for (const [modelKey, count] of Object.entries(models)) {
+        if (count > 0) {
+          const accountName = connectionMap[connectionId] || `Account ${connectionId.slice(0, 8)}...`;
+          const match = modelKey.match(/^(.*) \((.*)\)$/);
+          const modelName = match ? match[1] : modelKey;
+          const providerName = match ? match[2] : "unknown";
+          activeRequests.push({ model: modelName, provider: providerName, account: accountName, count });
+        }
       }
     }
   }
@@ -201,7 +225,7 @@ export async function getActiveRequests() {
   // Get recent requests from history (re-read to get latest)
   const db = await getUsageDb();
   await db.read();
-  const history = db.data.history || [];
+  const history = await filterHistoryByUserId(db.data.history || [], userId);
   const seen = new Set();
   const recentRequests = [...history]
     .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
@@ -320,12 +344,12 @@ export async function saveRequestUsage(entry) {
 /**
  * Get usage history
  * @param {object} filter - Filter criteria
+ * @param {string} [filter.userId] - If set, filter by apiKey assigned to this userId
  */
 export async function getUsageHistory(filter = {}) {
   const db = await getUsageDb();
   let history = db.data.history || [];
 
-  // Apply filters
   if (filter.provider) {
     history = history.filter(h => h.provider === filter.provider);
   }
@@ -342,6 +366,18 @@ export async function getUsageHistory(filter = {}) {
   if (filter.endDate) {
     const end = new Date(filter.endDate).getTime();
     history = history.filter(h => new Date(h.timestamp).getTime() <= end);
+  }
+
+  // Sub-user: only show entries for apiKeys assigned to this userId
+  if (filter.userId) {
+    try {
+      const { getApiKeys } = await import("@/lib/localDb.js");
+      const userKeys = await getApiKeys({ userId: filter.userId });
+      const userKeySet = new Set(userKeys.map(k => k.key));
+      history = history.filter(h => h.apiKey && userKeySet.has(h.apiKey));
+    } catch {
+      history = [];
+    }
   }
 
   return history;
@@ -403,30 +439,45 @@ export async function appendRequestLog({ model, provider, connectionId, tokens, 
 }
 
 /**
- * Get last N lines of log.txt
+ * Get last N lines of log.txt, optionally filtered by userId
+ * @param {number} limit
+ * @param {object} filter - { userId?, startDate?, endDate?, provider? }
  */
-export async function getRecentLogs(limit = 200) {
+export async function getRecentLogs(limit = 200, filter = {}) {
   if (isCloud) return []; // Skip in Workers
-  
+
   // Runtime check: ensure fs module is available
   if (!fs || typeof fs.existsSync !== "function") {
     console.error("[usageDb] fs module not available in this environment");
     return [];
   }
-  
+
   if (!LOG_FILE) {
     console.error("[usageDb] LOG_FILE path not defined");
     return [];
   }
-  
+
   if (!fs.existsSync(LOG_FILE)) {
     console.log(`[usageDb] Log file does not exist: ${LOG_FILE}`);
     return [];
   }
-  
+
   try {
     const content = fs.readFileSync(LOG_FILE, "utf-8");
-    const lines = content.trim().split("\n");
+    let lines = content.trim().split("\n");
+
+    // Sub-user: filter by apiKey assigned to this userId
+    if (filter.userId) {
+      try {
+        const { getApiKeys } = await import("@/lib/localDb.js");
+        const userKeys = await getApiKeys({ userId: filter.userId });
+        const userKeyPrefixes = userKeys.map(k => k.key.slice(0, 8));
+        lines = lines.filter(line => userKeyPrefixes.some(p => line.includes(p)));
+      } catch {
+        return [];
+      }
+    }
+
     return lines.slice(-limit).reverse();
   } catch (error) {
     console.error("[usageDb] Failed to read log.txt:", error.message);
@@ -496,10 +547,12 @@ const PERIOD_MS = { "24h": 86400000, "7d": 604800000, "30d": 2592000000, "60d": 
 /**
  * Get aggregated usage stats
  * @param {"24h"|"7d"|"30d"|"60d"|"all"} period - Time period to filter
+ * @param {object} filter
+ * @param {string} [filter.userId]
  */
-export async function getUsageStats(period = "all") {
+export async function getUsageStats(period = "all", filter = {}) {
   const db = await getUsageDb();
-  const history = db.data.history || [];
+  const history = await filterHistoryByUserId(db.data.history || [], filter.userId);
   const dailySummary = db.data.dailySummary || {};
 
   const { getProviderConnections, getApiKeys, getProviderNodes } = await import("@/lib/localDb.js");
@@ -549,7 +602,9 @@ export async function getUsageStats(period = "all") {
     })
     .slice(0, 20);
 
-  const lifetimeTotalRequests = typeof db.data.totalRequestsLifetime === "number"
+  const lifetimeTotalRequests = filter.userId
+    ? history.length
+    : typeof db.data.totalRequestsLifetime === "number"
     ? db.data.totalRequestsLifetime
     : history.length;
 
@@ -558,23 +613,25 @@ export async function getUsageStats(period = "all") {
     totalPromptTokens: 0, totalCompletionTokens: 0, totalCost: 0,
     byProvider: {}, byModel: {}, byAccount: {}, byApiKey: {}, byEndpoint: {},
     last10Minutes: [],
-    pending: pendingRequests,
+    pending: filter.userId ? { byModel: {}, byAccount: {} } : pendingRequests,
     activeRequests: [],
     recentRequests,
     errorProvider: (Date.now() - lastErrorProvider.ts < 10000) ? lastErrorProvider.provider : "",
   };
 
   // Active requests from pending
-  for (const [connectionId, models] of Object.entries(pendingRequests.byAccount)) {
-    for (const [modelKey, count] of Object.entries(models)) {
-      if (count > 0) {
-        const accountName = connectionMap[connectionId] || `Account ${connectionId.slice(0, 8)}...`;
-        const match = modelKey.match(/^(.*) \((.*)\)$/);
-        stats.activeRequests.push({
-          model: match ? match[1] : modelKey,
-          provider: match ? match[2] : "unknown",
-          account: accountName, count,
-        });
+  if (!filter.userId) {
+    for (const [connectionId, models] of Object.entries(pendingRequests.byAccount)) {
+      for (const [modelKey, count] of Object.entries(models)) {
+        if (count > 0) {
+          const accountName = connectionMap[connectionId] || `Account ${connectionId.slice(0, 8)}...`;
+          const match = modelKey.match(/^(.*) \((.*)\)$/);
+          stats.activeRequests.push({
+            model: match ? match[1] : modelKey,
+            provider: match ? match[2] : "unknown",
+            account: accountName, count,
+          });
+        }
       }
     }
   }
@@ -605,7 +662,7 @@ export async function getUsageStats(period = "all") {
   }
 
   // Determine if we use dailySummary (7d/30d/60d/all) or live history (24h)
-  const useDailySummary = period !== "24h";
+  const useDailySummary = period !== "24h" && !filter.userId;
 
   if (useDailySummary) {
     // Collect relevant date keys
@@ -738,13 +795,20 @@ export async function getUsageStats(period = "all") {
     }
   } else {
     // 24h: use live history (original logic)
-    const cutoff = Date.now() - PERIOD_MS["24h"];
-    const filtered = history.filter((e) => new Date(e.timestamp).getTime() >= cutoff);
+    const cutoff = period === "all" ? 0 : Date.now() - (PERIOD_MS[period] || PERIOD_MS["24h"]);
+    const filtered = cutoff > 0
+      ? history.filter((e) => new Date(e.timestamp).getTime() >= cutoff)
+      : history;
+    if (filter.userId) {
+      stats.totalRequests = filtered.length;
+    }
 
     for (const entry of filtered) {
       const promptTokens = entry.tokens?.prompt_tokens || 0;
       const completionTokens = entry.tokens?.completion_tokens || 0;
-      const entryCost = entry.cost || 0;
+      const entryCost = filter.userId
+        ? await calculateCost(entry.provider, entry.model, entry.tokens)
+        : entry.cost || 0;
       const providerDisplayName = providerNodeNameMap[entry.provider] || entry.provider;
 
       stats.totalPromptTokens += promptTokens;
@@ -823,19 +887,23 @@ export async function getUsageStats(period = "all") {
  * @param {"24h"|"7d"|"30d"|"60d"} period
  * @returns {Promise<Array<{label: string, tokens: number, cost: number}>>}
  */
-export async function getChartData(period = "7d") {
+export async function getChartData(period = "7d", filter = {}) {
   const db = await getUsageDb();
-  const history = db.data.history || [];
+  const history = await filterHistoryByUserId(db.data.history || [], filter.userId);
   const dailySummary = db.data.dailySummary || {};
   const now = Date.now();
 
-  // 24h: bucket by hour from live history
-  if (period === "24h") {
+  // Sub-user scoped chart always uses filtered live history to avoid mixing keys in dailySummary.
+  if (period === "24h" || filter.userId) {
     const bucketCount = 24;
-    const bucketMs = 3600000;
-    const labelFn = (ts) => new Date(ts).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
-    const startTime = now - bucketCount * bucketMs;
-    const buckets = Array.from({ length: bucketCount }, (_, i) => {
+    const isDaily = period === "24h";
+    const bucketMs = isDaily ? 3600000 : 86400000;
+    const requestedBuckets = period === "7d" ? 7 : period === "30d" ? 30 : period === "60d" ? 60 : bucketCount;
+    const labelFn = (ts) => isDaily
+      ? new Date(ts).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false })
+      : new Date(ts).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    const startTime = now - requestedBuckets * bucketMs;
+    const buckets = Array.from({ length: requestedBuckets }, (_, i) => {
       const ts = startTime + i * bucketMs;
       return { label: labelFn(ts), tokens: 0, cost: 0 };
     });
@@ -843,9 +911,11 @@ export async function getChartData(period = "7d") {
     for (const entry of history) {
       const entryTime = new Date(entry.timestamp).getTime();
       if (entryTime < startTime || entryTime > now) continue;
-      const idx = Math.min(Math.floor((entryTime - startTime) / bucketMs), bucketCount - 1);
+      const idx = Math.min(Math.floor((entryTime - startTime) / bucketMs), requestedBuckets - 1);
       buckets[idx].tokens += (entry.tokens?.prompt_tokens || 0) + (entry.tokens?.completion_tokens || 0);
-      buckets[idx].cost += entry.cost || 0;
+      buckets[idx].cost += filter.userId
+        ? await calculateCost(entry.provider, entry.model, entry.tokens)
+        : entry.cost || 0;
     }
     return buckets;
   }

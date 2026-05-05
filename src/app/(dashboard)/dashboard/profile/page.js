@@ -26,6 +26,14 @@ export default function ProfilePage() {
   const [proxyTestLoading, setProxyTestLoading] = useState(false);
 
   useEffect(() => {
+    // Guard: redirect sub_user to usage dashboard
+    fetch("/api/auth/me")
+      .then(r => r.json())
+      .then(data => { if (data.role === "sub_user") window.location.href = "/dashboard/usage"; })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
     fetch("/api/settings")
       .then((res) => res.json())
       .then((data) => {

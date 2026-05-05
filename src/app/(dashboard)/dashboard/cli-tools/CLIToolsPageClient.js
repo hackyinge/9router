@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
 import { Card, CardSkeleton } from "@/shared/components";
 import { CLI_TOOLS } from "@/shared/constants/cliTools";
 import { getModelsByProviderId, PROVIDER_ID_TO_ALIAS } from "@/shared/constants/models";
@@ -29,8 +30,16 @@ export default function CLIToolsPageClient({ machineId }) {
   const [tunnelPublicUrl, setTunnelPublicUrl] = useState("");
   const [apiKeys, setApiKeys] = useState([]);
   const [toolStatuses, setToolStatuses] = useState({});
+  const [role, setRole] = useState(null);
+  const [roleLoaded, setRoleLoaded] = useState(false);
 
   useEffect(() => {
+    // Identify role for sub_user UI restrictions (manual-only CLI tools).
+    fetch("/api/auth/me")
+      .then(r => r.json())
+      .then(data => { setRole(data.role || null); })
+      .catch(() => {})
+      .finally(() => setRoleLoaded(true));
     fetchConnections();
     loadCloudSettings();
     fetchApiKeys();
@@ -148,6 +157,8 @@ export default function CLIToolsPageClient({ machineId }) {
 
   const availableModels = getAllAvailableModels();
   const hasActiveProviders = availableModels.length > 0;
+  const isSubUser = roleLoaded && role === "sub_user";
+  const manualOnly = isSubUser;
 
   const renderToolCard = (toolId, tool) => {
     const commonProps = {
@@ -156,6 +167,7 @@ export default function CLIToolsPageClient({ machineId }) {
       onToggle: () => setExpandedTool(expandedTool === toolId ? null : toolId),
       baseUrl: getBaseUrl(),
       apiKeys,
+      manualOnly,
     };
 
     switch (toolId) {
@@ -188,18 +200,31 @@ export default function CLIToolsPageClient({ machineId }) {
   };
 
   const regularTools = Object.entries(CLI_TOOLS);
-  const mitmTools = Object.entries(MITM_TOOLS);
+  const mitmTools = isSubUser ? [] : Object.entries(MITM_TOOLS);
 
   return (
     <div className="flex flex-col gap-6">
+      {isSubUser && (
+        <div className="flex items-center">
+          <Link
+            href="/dashboard"
+            className="inline-flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-main transition-colors hover:border-primary hover:text-primary"
+          >
+            <span className="material-symbols-outlined text-[18px]">dashboard</span>
+            <span>Dashboard</span>
+          </Link>
+        </div>
+      )}
       <div className="flex flex-col gap-4">
         {regularTools.map(([toolId, tool]) => renderToolCard(toolId, tool))}
       </div>
-      <div className="flex flex-col gap-4">
-        {mitmTools.map(([toolId, tool]) => (
-          <MitmLinkCard key={toolId} tool={tool} />
-        ))}
-      </div>
+      {mitmTools.length > 0 && (
+        <div className="flex flex-col gap-4">
+          {mitmTools.map(([toolId, tool]) => (
+            <MitmLinkCard key={toolId} tool={tool} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

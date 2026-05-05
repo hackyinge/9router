@@ -7,12 +7,23 @@ import fs from "fs/promises";
 import path from "path";
 import os from "os";
 import { parseTOML, stringifyTOML } from "confbox";
+import { getAuthPayload } from "@/dashboardGuard";
 
 const execAsync = promisify(exec);
+
+async function requirePayload(request) {
+  const payload = await getAuthPayload(request);
+  if (!payload) {
+    return { payload: null, response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
+  }
+  return { payload, response: null };
+}
 
 const getCodexDir = () => path.join(os.homedir(), ".codex");
 const getCodexConfigPath = () => path.join(getCodexDir(), "config.toml");
 const getCodexAuthPath = () => path.join(getCodexDir(), "auth.json");
+const PROVIDER_KEY = "openrouterx";
+const PROVIDER_LABEL = "OpenRouterX";
 
 // Flatten confbox-parsed TOML into a writable object, preserving nested tables
 const parsedToWritable = (obj) => obj ?? {};
@@ -73,15 +84,18 @@ const readConfig = async () => {
   }
 };
 
-// Check if config has 9Router settings
-const has9RouterConfig = (config) => {
+// Check if config has OpenRouterX settings
+const hasOpenRouterXConfig = (config) => {
   if (!config) return false;
-  return config.includes("model_provider = \"9router\"") || config.includes("[model_providers.9router]");
+  return config.includes(`model_provider = "${PROVIDER_KEY}"`) || config.includes(`[model_providers.${PROVIDER_KEY}]`);
 };
 
 // GET - Check codex CLI and read current settings
-export async function GET() {
+export async function GET(request) {
   try {
+    const { response } = await requirePayload(request);
+    if (response) return response;
+
     const isInstalled = await checkCodexInstalled();
     
     if (!isInstalled) {
@@ -97,7 +111,7 @@ export async function GET() {
     return NextResponse.json({
       installed: true,
       config,
-      has9Router: has9RouterConfig(config),
+      hasOpenRouterX: hasOpenRouterXConfig(config),
       configPath: getCodexConfigPath(),
     });
   } catch (error) {
@@ -106,9 +120,15 @@ export async function GET() {
   }
 }
 
-// POST - Update 9Router settings (merge with existing config)
+// POST - Update OpenRouterX settings (merge with existing config)
 export async function POST(request) {
   try {
+    const { payload, response } = await requirePayload(request);
+    if (response) return response;
+    if (payload.role !== "super_admin") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     const { baseUrl, apiKey, model, subagentModel } = await request.json();
     
     if (!baseUrl || !apiKey || !model) {
@@ -128,15 +148,15 @@ export async function POST(request) {
       parsed = parsedToWritable(parseTOML(existingConfig));
     } catch { /* No existing config */ }
 
-    // Update only 9Router related fields (api_key goes to auth.json, not config.toml)
+    // Update only OpenRouterX related fields (api_key goes to auth.json, not config.toml)
     parsed.model = model;
-    parsed.model_provider = "9router";
+    parsed.model_provider = PROVIDER_KEY;
 
-    // Update or create 9router provider section (no api_key - Codex reads from auth.json)
+    // Update or create openrouterx provider section (no api_key - Codex reads from auth.json)
     // Ensure /v1 suffix is added only once
     const normalizedBaseUrl = baseUrl.endsWith("/v1") ? baseUrl : `${baseUrl}/v1`;
-    setNestedSection(parsed, "model_providers.9router", {
-      name: "9Router",
+    setNestedSection(parsed, `model_providers.${PROVIDER_KEY}`, {
+      name: PROVIDER_LABEL,
       base_url: normalizedBaseUrl,
       wire_api: "responses",
     });
@@ -175,9 +195,15 @@ export async function POST(request) {
   }
 }
 
-// DELETE - Remove 9Router settings only (keep other settings)
-export async function DELETE() {
+// DELETE - Remove OpenRouterX settings only (keep other settings)
+export async function DELETE(request) {
   try {
+    const { payload, response } = await requirePayload(request);
+    if (response) return response;
+    if (payload.role !== "super_admin") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     const configPath = getCodexConfigPath();
 
     // Read and parse existing config
@@ -195,14 +221,14 @@ export async function DELETE() {
       throw error;
     }
 
-    // Remove 9Router related root fields only if they point to 9router
-    if (parsed.model_provider === "9router") {
+    // Remove OpenRouterX related root fields only if they point to openrouterx
+    if (parsed.model_provider === PROVIDER_KEY) {
       delete parsed.model;
       delete parsed.model_provider;
     }
 
-    // Remove 9router provider section
-    deleteNestedSection(parsed, "model_providers.9router");
+    // Remove openrouterx provider section
+    deleteNestedSection(parsed, `model_providers.${PROVIDER_KEY}`);
 
     // Remove subagent configuration
     deleteNestedSection(parsed, "agents.subagent");
@@ -229,7 +255,7 @@ export async function DELETE() {
 
     return NextResponse.json({
       success: true,
-      message: "9Router settings removed successfully",
+      message: "OpenRouterX settings removed successfully",
     });
   } catch (error) {
     console.log("Error resetting codex settings:", error);

@@ -6,11 +6,21 @@ import { promisify } from "util";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
+import { getAuthPayload } from "@/dashboardGuard";
 
 const execAsync = promisify(exec);
 
+async function requirePayload(request) {
+  const payload = await getAuthPayload(request);
+  if (!payload) {
+    return { payload: null, response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
+  }
+  return { payload, response: null };
+}
+
 const getDroidDir = () => path.join(os.homedir(), ".factory");
 const getDroidSettingsPath = () => path.join(getDroidDir(), "settings.json");
+const CUSTOM_MODEL_PREFIX = "custom:openrouterx";
 
 // Check if droid CLI is installed (via which/where or config file exists)
 const checkDroidInstalled = async () => {
@@ -44,15 +54,18 @@ const readSettings = async () => {
   }
 };
 
-// Check if settings has 9Router customModels
-const has9RouterConfig = (settings) => {
+// Check if settings has OpenRouterX customModels
+const hasOpenRouterXConfig = (settings) => {
   if (!settings || !settings.customModels) return false;
-  return settings.customModels.some(m => m.id?.startsWith("custom:9Router"));
+  return settings.customModels.some(m => m.id?.startsWith(CUSTOM_MODEL_PREFIX));
 };
 
 // GET - Check droid CLI and read current settings
-export async function GET() {
+export async function GET(request) {
   try {
+    const { response } = await requirePayload(request);
+    if (response) return response;
+
     const isInstalled = await checkDroidInstalled();
     
     if (!isInstalled) {
@@ -68,7 +81,7 @@ export async function GET() {
     return NextResponse.json({
       installed: true,
       settings,
-      has9Router: has9RouterConfig(settings),
+      hasOpenRouterX: hasOpenRouterXConfig(settings),
       settingsPath: getDroidSettingsPath(),
     });
   } catch (error) {
@@ -77,11 +90,17 @@ export async function GET() {
   }
 }
 
-// POST - Update 9Router customModels (merge with existing settings)
+// POST - Update OpenRouterX customModels (merge with existing settings)
 // Accepts either `model` (string, legacy single-model) or `models` (array of strings, multi-model)
 // Also accepts `activeModel` to set which model is active/primary
 export async function POST(request) {
   try {
+    const { payload, response } = await requirePayload(request);
+    if (response) return response;
+    if (payload.role !== "super_admin") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     const { baseUrl, apiKey, model, models, activeModel } = await request.json();
     
     // Accept either `models` (array) or `model` (string, legacy)
@@ -109,8 +128,8 @@ export async function POST(request) {
       settings.customModels = [];
     }
 
-    // Remove all existing 9Router configs
-    settings.customModels = settings.customModels.filter(m => !m.id?.startsWith("custom:9Router"));
+    // Remove all existing OpenRouterX configs
+    settings.customModels = settings.customModels.filter(m => !m.id?.startsWith(CUSTOM_MODEL_PREFIX));
 
     // Normalize baseUrl to ensure /v1 suffix
     const normalizedBaseUrl = baseUrl.endsWith("/v1") ? baseUrl : `${baseUrl}/v1`;
@@ -135,7 +154,7 @@ export async function POST(request) {
       if (!m || typeof m !== "string") continue;
       settings.customModels.push({
         model: m,
-        id: `custom:9Router-${i}`,
+        id: `${CUSTOM_MODEL_PREFIX}-${i}`,
         index: i,
         baseUrl: normalizedBaseUrl,
         apiKey: keyToUse,
@@ -169,9 +188,15 @@ export async function POST(request) {
   }
 }
 
-// DELETE - Remove 9Router customModels only (keep other settings)
-export async function DELETE() {
+// DELETE - Remove OpenRouterX customModels only (keep other settings)
+export async function DELETE(request) {
   try {
+    const { payload, response } = await requirePayload(request);
+    if (response) return response;
+    if (payload.role !== "super_admin") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     const settingsPath = getDroidSettingsPath();
 
     // Read existing settings
@@ -189,9 +214,9 @@ export async function DELETE() {
       throw error;
     }
 
-    // Remove 9Router customModels
+    // Remove OpenRouterX customModels
     if (settings.customModels) {
-      settings.customModels = settings.customModels.filter(m => !m.id?.startsWith("custom:9Router"));
+      settings.customModels = settings.customModels.filter(m => !m.id?.startsWith(CUSTOM_MODEL_PREFIX));
       
       // Remove customModels array if empty
       if (settings.customModels.length === 0) {
@@ -204,7 +229,7 @@ export async function DELETE() {
 
     return NextResponse.json({
       success: true,
-      message: "9Router settings removed successfully",
+      message: "OpenRouterX settings removed successfully",
     });
   } catch (error) {
     console.log("Error resetting droid settings:", error);

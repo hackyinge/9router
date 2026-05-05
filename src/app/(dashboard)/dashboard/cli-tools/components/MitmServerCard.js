@@ -74,7 +74,7 @@ export default function MitmServerCard({ apiKeys, cloudEnabled, onStatusChange }
       } else if (action === "start") {
         const keyToUse = selectedApiKey?.trim()
           || (apiKeys?.length > 0 ? apiKeys[0].key : null)
-          || (!cloudEnabled ? "sk_9router" : null);
+          || (!cloudEnabled ? "sk_openrouterx" : null);
         res = await fetch("/api/cli-tools/antigravity-mitm", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -151,17 +151,17 @@ export default function MitmServerCard({ apiKeys, cloudEnabled, onStatusChange }
           {/* Purpose & How it works */}
           <div className="px-2 py-2 rounded-lg bg-surface/50 border border-border/50 flex flex-col gap-2">
             <p className="text-[11px] text-text-muted leading-relaxed">
-              <span className="font-medium text-text-main">Purpose:</span> Use Antigravity IDE & GitHub Copilot → with ANY provider/model from 9Router
+              <span className="font-medium text-text-main">Purpose:</span> Use Antigravity IDE & GitHub Copilot → with ANY provider/model from OpenRouterX
             </p>
             <p className="text-[11px] text-text-muted leading-relaxed">
-              <span className="font-medium text-text-main">How it works:</span> Antigravity/Copilot IDE request → DNS redirect to localhost:443 → MITM proxy intercepts → 9Router → response to Antigravity/Copilot
+              <span className="font-medium text-text-main">How it works:</span> Antigravity/Copilot IDE request → DNS redirect to localhost:443 → MITM proxy intercepts → OpenRouterX → response to Antigravity/Copilot
             </p>
           </div>
 
           {/* Base URL + API Key — same row pattern as Claude Code / cli-tools */}
           <div className="flex flex-col gap-2">
             <div className="flex items-center gap-2">
-              <span className="w-32 shrink-0 text-sm font-semibold text-text-main text-right">9Router Base URL</span>
+              <span className="w-32 shrink-0 text-sm font-semibold text-text-main text-right">OpenRouterX Base URL</span>
               <span className="material-symbols-outlined text-text-muted text-[14px]">arrow_forward</span>
               <input
                 type="text"
@@ -181,7 +181,7 @@ export default function MitmServerCard({ apiKeys, cloudEnabled, onStatusChange }
                   list="mitm-api-keys"
                   value={selectedApiKey}
                   onChange={(e) => setSelectedApiKey(e.target.value)}
-                  placeholder={cloudEnabled ? "Enter or pick API key" : "sk_9router (default)"}
+                  placeholder={cloudEnabled ? "Enter or pick API key" : "sk_openrouterx (default)"}
                   className="flex-1 min-w-0 px-2 py-1.5 bg-surface rounded border border-border text-xs text-text-main focus:outline-none focus:ring-1 focus:ring-primary/50"
                 />
                 {apiKeys?.length > 0 && (
@@ -243,7 +243,7 @@ export default function MitmServerCard({ apiKeys, cloudEnabled, onStatusChange }
           {isWindows && !isAdmin && (
             <div className="flex items-center gap-2 px-2 py-1.5 rounded text-xs bg-red-500/10 text-red-600 border border-red-500/20">
               <span className="material-symbols-outlined text-[14px]">shield_lock</span>
-              <span>Administrator required — restart 9Router as Administrator to use MITM</span>
+              <span>Administrator required — restart OpenRouterX as Administrator to use MITM</span>
             </div>
           )}
         </div>

@@ -4,8 +4,8 @@ import { useState, useEffect } from "react";
 import { Card, Button, ModelSelectModal, ManualConfigModal } from "@/shared/components";
 import Image from "next/image";
 
-export default function CodexToolCard({ tool, isExpanded, onToggle, baseUrl, apiKeys, activeProviders, cloudEnabled, initialStatus }) {
-  const [codexStatus, setCodexStatus] = useState(initialStatus || null);
+export default function CodexToolCard({ tool, isExpanded, onToggle, baseUrl, apiKeys, activeProviders, cloudEnabled, initialStatus, manualOnly = false }) {
+  const [codexStatus, setCodexStatus] = useState(null);
   const [checkingCodex, setCheckingCodex] = useState(false);
   const [applying, setApplying] = useState(false);
   const [restoring, setRestoring] = useState(false);
@@ -19,51 +19,44 @@ export default function CodexToolCard({ tool, isExpanded, onToggle, baseUrl, api
   const [modelAliases, setModelAliases] = useState({});
   const [showManualConfigModal, setShowManualConfigModal] = useState(false);
   const [customBaseUrl, setCustomBaseUrl] = useState("");
+  const effectiveStatus = codexStatus || initialStatus || null;
+  const parsedModel = effectiveStatus?.config?.match(/^model\s*=\s*"([^"]+)"/m)?.[1] || "";
+  const parsedSubagentModel = effectiveStatus?.config?.match(/\[agents\.subagent\]\s*\n\s*model\s*=\s*"([^"]+)"/m)?.[1] || "";
+  const effectiveSelectedApiKey = selectedApiKey || apiKeys?.[0]?.key || "";
+  const effectiveSelectedModel = selectedModel || parsedModel;
+  const effectiveSubagentModel = subagentModel || parsedSubagentModel;
 
-  useEffect(() => {
-    if (apiKeys?.length > 0 && !selectedApiKey) {
-      setSelectedApiKey(apiKeys[0].key);
-    }
-  }, [apiKeys, selectedApiKey]);
-
-  useEffect(() => {
-    if (initialStatus) setCodexStatus(initialStatus);
-  }, [initialStatus]);
-
-  useEffect(() => {
-    if (isExpanded && !codexStatus) {
-      checkCodexStatus();
-      fetchModelAliases();
-    }
-    if (isExpanded) fetchModelAliases();
-  }, [isExpanded]);
-
-  const fetchModelAliases = async () => {
+  async function checkCodexStatus() {
+    setCheckingCodex(true);
     try {
-      const res = await fetch("/api/models/alias");
+      const res = await fetch("/api/cli-tools/codex-settings");
       const data = await res.json();
-      if (res.ok) setModelAliases(data.aliases || {});
+      setCodexStatus(data);
     } catch (error) {
-      console.log("Error fetching model aliases:", error);
+      setCodexStatus({ installed: false, error: error.message });
+    } finally {
+      setCheckingCodex(false);
     }
-  };
+  }
 
-  // Parse model and subagent settings from config content
   useEffect(() => {
-    if (codexStatus?.config) {
-      const modelMatch = codexStatus.config.match(/^model\s*=\s*"([^"]+)"/m);
-      if (modelMatch) setSelectedModel(modelMatch[1]);
-      
-      // Parse subagent settings
-      const subagentModelMatch = codexStatus.config.match(/\[agents\.subagent\]\s*\n\s*model\s*=\s*"([^"]+)"/m);
-      if (subagentModelMatch) setSubagentModel(subagentModelMatch[1]);
+    if (!isExpanded) return;
+    if (!effectiveStatus) {
+      fetch("/api/cli-tools/codex-settings")
+        .then((res) => res.json())
+        .then((data) => setCodexStatus(data))
+        .catch((error) => setCodexStatus({ installed: false, error: error.message }));
     }
-  }, [codexStatus]);
+    fetch("/api/models/alias")
+      .then((res) => res.json())
+      .then((data) => setModelAliases(data.aliases || {}))
+      .catch((error) => console.log("Error fetching model aliases:", error));
+  }, [isExpanded, effectiveStatus]);
 
   const getConfigStatus = () => {
-    if (!codexStatus?.installed) return null;
-    if (!codexStatus.config) return "not_configured";
-    const hasBaseUrl = codexStatus.config.includes(baseUrl) || codexStatus.config.includes("localhost") || codexStatus.config.includes("127.0.0.1");
+    if (!effectiveStatus?.installed) return null;
+    if (!effectiveStatus.config) return "not_configured";
+    const hasBaseUrl = effectiveStatus.config.includes(baseUrl) || effectiveStatus.config.includes("localhost") || effectiveStatus.config.includes("127.0.0.1");
     return hasBaseUrl ? "configured" : "other";
   };
 
@@ -77,27 +70,14 @@ export default function CodexToolCard({ tool, isExpanded, onToggle, baseUrl, api
   
   const getDisplayUrl = () => customBaseUrl || `${baseUrl}/v1`;
 
-  const checkCodexStatus = async () => {
-    setCheckingCodex(true);
-    try {
-      const res = await fetch("/api/cli-tools/codex-settings");
-      const data = await res.json();
-      setCodexStatus(data);
-    } catch (error) {
-      setCodexStatus({ installed: false, error: error.message });
-    } finally {
-      setCheckingCodex(false);
-    }
-  };
-
   const handleApplySettings = async () => {
     setApplying(true);
     setMessage(null);
     try {
-      // Use sk_9router for localhost if no key, otherwise use selected key
-      const keyToUse = (selectedApiKey && selectedApiKey.trim()) 
-        ? selectedApiKey 
-        : (!cloudEnabled ? "sk_9router" : selectedApiKey);
+      // Use sk_openrouterx for localhost if no key, otherwise use selected key
+      const keyToUse = (effectiveSelectedApiKey && effectiveSelectedApiKey.trim()) 
+        ? effectiveSelectedApiKey 
+        : (!cloudEnabled ? "sk_openrouterx" : effectiveSelectedApiKey);
       
       const res = await fetch("/api/cli-tools/codex-settings", {
         method: "POST",
@@ -105,8 +85,8 @@ export default function CodexToolCard({ tool, isExpanded, onToggle, baseUrl, api
         body: JSON.stringify({ 
           baseUrl: getEffectiveBaseUrl(), 
           apiKey: keyToUse, 
-          model: selectedModel,
-          subagentModel: subagentModel || selectedModel
+          model: effectiveSelectedModel,
+          subagentModel: effectiveSubagentModel || effectiveSelectedModel
         }),
       });
       const data = await res.json();
@@ -154,18 +134,18 @@ export default function CodexToolCard({ tool, isExpanded, onToggle, baseUrl, api
   };
 
   const getManualConfigs = () => {
-    const keyToUse = (selectedApiKey && selectedApiKey.trim()) 
-      ? selectedApiKey 
-      : (!cloudEnabled ? "sk_9router" : "<API_KEY_FROM_DASHBOARD>");
+    const keyToUse = (effectiveSelectedApiKey && effectiveSelectedApiKey.trim()) 
+      ? effectiveSelectedApiKey 
+      : (!cloudEnabled ? "sk_openrouterx" : "<API_KEY_FROM_DASHBOARD>");
     
-    const effectiveSubagentModel = subagentModel || selectedModel;
+    const effectiveSubagentModel = subagentModel || effectiveSelectedModel;
     
-    const configContent = `# 9Router Configuration for Codex CLI
-model = "${selectedModel}"
-model_provider = "9router"
+    const configContent = `# OpenRouterX Configuration for Codex CLI
+model = "${effectiveSelectedModel}"
+model_provider = "openrouterx"
 
-[model_providers.9router]
-name = "9Router"
+[model_providers.openrouterx]
+name = "OpenRouterX"
 base_url = "${getEffectiveBaseUrl()}"
 wire_api = "responses"
 
@@ -226,7 +206,7 @@ model = "${effectiveSubagentModel}"
                   <span className="material-symbols-outlined text-yellow-500">warning</span>
                   <div className="flex-1">
                     <p className="font-medium text-yellow-600 dark:text-yellow-400">Codex CLI not detected locally</p>
-                    <p className="text-sm text-text-muted">Manual configuration is still available if 9router is deployed on a remote server.</p>
+                    <p className="text-sm text-text-muted">Manual configuration is still available if OpenRouterX is deployed on a remote server.</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2 pl-9">
@@ -234,13 +214,17 @@ model = "${effectiveSubagentModel}"
                     <span className="material-symbols-outlined text-[18px] mr-1">content_copy</span>
                     Manual Config
                   </Button>
-                  <Button variant="outline" size="sm" onClick={() => setShowInstallGuide(!showInstallGuide)}>
+                  {!manualOnly && (
+
+                    <Button variant="outline" size="sm" onClick={() => setShowInstallGuide(!showInstallGuide)}>
                     <span className="material-symbols-outlined text-[18px] mr-1">{showInstallGuide ? "expand_less" : "help"}</span>
                     {showInstallGuide ? "Hide" : "How to Install"}
                   </Button>
+
+                  )}
                 </div>
               </div>
-              {showInstallGuide && (
+              {!manualOnly && showInstallGuide && (
                 <div className="p-4 bg-surface border border-border rounded-lg">
                   <h4 className="font-medium mb-3">Installation Guide</h4>
                   <div className="space-y-3 text-sm">
@@ -261,12 +245,12 @@ model = "${effectiveSubagentModel}"
             </div>
           )}
 
-          {!checkingCodex && codexStatus?.installed && (
+          {!checkingCodex && effectiveStatus?.installed && (
             <>
               <div className="flex flex-col gap-2">
                 {/* Current Base URL */}
-                {codexStatus?.config && (() => {
-                  const parsed = codexStatus.config.match(/base_url\s*=\s*"([^"]+)"/);
+                {effectiveStatus?.config && (() => {
+                  const parsed = effectiveStatus.config.match(/base_url\s*=\s*"([^"]+)"/);
                   const currentBaseUrl = parsed ? parsed[1] : null;
                   return currentBaseUrl ? (
                     <div className="flex items-center gap-2">
@@ -290,7 +274,7 @@ model = "${effectiveSubagentModel}"
                     placeholder="https://.../v1" 
                     className="flex-1 px-2 py-1.5 bg-surface rounded border border-border text-xs focus:outline-none focus:ring-1 focus:ring-primary/50" 
                   />
-                  {customBaseUrl && customBaseUrl !== `${baseUrl}/v1` && (
+                  {!manualOnly && customBaseUrl && customBaseUrl !== `${baseUrl}/v1` && (
                     <button onClick={() => setCustomBaseUrl("")} className="p-1 text-text-muted hover:text-primary rounded transition-colors" title="Reset to default">
                       <span className="material-symbols-outlined text-[14px]">restart_alt</span>
                     </button>
@@ -302,12 +286,12 @@ model = "${effectiveSubagentModel}"
                   <span className="w-32 shrink-0 text-sm font-semibold text-text-main text-right">API Key</span>
                   <span className="material-symbols-outlined text-text-muted text-[14px]">arrow_forward</span>
                   {apiKeys.length > 0 ? (
-                    <select value={selectedApiKey} onChange={(e) => setSelectedApiKey(e.target.value)} className="flex-1 px-2 py-1.5 bg-surface rounded text-xs border border-border focus:outline-none focus:ring-1 focus:ring-primary/50">
+                    <select value={effectiveSelectedApiKey} onChange={(e) => setSelectedApiKey(e.target.value)} className="flex-1 px-2 py-1.5 bg-surface rounded text-xs border border-border focus:outline-none focus:ring-1 focus:ring-primary/50">
                       {apiKeys.map((key) => <option key={key.id} value={key.key}>{key.key}</option>)}
                     </select>
                   ) : (
                     <span className="flex-1 text-xs text-text-muted px-2 py-1.5">
-                      {cloudEnabled ? "No API keys - Create one in Keys page" : "sk_9router (default)"}
+                      {cloudEnabled ? "No API keys - Create one in Keys page" : "sk_openrouterx (default)"}
                     </span>
                   )}
                 </div>
@@ -316,9 +300,9 @@ model = "${effectiveSubagentModel}"
                 <div className="flex items-center gap-2">
                   <span className="w-32 shrink-0 text-sm font-semibold text-text-main text-right">Model</span>
                   <span className="material-symbols-outlined text-text-muted text-[14px]">arrow_forward</span>
-                  <input type="text" value={selectedModel} onChange={(e) => setSelectedModel(e.target.value)} placeholder="provider/model-id" className="flex-1 px-2 py-1.5 bg-surface rounded border border-border text-xs focus:outline-none focus:ring-1 focus:ring-primary/50" />
+                  <input type="text" value={effectiveSelectedModel} onChange={(e) => setSelectedModel(e.target.value)} placeholder="provider/model-id" className="flex-1 px-2 py-1.5 bg-surface rounded border border-border text-xs focus:outline-none focus:ring-1 focus:ring-primary/50" />
                   <button onClick={() => setModalOpen(true)} disabled={!activeProviders?.length} className={`px-2 py-1.5 rounded border text-xs transition-colors shrink-0 whitespace-nowrap ${activeProviders?.length ? "bg-surface border-border text-text-main hover:border-primary cursor-pointer" : "opacity-50 cursor-not-allowed border-border"}`}>Select Model</button>
-                  {selectedModel && <button onClick={() => setSelectedModel("")} className="p-1 text-text-muted hover:text-red-500 rounded transition-colors" title="Clear"><span className="material-symbols-outlined text-[14px]">close</span></button>}
+                  {!manualOnly && effectiveSelectedModel && <button onClick={() => setSelectedModel("")} className="p-1 text-text-muted hover:text-red-500 rounded transition-colors" title="Clear"><span className="material-symbols-outlined text-[14px]">close</span></button>}
                 </div>
 
                 {/* Subagent Model */}
@@ -327,9 +311,9 @@ model = "${effectiveSubagentModel}"
                   <span className="material-symbols-outlined text-text-muted text-[14px]">arrow_forward</span>
                   <input 
                     type="text" 
-                    value={subagentModel} 
+                    value={effectiveSubagentModel} 
                     onChange={(e) => setSubagentModel(e.target.value)} 
-                    placeholder={selectedModel || "provider/model-id (defaults to main model)"} 
+                    placeholder={effectiveSelectedModel || "provider/model-id (defaults to main model)"} 
                     className="flex-1 px-2 py-1.5 bg-surface rounded border border-border text-xs focus:outline-none focus:ring-1 focus:ring-primary/50" 
                   />
                   <button 
@@ -339,7 +323,7 @@ model = "${effectiveSubagentModel}"
                   >
                     Select Model
                   </button>
-                  {subagentModel && (
+                  {!manualOnly && effectiveSubagentModel && (
                     <button 
                       onClick={() => setSubagentModel("")} 
                       className="p-1 text-text-muted hover:text-red-500 rounded transition-colors" 
@@ -359,12 +343,16 @@ model = "${effectiveSubagentModel}"
               )}
 
               <div className="flex items-center gap-2">
-                <Button variant="primary" size="sm" onClick={handleApplySettings} disabled={(!selectedApiKey && (cloudEnabled && apiKeys.length > 0)) || !selectedModel} loading={applying}>
-                  <span className="material-symbols-outlined text-[14px] mr-1">save</span>Apply
-                </Button>
-                <Button variant="outline" size="sm" onClick={handleResetSettings} disabled={restoring} loading={restoring}>
-                  <span className="material-symbols-outlined text-[14px] mr-1">restore</span>Reset
-                </Button>
+                {!manualOnly && (
+                  <>
+                    <Button variant="primary" size="sm" onClick={handleApplySettings} disabled={(!selectedApiKey && (cloudEnabled && apiKeys.length > 0)) || !selectedModel} loading={applying}>
+                      <span className="material-symbols-outlined text-[14px] mr-1">save</span>Apply
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={handleResetSettings} disabled={restoring} loading={restoring}>
+                      <span className="material-symbols-outlined text-[14px] mr-1">restore</span>Reset
+                    </Button>
+                  </>
+                )}
                 <Button variant="ghost" size="sm" onClick={() => setShowManualConfigModal(true)}>
                   <span className="material-symbols-outlined text-[14px] mr-1">content_copy</span>Manual Config
                 </Button>

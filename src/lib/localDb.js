@@ -9,6 +9,7 @@ import { DATA_DIR } from "@/lib/dataDir.js";
 const DEFAULT_MITM_ROUTER_BASE = "http://localhost:20128";
 const isCloud = typeof caches !== 'undefined' || typeof caches === 'object';
 const DB_FILE = isCloud ? null : path.join(DATA_DIR, "db.json");
+const MITM_MODELS_FILE = isCloud ? null : path.join(process.cwd(), "src", "mitm", "models.json");
 
 if (!isCloud && !fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -49,6 +50,7 @@ function cloneDefaultData() {
     mitmAlias: {},
     combos: [],
     apiKeys: [],
+    users: [],
     settings: { ...DEFAULT_SETTINGS },
     pricing: {},
   };
@@ -94,11 +96,15 @@ function ensureDbShape(data) {
       }
     }
 
-    // Migrate existing API keys to have isActive
+    // Migrate existing API keys to have isActive + userId
     if (key === "apiKeys" && Array.isArray(next.apiKeys)) {
       for (const apiKey of next.apiKeys) {
         if (apiKey.isActive === undefined || apiKey.isActive === null) {
           apiKey.isActive = true;
+          changed = true;
+        }
+        if (apiKey.userId === undefined) {
+          apiKey.userId = null; // null = unassigned (admin key)
           changed = true;
         }
       }
@@ -621,9 +627,123 @@ export async function deleteCombo(id) {
   return true;
 }
 
-export async function getApiKeys() {
+export async function getApiKeys(filter = {}) {
   const db = await getDb();
-  return db.data.apiKeys || [];
+  let keys = db.data.apiKeys || [];
+  if (filter.userId !== undefined) keys = keys.filter(k => k.userId === filter.userId);
+  if (filter.includeUnassigned) {
+    // keep all
+  } else if (filter.forCurrentUser) {
+    // sub-user: only show keys assigned to them
+    keys = keys.filter(k => k.userId === filter.forCurrentUser);
+  }
+  return keys;
+}
+
+export async function getApiKeyById(id) {
+  const db = await getDb();
+  return db.data.apiKeys.find(k => k.id === id) || null;
+}
+
+export async function getApiKeyByValue(value) {
+  const db = await getDb();
+  return db.data.apiKeys.find((k) => k.key === value) || null;
+}
+
+export async function assignApiKeyToUser(keyId, userId) {
+  const db = await getDb();
+  const key = db.data.apiKeys.find(k => k.id === keyId);
+  if (!key) return null;
+  key.userId = userId;
+  key.assignedAt = new Date().toISOString();
+  await safeWrite(db);
+  return key;
+}
+
+export async function unassignApiKey(keyId) {
+  const db = await getDb();
+  const key = db.data.apiKeys.find(k => k.id === keyId);
+  if (!key) return false;
+  key.userId = null;
+  key.assignedAt = null;
+  await safeWrite(db);
+  return true;
+}
+
+// ── Users ──────────────────────────────────────────────────────
+export async function getUsers() {
+  const db = await getDb();
+  return (db.data.users || []).map(u => ({ ...u, passwordHash: undefined }));
+}
+
+export async function getUserById(id) {
+  const db = await getDb();
+  const u = (db.data.users || []).find(u => u.id === id);
+  if (!u) return null;
+  return { ...u, passwordHash: undefined };
+}
+
+export async function getUserByUsername(username) {
+  const db = await getDb();
+  return (db.data.users || []).find(u => u.username === username) || null;
+}
+
+export async function createUser({
+  username,
+  passwordHash,
+  role = "sub_user",
+  permissions = [],
+  displayName = "",
+  allowedProviders,
+}) {
+  const db = await getDb();
+  if (!db.data.users) db.data.users = [];
+  if (db.data.users.some(u => u.username === username)) {
+    throw new Error("Username already exists");
+  }
+  const now = new Date().toISOString();
+  const user = {
+    id: uuidv4(),
+    username,
+    passwordHash,
+    role,
+    permissions,
+    displayName: displayName || username,
+    createdAt: now,
+    updatedAt: now,
+  };
+  if (allowedProviders !== undefined) {
+    user.allowedProviders = allowedProviders;
+  }
+  db.data.users.push(user);
+  await safeWrite(db);
+  return { ...user, passwordHash: undefined };
+}
+
+export async function updateUser(id, data) {
+  const db = await getDb();
+  if (!db.data.users) return null;
+  const idx = db.data.users.findIndex(u => u.id === id);
+  if (idx === -1) return null;
+  const { passwordHash, ...rest } = data;
+  db.data.users[idx] = { ...db.data.users[idx], ...rest, updatedAt: new Date().toISOString() };
+  if (passwordHash) db.data.users[idx].passwordHash = passwordHash;
+  await safeWrite(db);
+  return { ...db.data.users[idx], passwordHash: undefined };
+}
+
+export async function deleteUser(id) {
+  const db = await getDb();
+  if (!db.data.users) return false;
+  const idx = db.data.users.findIndex(u => u.id === id);
+  if (idx === -1) return false;
+  db.data.users.splice(idx, 1);
+  // Unassign all keys belonging to this user
+  for (const k of db.data.apiKeys || []) {
+    if (k.userId === id) { k.userId = null; k.assignedAt = null; }
+  }
+  await safeWrite(db);
+  return true;
 }
 
 function generateShortKey() {
@@ -666,11 +786,6 @@ export async function deleteApiKey(id) {
   db.data.apiKeys.splice(index, 1);
   await safeWrite(db);
   return true;
-}
-
-export async function getApiKeyById(id) {
-  const db = await getDb();
-  return db.data.apiKeys.find(k => k.id === id) || null;
 }
 
 export async function updateApiKey(id, data) {
@@ -805,6 +920,42 @@ export async function getPricingForModel(provider, model) {
 
   if (provider && userPricing[provider]?.[model]) {
     return userPricing[provider][model];
+  }
+
+  if (!isCloud && MITM_MODELS_FILE && fs.existsSync(MITM_MODELS_FILE)) {
+    try {
+      const raw = JSON.parse(fs.readFileSync(MITM_MODELS_FILE, "utf-8"));
+      const entries = Array.isArray(raw?.data) ? raw.data : [];
+      const candidates = new Set([model, model.includes("/") ? model.split("/").pop() : model].filter(Boolean));
+      const matched = entries.find((entry) => {
+        const entryId = String(entry?.id || "");
+        const canonical = String(entry?.canonical_slug || "");
+        return [...candidates].some((candidate) =>
+          entryId === candidate ||
+          canonical === candidate ||
+          entryId.endsWith(`/${candidate}`) ||
+          canonical.endsWith(`/${candidate}`)
+        );
+      });
+
+      if (matched?.pricing) {
+        const prompt = Number(matched.pricing.prompt);
+        const completion = Number(matched.pricing.completion);
+        const cached = Number(matched.pricing.input_cache_read);
+        const reasoning = Number(matched.pricing.internal_reasoning);
+        const cacheCreation = Number(matched.pricing.input_cache_write);
+
+        if (!Number.isNaN(prompt) && !Number.isNaN(completion)) {
+          return {
+            input: prompt * 1_000_000,
+            output: completion * 1_000_000,
+            cached: Number.isNaN(cached) ? prompt * 1_000_000 : cached * 1_000_000,
+            reasoning: Number.isNaN(reasoning) ? completion * 1_000_000 : reasoning * 1_000_000,
+            cache_creation: Number.isNaN(cacheCreation) ? prompt * 1_000_000 : cacheCreation * 1_000_000,
+          };
+        }
+      }
+    } catch {}
   }
 
   const { getPricingForModel: resolve } = await import("@/shared/constants/pricing.js");

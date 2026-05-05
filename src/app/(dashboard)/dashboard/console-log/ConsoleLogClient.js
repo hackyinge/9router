@@ -13,6 +13,13 @@ const LOG_LEVEL_COLORS = {
 };
 
 function colorLine(line) {
+  // Guard: redirect sub_user to usage dashboard
+  if (typeof window !== "undefined") {
+    fetch("/api/auth/me")
+      .then(r => r.json())
+      .then(data => { if (data.role === "sub_user") window.location.href = "/dashboard/usage"; })
+      .catch(() => {});
+  }
   const match = line.match(/\[(\w+)\]/g);
   const levelTag = match ? match[1]?.replace(/\[|\]/g, "") : null;
   const color = LOG_LEVEL_COLORS[levelTag] || "text-green-400";

@@ -129,13 +129,6 @@ const getPageInfo = (pathname) => {
       icon: "settings",
       breadcrumbs: [],
     };
-  if (pathname.includes("/translator"))
-    return {
-      title: "Translator",
-      description: "Debug translation flow between formats",
-      icon: "translate",
-      breadcrumbs: [],
-    };
   if (pathname.includes("/console-log"))
     return {
       title: "Console Log",

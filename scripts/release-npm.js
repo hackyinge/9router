@@ -248,6 +248,10 @@ function prepareStagingPackage() {
     copy(path.join(rootDir, "src", "shared", "utils", "apiKey.js"), path.join(appDir, "src", "shared", "utils", "apiKey.js"));
   }
 
+  if (fs.existsSync(path.join(rootDir, "src", "shared", "constants", "mitmToolHosts.js"))) {
+    copy(path.join(rootDir, "src", "shared", "constants", "mitmToolHosts.js"), path.join(appDir, "src", "shared", "constants", "mitmToolHosts.js"));
+  }
+
   remove(path.join(appDir, ".env"));
   remove(path.join(appDir, ".env.local"));
   remove(path.join(appDir, "data"));

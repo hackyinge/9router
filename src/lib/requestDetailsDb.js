@@ -36,6 +36,30 @@ async function getDb() {
 let cachedConfig = null;
 let cachedConfigTs = 0;
 
+// Cache apiKey -> { apiKeyId, apiKeyName, userId } lookups
+let cachedApiKeys = null;
+let cachedApiKeysTs = 0;
+
+async function resolveApiKeyIdentity(apiKey) {
+  if (!apiKey) return { apiKeyId: null, apiKeyName: null, userId: null };
+  try {
+    const now = Date.now();
+    if (!cachedApiKeys || (now - cachedApiKeysTs) > CONFIG_CACHE_TTL_MS) {
+      const { getApiKeys } = await import("@/lib/localDb.js");
+      cachedApiKeys = await getApiKeys();
+      cachedApiKeysTs = now;
+    }
+    const match = cachedApiKeys?.find((k) => k.key === apiKey);
+    return {
+      apiKeyId: match?.id || null,
+      apiKeyName: match?.name || null,
+      userId: match?.userId || null,
+    };
+  } catch {
+    return { apiKeyId: null, apiKeyName: null, userId: null };
+  }
+}
+
 async function getObservabilityConfig() {
   if (cachedConfig && (Date.now() - cachedConfigTs) < CONFIG_CACHE_TTL_MS) {
     return cachedConfig;
@@ -125,6 +149,9 @@ async function flushToDatabase() {
       // Serialize large fields
       const record = {
         id: item.id,
+        userId: item.userId || null,
+        apiKeyId: item.apiKeyId || null,
+        apiKeyName: item.apiKeyName || null,
         provider: item.provider || null,
         model: item.model || null,
         connectionId: item.connectionId || null,
@@ -183,7 +210,16 @@ export async function saveRequestDetail(detail) {
   const config = await getObservabilityConfig();
   if (!config.enabled) return;
 
-  writeBuffer.push(detail);
+  const resolved = await resolveApiKeyIdentity(detail?.apiKey);
+  const normalized = {
+    ...detail,
+    apiKeyId: detail?.apiKeyId || resolved.apiKeyId,
+    apiKeyName: detail?.apiKeyName || resolved.apiKeyName,
+    userId: detail?.userId || resolved.userId,
+  };
+  // Never persist raw API key string into request details storage.
+  delete normalized.apiKey;
+  writeBuffer.push(normalized);
 
   if (writeBuffer.length >= config.batchSize) {
     await flushToDatabase();
@@ -205,6 +241,9 @@ export async function getRequestDetails(filter = {}) {
   let records = [...db.data.records];
 
   // Apply filters
+  if (filter.userId) records = records.filter(r => r.userId === filter.userId);
+  if (filter.apiKeyId) records = records.filter(r => r.apiKeyId === filter.apiKeyId);
+  if (filter.apiKeyName) records = records.filter(r => r.apiKeyName === filter.apiKeyName);
   if (filter.provider) records = records.filter(r => r.provider === filter.provider);
   if (filter.model) records = records.filter(r => r.model === filter.model);
   if (filter.connectionId) records = records.filter(r => r.connectionId === filter.connectionId);

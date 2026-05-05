@@ -8,6 +8,7 @@ import { cn } from "@/shared/utils/cn";
 import { APP_CONFIG, UPDATER_CONFIG } from "@/shared/constants/config";
 import { MEDIA_PROVIDER_KINDS } from "@/shared/constants/providers";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
+import { useUserRole, useIsSuperAdmin } from "./UserRoleProvider";
 import Button from "./Button";
 import { ConfirmModal } from "./Modal";
 
@@ -29,7 +30,6 @@ const navItems = [
 
 const debugItems = [
   { href: "/dashboard/console-log", label: "Console Log", icon: "terminal" },
-  { href: "/dashboard/translator", label: "Translator", icon: "translate" },
 ];
 
 const systemItems = [
@@ -38,6 +38,21 @@ const systemItems = [
 
 export default function Sidebar({ onClose }) {
   const pathname = usePathname();
+  const isSuperAdmin = useIsSuperAdmin();
+  const { permissions = [] } = useUserRole();
+  const canViewUsage = isSuperAdmin || permissions.includes("view_usage");
+
+  const visibleNavItems = isSuperAdmin ? navItems : navItems.filter(item => {
+    if (item.href === "/dashboard/usage") return canViewUsage;
+    // Super-admin pages hidden for sub-users
+    if (["/dashboard/providers", "/dashboard/combos", "/dashboard/mitm", "/dashboard/cli-tools", "/dashboard/proxy-pools", "/dashboard/quota"].includes(item.href)) return false;
+    return true;
+  });
+
+  const adminNavItems = [
+    { href: "/dashboard/admin/users", label: "User Management", icon: "manage_accounts" },
+    { href: "/dashboard/admin/keys", label: "Key Management", icon: "key" },
+  ];
   const [mediaOpen, setMediaOpen] = useState(false);
   const [showShutdownModal, setShowShutdownModal] = useState(false);
   const [isShuttingDown, setIsShuttingDown] = useState(false);
@@ -46,18 +61,10 @@ export default function Sidebar({ onClose }) {
   const [showUpdateModal, setShowUpdateModal] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
   const [updateStatus, setUpdateStatus] = useState(null);
-  const [enableTranslator, setEnableTranslator] = useState(false);
   const { copied, copy } = useCopyToClipboard(2000);
 
   const INSTALL_CMD = UPDATER_CONFIG.installCmd;
   const STATUS_URL = `http://localhost:${UPDATER_CONFIG.statusPort}/update/status`;
-
-  useEffect(() => {
-    fetch("/api/settings")
-      .then(res => res.json())
-      .then(data => { if (data.enableTranslator) setEnableTranslator(true); })
-      .catch(() => {});
-  }, []);
 
   // Lazy check for new npm version on mount
   useEffect(() => {
@@ -172,7 +179,7 @@ export default function Sidebar({ onClose }) {
 
         {/* Navigation */}
         <nav className="flex-1 px-4 py-2 space-y-1 overflow-y-auto custom-scrollbar">
-          {navItems.map((item) => (
+          {visibleNavItems.map((item) => (
             <Link
               key={item.href}
               href={item.href}
@@ -195,6 +202,33 @@ export default function Sidebar({ onClose }) {
               <span className="text-sm font-medium">{item.label}</span>
             </Link>
           ))}
+
+          {/* Admin section (super_admin only) */}
+          {isSuperAdmin && (
+            <div className="pt-4 mt-2">
+              <p className="px-4 text-xs font-semibold text-text-muted/60 uppercase tracking-wider mb-2">
+                Admin
+              </p>
+              {adminNavItems.map((item) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  onClick={onClose}
+                  className={cn(
+                    "flex items-center gap-3 px-4 py-2 rounded-lg transition-all group",
+                    isActive(item.href)
+                      ? "bg-primary/10 text-primary"
+                      : "text-text-muted hover:bg-surface/50 hover:text-text-main"
+                  )}
+                >
+                  <span className="material-symbols-outlined text-[18px] group-hover:text-primary transition-colors">
+                    {item.icon}
+                  </span>
+                  <span className="text-sm font-medium">{item.label}</span>
+                </Link>
+              ))}
+            </div>
+          )}
 
           {/* System section */}
           <div className="pt-4 mt-2">
@@ -278,32 +312,29 @@ export default function Sidebar({ onClose }) {
             ))}
 
             {/* Debug items (inside System section, before Settings) */}
-            {debugItems.map((item) => {
-              const show = item.href !== "/dashboard/translator" || enableTranslator;
-              return show ? (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  onClick={onClose}
+            {debugItems.map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                onClick={onClose}
+                className={cn(
+                  "flex items-center gap-3 px-4 py-2 rounded-lg transition-all group",
+                  isActive(item.href)
+                    ? "bg-primary/10 text-primary"
+                    : "text-text-muted hover:bg-surface/50 hover:text-text-main"
+                )}
+              >
+                <span
                   className={cn(
-                    "flex items-center gap-3 px-4 py-2 rounded-lg transition-all group",
-                    isActive(item.href)
-                      ? "bg-primary/10 text-primary"
-                      : "text-text-muted hover:bg-surface/50 hover:text-text-main"
+                    "material-symbols-outlined text-[18px]",
+                    isActive(item.href) ? "fill-1" : "group-hover:text-primary transition-colors"
                   )}
                 >
-                  <span
-                    className={cn(
-                      "material-symbols-outlined text-[18px]",
-                      isActive(item.href) ? "fill-1" : "group-hover:text-primary transition-colors"
-                    )}
-                  >
-                    {item.icon}
-                  </span>
-                  <span className="text-sm font-medium">{item.label}</span>
-                </Link>
-              ) : null;
-            })}
+                  {item.icon}
+                </span>
+                <span className="text-sm font-medium">{item.label}</span>
+              </Link>
+            ))}
 
             {/* Settings */}
             <Link

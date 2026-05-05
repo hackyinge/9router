@@ -6,10 +6,19 @@ import { promisify } from "util";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
+import { getAuthPayload } from "@/dashboardGuard";
 
 const execAsync = promisify(exec);
 
-const PROVIDER_NAME = "9router";
+async function requirePayload(request) {
+  const payload = await getAuthPayload(request);
+  if (!payload) {
+    return { payload: null, response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
+  }
+  return { payload, response: null };
+}
+
+const PROVIDER_NAME = "openrouterx";
 const API_KEY_ENV = "OPENAI_API_KEY";
 
 const getHermesDir = () => path.join(os.homedir(), ".hermes");
@@ -92,14 +101,17 @@ const readEnvFile = async () => {
   }
 };
 
-// Detect 9router by base_url containing localhost/127.0.0.1 or matching tunnel URL
-const has9RouterConfig = (modelCfg) => {
+// Detect openrouterx by base_url containing localhost/127.0.0.1 or matching tunnel URL
+const hasOpenRouterXConfig = (modelCfg) => {
   if (!modelCfg?.base_url) return false;
   return modelCfg.provider === "custom" && /localhost|127\.0\.0\.1|0\.0\.0\.0/.test(modelCfg.base_url);
 };
 
-export async function GET() {
+export async function GET(request) {
   try {
+    const { response } = await requirePayload(request);
+    if (response) return response;
+
     const installed = await checkHermesInstalled();
     if (!installed) {
       return NextResponse.json({ installed: false, settings: null, message: "Hermes Agent is not installed" });
@@ -109,7 +121,7 @@ export async function GET() {
     return NextResponse.json({
       installed: true,
       settings: { model },
-      has9Router: has9RouterConfig(model),
+      hasOpenRouterX: hasOpenRouterXConfig(model),
       configPath: getHermesConfigPath(),
     });
   } catch (error) {
@@ -120,6 +132,12 @@ export async function GET() {
 
 export async function POST(request) {
   try {
+    const { payload, response } = await requirePayload(request);
+    if (response) return response;
+    if (payload.role !== "super_admin") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     const { baseUrl, apiKey, model } = await request.json();
     if (!baseUrl || !model) {
       return NextResponse.json({ error: "baseUrl and model are required" }, { status: 400 });
@@ -153,8 +171,14 @@ export async function POST(request) {
   }
 }
 
-export async function DELETE() {
+export async function DELETE(request) {
   try {
+    const { payload, response } = await requirePayload(request);
+    if (response) return response;
+    if (payload.role !== "super_admin") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     const configPath = getHermesConfigPath();
     let yaml = "";
     try {

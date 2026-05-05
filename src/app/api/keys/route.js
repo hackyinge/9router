@@ -1,13 +1,18 @@
 import { NextResponse } from "next/server";
 import { getApiKeys, createApiKey } from "@/lib/localDb";
 import { getConsistentMachineId } from "@/shared/utils/machineId";
+import { getAuthPayload } from "@/dashboardGuard";
 
 export const dynamic = "force-dynamic";
 
 // GET /api/keys - List API keys
-export async function GET() {
+export async function GET(request) {
   try {
-    const keys = await getApiKeys();
+    const payload = await getAuthPayload(request);
+    if (!payload) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    // sub_user: only return keys assigned to them (avoid leaking other users' keys)
+    const keys = await getApiKeys(payload.role === "sub_user" ? { userId: payload.userId } : {});
     return NextResponse.json({ keys });
   } catch (error) {
     console.log("Error fetching keys:", error);
@@ -18,6 +23,12 @@ export async function GET() {
 // POST /api/keys - Create new API key
 export async function POST(request) {
   try {
+    const payload = await getAuthPayload(request);
+    if (!payload) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (payload.role !== "super_admin") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     const body = await request.json();
     const { name } = body;
 

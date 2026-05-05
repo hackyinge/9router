@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { Card, Button, ModelSelectModal, ManualConfigModal } from "@/shared/components";
 import Image from "next/image";
 
@@ -16,8 +16,9 @@ export default function DroidToolCard({
   activeProviders,
   cloudEnabled,
   initialStatus,
+  manualOnly = false,
 }) {
-  const [droidStatus, setDroidStatus] = useState(initialStatus || null);
+  const [droidStatus, setDroidStatus] = useState(null);
   const [checkingDroid, setCheckingDroid] = useState(false);
   const [applying, setApplying] = useState(false);
   const [restoring, setRestoring] = useState(false);
@@ -30,12 +31,24 @@ export default function DroidToolCard({
   const [showManualConfigModal, setShowManualConfigModal] = useState(false);
   const [showInstallGuide, setShowInstallGuide] = useState(false);
   const [customBaseUrl, setCustomBaseUrl] = useState("");
-  const hasInitializedModel = useRef(false);
+  const effectiveStatus = droidStatus || initialStatus || null;
+  const derivedModelList = (() => {
+    const models = (effectiveStatus?.settings?.customModels || [])
+      .filter((m) => m.id?.startsWith("custom:openrouterx"))
+      .sort((a, b) => (a.index || 0) - (b.index || 0))
+      .map((m) => m.model)
+      .filter(Boolean);
+    if (models.length > 0) return models;
+    const legacy = effectiveStatus?.settings?.customModels?.find((m) => m.id === "custom:openrouterx-0");
+    return legacy?.model ? [legacy.model] : [];
+  })();
+  const effectiveModelList = modelList.length > 0 ? modelList : derivedModelList;
+  const effectiveSelectedApiKey = selectedApiKey || apiKeys?.[0]?.key || "";
 
   const getConfigStatus = () => {
-    if (!droidStatus?.installed) return null;
-    // Check for any 9Router model entry (support multi-model: custom:9Router-0, custom:9Router-1, ...)
-    const currentConfig = droidStatus.settings?.customModels?.find(m => m.id?.startsWith("custom:9Router"));
+    if (!effectiveStatus?.installed) return null;
+    // Check for any OpenRouterX model entry (support multi-model: custom:openrouterx-0, custom:openrouterx-1, ...)
+    const currentConfig = effectiveStatus.settings?.customModels?.find(m => m.id?.startsWith("custom:openrouterx"));
     if (!currentConfig) return "not_configured";
     const localMatch = currentConfig.baseUrl?.includes("localhost") || currentConfig.baseUrl?.includes("127.0.0.1");
     const cloudMatch = cloudEnabled && CLOUD_URL && currentConfig.baseUrl?.startsWith(CLOUD_URL);
@@ -47,52 +60,18 @@ export default function DroidToolCard({
   const configStatus = getConfigStatus();
 
   useEffect(() => {
-    if (apiKeys?.length > 0 && !selectedApiKey) {
-      setSelectedApiKey(apiKeys[0].key);
+    if (!isExpanded) return;
+    if (!effectiveStatus) {
+      fetch("/api/cli-tools/droid-settings")
+        .then((res) => res.json())
+        .then((data) => setDroidStatus(data))
+        .catch((error) => setDroidStatus({ installed: false, error: error.message }));
     }
-  }, [apiKeys, selectedApiKey]);
-
-  useEffect(() => {
-    if (initialStatus) setDroidStatus(initialStatus);
-  }, [initialStatus]);
-
-  useEffect(() => {
-    if (isExpanded && !droidStatus) {
-      checkDroidStatus();
-      fetchModelAliases();
-    }
-    if (isExpanded) fetchModelAliases();
-  }, [isExpanded]);
-
-  const fetchModelAliases = async () => {
-    try {
-      const res = await fetch("/api/models/alias");
-      const data = await res.json();
-      if (res.ok) setModelAliases(data.aliases || {});
-    } catch (error) {
-      console.log("Error fetching model aliases:", error);
-    }
-  };
-
-  // Pre-fill model list from existing config (supports multi-model)
-  useEffect(() => {
-    if (droidStatus?.installed && !hasInitializedModel.current) {
-      hasInitializedModel.current = true;
-      const existingModels = (droidStatus.settings?.customModels || [])
-        .filter(m => m.id?.startsWith("custom:9Router"))
-        .sort((a, b) => (a.index || 0) - (b.index || 0))
-        .map(m => m.model);
-      if (existingModels.length > 0) {
-        setModelList(existingModels);
-      } else {
-        // Legacy: single model stored as custom:9Router-0
-        const legacy = droidStatus.settings?.customModels?.find(m => m.id === "custom:9Router-0");
-        if (legacy?.model) {
-          setModelList([legacy.model]);
-        }
-      }
-    }
-  }, [droidStatus]);
+    fetch("/api/models/alias")
+      .then((res) => res.json())
+      .then((data) => setModelAliases(data.aliases || {}))
+      .catch((error) => console.log("Error fetching model aliases:", error));
+  }, [isExpanded, effectiveStatus]);
 
   const checkDroidStatus = async () => {
     setCheckingDroid(true);
@@ -136,9 +115,9 @@ export default function DroidToolCard({
     setApplying(true);
     setMessage(null);
     try {
-      const keyToUse = selectedApiKey?.trim()
+      const keyToUse = effectiveSelectedApiKey?.trim()
         || (apiKeys?.length > 0 ? apiKeys[0].key : null)
-        || (!cloudEnabled ? "sk_9router" : null);
+        || (!cloudEnabled ? "sk_openrouterx" : null);
 
       const res = await fetch("/api/cli-tools/droid-settings", {
         method: "POST",
@@ -146,8 +125,8 @@ export default function DroidToolCard({
         body: JSON.stringify({
           baseUrl: getEffectiveBaseUrl(),
           apiKey: keyToUse,
-          models: modelList,
-          activeModel: modelList[0] || "",
+            models: effectiveModelList,
+            activeModel: effectiveModelList[0] || "",
         }),
       });
       const data = await res.json();
@@ -185,14 +164,14 @@ export default function DroidToolCard({
   };
 
   const getManualConfigs = () => {
-    const keyToUse = (selectedApiKey && selectedApiKey.trim())
-      ? selectedApiKey
-      : (!cloudEnabled ? "sk_9router" : "<API_KEY_FROM_DASHBOARD>");
+    const keyToUse = (effectiveSelectedApiKey && effectiveSelectedApiKey.trim())
+      ? effectiveSelectedApiKey
+      : (!cloudEnabled ? "sk_openrouterx" : "<API_KEY_FROM_DASHBOARD>");
 
     const settingsContent = {
-      customModels: modelList.map((m, i) => ({
+      customModels: effectiveModelList.map((m, i) => ({
         model: m,
-        id: `custom:9Router-${i}`,
+        id: `custom:openrouterx-${i}`,
         index: i,
         baseUrl: getEffectiveBaseUrl(),
         apiKey: keyToUse,
@@ -246,14 +225,14 @@ export default function DroidToolCard({
             </div>
           )}
 
-          {!checkingDroid && droidStatus && !droidStatus.installed && (
+          {!checkingDroid && effectiveStatus && !effectiveStatus.installed && (
             <div className="flex flex-col gap-4">
               <div className="flex flex-col gap-3 p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
                 <div className="flex items-start gap-3">
                   <span className="material-symbols-outlined text-yellow-500">warning</span>
                   <div className="flex-1">
                     <p className="font-medium text-yellow-600 dark:text-yellow-400">Factory Droid CLI not detected locally</p>
-                    <p className="text-sm text-text-muted">Manual configuration is still available if 9router is deployed on a remote server.</p>
+                    <p className="text-sm text-text-muted">Manual configuration is still available if OpenRouterX is deployed on a remote server.</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2 pl-9">
@@ -261,13 +240,17 @@ export default function DroidToolCard({
                     <span className="material-symbols-outlined text-[18px] mr-1">content_copy</span>
                     Manual Config
                   </Button>
-                  <Button variant="outline" size="sm" onClick={() => setShowInstallGuide(!showInstallGuide)}>
+                  {!manualOnly && (
+
+                    <Button variant="outline" size="sm" onClick={() => setShowInstallGuide(!showInstallGuide)}>
                     <span className="material-symbols-outlined text-[18px] mr-1">{showInstallGuide ? "expand_less" : "help"}</span>
                     {showInstallGuide ? "Hide" : "How to Install"}
                   </Button>
+
+                  )}
                 </div>
               </div>
-              {showInstallGuide && (
+              {!manualOnly && showInstallGuide && (
                 <div className="p-4 bg-surface border border-border rounded-lg">
                   <h4 className="font-medium mb-3">Installation Guide</h4>
                   <div className="space-y-3 text-sm">
@@ -282,16 +265,16 @@ export default function DroidToolCard({
             </div>
           )}
 
-          {!checkingDroid && droidStatus?.installed && (
+          {!checkingDroid && effectiveStatus?.installed && (
             <>
               <div className="flex flex-col gap-2">
                 {/* Current Base URL */}
-                {droidStatus?.settings?.customModels?.find(m => m.id?.startsWith("custom:9Router"))?.baseUrl && (
+                {effectiveStatus?.settings?.customModels?.find(m => m.id?.startsWith("custom:openrouterx"))?.baseUrl && (
                   <div className="flex items-center gap-2">
                     <span className="w-32 shrink-0 text-sm font-semibold text-text-main text-right">Current</span>
                     <span className="material-symbols-outlined text-text-muted text-[14px]">arrow_forward</span>
                     <span className="flex-1 px-2 py-1.5 text-xs text-text-muted truncate">
-                      {droidStatus.settings.customModels.find(m => m.id?.startsWith("custom:9Router")).baseUrl}
+                      {effectiveStatus.settings.customModels.find(m => m.id?.startsWith("custom:openrouterx")).baseUrl}
                     </span>
                   </div>
                 )}
@@ -307,7 +290,7 @@ export default function DroidToolCard({
                     placeholder="https://.../v1"
                     className="flex-1 px-2 py-1.5 bg-surface rounded border border-border text-xs focus:outline-none focus:ring-1 focus:ring-primary/50"
                   />
-                  {customBaseUrl && customBaseUrl !== baseUrl && (
+                  {!manualOnly && customBaseUrl && customBaseUrl !== baseUrl && (
                     <button onClick={() => setCustomBaseUrl("")} className="p-1 text-text-muted hover:text-primary rounded transition-colors" title="Reset to default">
                       <span className="material-symbols-outlined text-[14px]">restart_alt</span>
                     </button>
@@ -319,12 +302,12 @@ export default function DroidToolCard({
                   <span className="w-32 shrink-0 text-sm font-semibold text-text-main text-right">API Key</span>
                   <span className="material-symbols-outlined text-text-muted text-[14px]">arrow_forward</span>
                   {apiKeys.length > 0 ? (
-                    <select value={selectedApiKey} onChange={(e) => setSelectedApiKey(e.target.value)} className="flex-1 px-2 py-1.5 bg-surface rounded text-xs border border-border focus:outline-none focus:ring-1 focus:ring-primary/50">
+                    <select value={effectiveSelectedApiKey} onChange={(e) => setSelectedApiKey(e.target.value)} className="flex-1 px-2 py-1.5 bg-surface rounded text-xs border border-border focus:outline-none focus:ring-1 focus:ring-primary/50">
                       {apiKeys.map((key) => <option key={key.id} value={key.key}>{key.key}</option>)}
                     </select>
                   ) : (
                     <span className="flex-1 text-xs text-text-muted px-2 py-1.5">
-                      {cloudEnabled ? "No API keys - Create one in Keys page" : "sk_9router (default)"}
+                      {cloudEnabled ? "No API keys - Create one in Keys page" : "sk_openrouterx (default)"}
                     </span>
                   )}
                 </div>
@@ -332,14 +315,14 @@ export default function DroidToolCard({
                 {/* Models */}
                 <div className="flex items-center gap-2">
                   <span className="w-32 shrink-0 text-sm font-semibold text-text-main text-right">
-                    Models {modelList.length > 0 && <span className="text-primary">({modelList.length})</span>}
+                    Models {effectiveModelList.length > 0 && <span className="text-primary">({effectiveModelList.length})</span>}
                   </span>
                   <span className="material-symbols-outlined text-text-muted text-[14px]">arrow_forward</span>
                   <div className="flex-1 flex flex-col gap-1">
                     {/* Model list */}
-                    {modelList.length > 0 && (
+                    {effectiveModelList.length > 0 && (
                       <div className="flex flex-col gap-0.5 mb-1">
-                        {modelList.map((id) => (
+                        {effectiveModelList.map((id) => (
                           <div key={id} className="flex items-center gap-1.5 px-2 py-1 bg-bg-secondary rounded border border-border">
                             <span className="flex-1 text-xs font-mono truncate">{id}</span>
                             <button onClick={() => removeModel(id)} className="text-text-muted hover:text-red-500 transition-colors shrink-0" title="Remove">
@@ -382,12 +365,16 @@ export default function DroidToolCard({
               )}
 
               <div className="flex items-center gap-2">
-                <Button variant="primary" size="sm" onClick={handleApplySettings} disabled={modelList.length === 0} loading={applying}>
-                  <span className="material-symbols-outlined text-[14px] mr-1">save</span>Apply
-                </Button>
-                <Button variant="outline" size="sm" onClick={handleResetSettings} disabled={!droidStatus?.has9Router} loading={restoring}>
-                  <span className="material-symbols-outlined text-[14px] mr-1">restore</span>Reset
-                </Button>
+                {!manualOnly && (
+                  <>
+                    <Button variant="primary" size="sm" onClick={handleApplySettings} disabled={effectiveModelList.length === 0} loading={applying}>
+                      <span className="material-symbols-outlined text-[14px] mr-1">save</span>Apply
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={handleResetSettings} disabled={!effectiveStatus?.hasOpenRouterX} loading={restoring}>
+                      <span className="material-symbols-outlined text-[14px] mr-1">restore</span>Reset
+                    </Button>
+                  </>
+                )}
                 <Button variant="ghost" size="sm" onClick={() => setShowManualConfigModal(true)}>
                   <span className="material-symbols-outlined text-[14px] mr-1">content_copy</span>Manual Config
                 </Button>

@@ -1,9 +1,11 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import PropTypes from "prop-types";
 import { LOCALE_COOKIE, normalizeLocale } from "@/i18n/config";
 import { useTheme } from "@/shared/hooks/useTheme";
+import { useUserRole } from "./UserRoleProvider";
 import ChangelogModal from "./ChangelogModal";
 import NineRemotePromoModal from "./NineRemotePromoModal";
 import LanguageSwitcher from "./LanguageSwitcher";
@@ -86,12 +88,30 @@ export default function HeaderMenu({ onLogout }) {
   const [remoteOpen, setRemoteOpen] = useState(false);
   const [langOpen, setLangOpen] = useState(false);
   const [locale, setLocale] = useState("en");
+  const router = useRouter();
   const { toggleTheme, isDark } = useTheme();
+  const { role } = useUserRole();
+  const [resolvedRole, setResolvedRole] = useState(null);
   const menuRef = useRef(null);
+  const effectiveRole = resolvedRole || role || null;
+  const isSubUser = effectiveRole === "sub_user";
 
   useEffect(() => {
     setLocale(getLocaleFromCookie());
   }, [langOpen]);
+
+  useEffect(() => {
+    if (role) setResolvedRole(role);
+  }, [role]);
+
+  useEffect(() => {
+    fetch("/api/auth/me")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.role) setResolvedRole(data.role);
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -120,27 +140,47 @@ export default function HeaderMenu({ onLogout }) {
 
         {isOpen && (
           <div className="absolute right-0 top-full mt-2 w-60 bg-surface border border-black/10 dark:border-white/10 rounded-xl shadow-2xl z-50 animate-in fade-in zoom-in-95 duration-150 overflow-hidden py-1">
-            <MenuItem
-              icon="history"
-              label="Change Log"
-              onClick={() => { close(); setChangelogOpen(true); }}
-            />
+            {isSubUser && (
+              <MenuItem
+                icon="dashboard"
+                label="Dashboard"
+                onClick={() => { close(); router.push("/dashboard"); }}
+              />
+            )}
+            {isSubUser && (
+              <MenuItem
+                icon="terminal"
+                label="CLI Tools"
+                onClick={() => { close(); router.push("/dashboard/cli-tools"); }}
+              />
+            )}
+            {!isSubUser && (
+              <MenuItem
+                icon="history"
+                label="Change Log"
+                onClick={() => { close(); setChangelogOpen(true); }}
+              />
+            )}
             <MenuItem
               icon="language"
               label={LOCALE_INFO[locale]?.name || locale}
               trailing={LOCALE_INFO[locale]?.flag || "🌐"}
               onClick={() => { close(); setLangOpen(true); }}
             />
-            <MenuItem
-              icon={isDark ? "light_mode" : "dark_mode"}
-              label="Theme"
-              onClick={() => { toggleTheme(); close(); }}
-            />
-            <MenuItem
-              icon="computer"
-              label="Remote"
-              onClick={() => { close(); setRemoteOpen(true); }}
-            />
+            {!isSubUser && (
+              <MenuItem
+                icon={isDark ? "light_mode" : "dark_mode"}
+                label="Theme"
+                onClick={() => { toggleTheme(); close(); }}
+              />
+            )}
+            {!isSubUser && (
+              <MenuItem
+                icon="computer"
+                label="Remote"
+                onClick={() => { close(); setRemoteOpen(true); }}
+              />
+            )}
             <MenuItem
               icon="logout"
               label="Logout"

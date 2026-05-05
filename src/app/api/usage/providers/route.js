@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { jwtVerify } from "jose";
 import { getRequestDetails } from "@/lib/requestDetailsDb";
 import { getProviderNodes } from "@/lib/localDb";
 import { AI_PROVIDERS, getProviderByAlias } from "@/shared/constants/providers";
@@ -7,9 +8,25 @@ import { AI_PROVIDERS, getProviderByAlias } from "@/shared/constants/providers";
  * GET /api/usage/providers
  * Returns list of unique providers from request details
  */
-export async function GET() {
+const SECRET = new TextEncoder().encode(
+  process.env.JWT_SECRET || "9router-default-secret-change-me"
+);
+
+async function getSubUserId(request) {
+  const token = request.cookies.get("auth_token")?.value;
+  if (!token) return null;
   try {
-    const { details } = await getRequestDetails({ pageSize: 9999 });
+    const { payload } = await jwtVerify(token, SECRET);
+    return payload.role === "sub_user" ? payload.userId : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function GET(request) {
+  try {
+    const userId = await getSubUserId(request);
+    const { details } = await getRequestDetails({ pageSize: 9999, ...(userId ? { userId } : {}) });
 
     // Extract unique providers
     const providerIds = [...new Set(details.map(r => r.provider).filter(Boolean))].sort();

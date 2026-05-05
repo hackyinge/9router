@@ -14,6 +14,7 @@ export default function OpenClawToolCard({
   activeProviders,
   cloudEnabled,
   initialStatus,
+  manualOnly = false,
 }) {
   const [openclawStatus, setOpenclawStatus] = useState(initialStatus || null);
   const [checkingOpenclaw, setCheckingOpenclaw] = useState(false);
@@ -32,7 +33,7 @@ export default function OpenClawToolCard({
 
   const getConfigStatus = () => {
     if (!openclawStatus?.installed) return null;
-    const currentProvider = openclawStatus.settings?.models?.providers?.["9router"];
+    const currentProvider = openclawStatus.settings?.models?.providers?.["openrouterx"];
     if (!currentProvider) return "not_configured";
     const localMatch = currentProvider.baseUrl?.includes("localhost") || currentProvider.baseUrl?.includes("127.0.0.1") || currentProvider.baseUrl?.includes("0.0.0.0");
     const tunnelMatch = baseUrl && currentProvider.baseUrl?.startsWith(baseUrl);
@@ -73,10 +74,10 @@ export default function OpenClawToolCard({
   useEffect(() => {
     if (openclawStatus?.installed && !hasInitializedModel.current) {
       hasInitializedModel.current = true;
-      const provider = openclawStatus.settings?.models?.providers?.["9router"];
+      const provider = openclawStatus.settings?.models?.providers?.["openrouterx"];
       if (provider) {
         const primaryModel = openclawStatus.settings?.agents?.defaults?.model?.primary;
-        if (primaryModel) setSelectedModel(primaryModel.replace("9router/", ""));
+        if (primaryModel) setSelectedModel(primaryModel.replace(/^openrouterx\//, ""));
         if (provider.apiKey && apiKeys?.some(k => k.key === provider.apiKey)) {
           setSelectedApiKey(provider.apiKey);
         }
@@ -129,7 +130,7 @@ export default function OpenClawToolCard({
     try {
       const keyToUse = selectedApiKey?.trim() 
         || (apiKeys?.length > 0 ? apiKeys[0].key : null)
-        || (!cloudEnabled ? "sk_9router" : null);
+        || (!cloudEnabled ? "sk_openrouterx" : null);
 
       const res = await fetch("/api/cli-tools/openclaw-settings", {
         method: "POST",
@@ -187,21 +188,22 @@ export default function OpenClawToolCard({
   };
 
   const getManualConfigs = () => {
-    const keyToUse = (selectedApiKey && selectedApiKey.trim()) 
-      ? selectedApiKey 
-      : (!cloudEnabled ? "sk_9router" : "<API_KEY_FROM_DASHBOARD>");
+    const effectiveSelectedApiKey = selectedApiKey || apiKeys?.[0]?.key || "";
+    const keyToUse = (effectiveSelectedApiKey && effectiveSelectedApiKey.trim()) 
+      ? effectiveSelectedApiKey 
+      : (!cloudEnabled ? "sk_openrouterx" : "<API_KEY_FROM_DASHBOARD>");
 
     const settingsContent = {
       agents: {
         defaults: {
           model: {
-            primary: `9router/${selectedModel || "provider/model-id"}`,
+            primary: `openrouterx/${selectedModel || "provider/model-id"}`,
           },
         },
       },
       models: {
         providers: {
-          "9router": {
+          "openrouterx": {
             baseUrl: getEffectiveBaseUrl(),
             apiKey: keyToUse,
             api: "openai-completions",
@@ -260,7 +262,7 @@ export default function OpenClawToolCard({
                   <span className="material-symbols-outlined text-yellow-500">warning</span>
                   <div className="flex-1">
                     <p className="font-medium text-yellow-600 dark:text-yellow-400">Open Claw CLI not detected locally</p>
-                    <p className="text-sm text-text-muted">Manual configuration is still available if 9router is deployed on a remote server.</p>
+                    <p className="text-sm text-text-muted">Manual configuration is still available if OpenRouterX is deployed on a remote server.</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2 pl-9">
@@ -277,12 +279,12 @@ export default function OpenClawToolCard({
             <>
               <div className="flex flex-col gap-2">
                 {/* Current Base URL */}
-                {openclawStatus?.settings?.models?.providers?.["9router"]?.baseUrl && (
+                {openclawStatus?.settings?.models?.providers?.["openrouterx"]?.baseUrl && (
                   <div className="flex items-center gap-2">
                     <span className="w-32 shrink-0 text-sm font-semibold text-text-main text-right">Current</span>
                     <span className="material-symbols-outlined text-text-muted text-[14px]">arrow_forward</span>
                     <span className="flex-1 px-2 py-1.5 text-xs text-text-muted truncate">
-                      {openclawStatus.settings.models.providers["9router"].baseUrl}
+                      {openclawStatus.settings?.models?.providers?.["openrouterx"]?.baseUrl}
                     </span>
                   </div>
                 )}
@@ -298,7 +300,7 @@ export default function OpenClawToolCard({
                     placeholder="https://.../v1" 
                     className="flex-1 px-2 py-1.5 bg-surface rounded border border-border text-xs focus:outline-none focus:ring-1 focus:ring-primary/50" 
                   />
-                  {customBaseUrl && customBaseUrl !== baseUrl && (
+                  {!manualOnly && customBaseUrl && customBaseUrl !== baseUrl && (
                     <button onClick={() => setCustomBaseUrl("")} className="p-1 text-text-muted hover:text-primary rounded transition-colors" title="Reset to default">
                       <span className="material-symbols-outlined text-[14px]">restart_alt</span>
                     </button>
@@ -315,7 +317,7 @@ export default function OpenClawToolCard({
                     </select>
                   ) : (
                     <span className="flex-1 text-xs text-text-muted px-2 py-1.5">
-                      {cloudEnabled ? "No API keys - Create one in Keys page" : "sk_9router (default)"}
+                      {cloudEnabled ? "No API keys - Create one in Keys page" : "sk_openrouterx (default)"}
                     </span>
                   )}
                 </div>
@@ -326,7 +328,7 @@ export default function OpenClawToolCard({
                   <span className="material-symbols-outlined text-text-muted text-[14px]">arrow_forward</span>
                   <input type="text" value={selectedModel} onChange={(e) => setSelectedModel(e.target.value)} placeholder="provider/model-id" className="flex-1 px-2 py-1.5 bg-surface rounded border border-border text-xs focus:outline-none focus:ring-1 focus:ring-primary/50" />
                   <button onClick={() => { setAgentModalFor(null); setModalOpen(true); }} disabled={!hasActiveProviders} className={`px-2 py-1.5 rounded border text-xs transition-colors shrink-0 whitespace-nowrap ${hasActiveProviders ? "bg-surface border-border text-text-main hover:border-primary cursor-pointer" : "opacity-50 cursor-not-allowed border-border"}`}>Select</button>
-                  {selectedModel && <button onClick={() => setSelectedModel("")} className="p-1 text-text-muted hover:text-red-500 rounded transition-colors" title="Clear"><span className="material-symbols-outlined text-[14px]">close</span></button>}
+                  {!manualOnly && selectedModel && <button onClick={() => setSelectedModel("")} className="p-1 text-text-muted hover:text-red-500 rounded transition-colors" title="Clear"><span className="material-symbols-outlined text-[14px]">close</span></button>}
                 </div>
 
                 {/* Per-agent model overrides */}
@@ -341,8 +343,8 @@ export default function OpenClawToolCard({
                       placeholder={`default (${selectedModel || "provider/model-id"})`}
                       className="flex-1 px-2 py-1.5 bg-surface rounded border border-border text-xs focus:outline-none focus:ring-1 focus:ring-primary/50"
                     />
-                    <button onClick={() => { setAgentModalFor(agent.id); setModalOpen(true); }} disabled={!hasActiveProviders} className={`px-2 py-1.5 rounded border text-xs transition-colors shrink-0 whitespace-nowrap ${hasActiveProviders ? "bg-surface border-border text-text-main hover:border-primary cursor-pointer" : "opacity-50 cursor-not-allowed border-border"}`}>Select</button>
-                    {agentModels[agent.id] && <button onClick={() => setAgentModels(prev => ({ ...prev, [agent.id]: "" }))} className="p-1 text-text-muted hover:text-red-500 rounded transition-colors" title="Clear"><span className="material-symbols-outlined text-[14px]">close</span></button>}
+                    <button onClick={() => { setAgentModalFor(agent.id); setModalOpen(true); }} disabled={manualOnly || !hasActiveProviders} className={`px-2 py-1.5 rounded border text-xs transition-colors shrink-0 whitespace-nowrap ${!manualOnly && hasActiveProviders ? "bg-surface border-border text-text-main hover:border-primary cursor-pointer" : "opacity-50 cursor-not-allowed border-border"}`}>Select</button>
+                    {!manualOnly && agentModels[agent.id] && <button onClick={() => setAgentModels(prev => ({ ...prev, [agent.id]: "" }))} className="p-1 text-text-muted hover:text-red-500 rounded transition-colors" title="Clear"><span className="material-symbols-outlined text-[14px]">close</span></button>}
                   </div>
                 ))}
               </div>
@@ -355,12 +357,16 @@ export default function OpenClawToolCard({
               )}
 
               <div className="flex items-center gap-2">
-                <Button variant="primary" size="sm" onClick={handleApplySettings} disabled={!selectedModel} loading={applying}>
-                  <span className="material-symbols-outlined text-[14px] mr-1">save</span>Apply
-                </Button>
-                <Button variant="outline" size="sm" onClick={handleResetSettings} disabled={!openclawStatus?.has9Router} loading={restoring}>
-                  <span className="material-symbols-outlined text-[14px] mr-1">restore</span>Reset
-                </Button>
+                {!manualOnly && (
+                  <>
+                    <Button variant="primary" size="sm" onClick={handleApplySettings} disabled={!selectedModel} loading={applying}>
+                      <span className="material-symbols-outlined text-[14px] mr-1">save</span>Apply
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={handleResetSettings} disabled={!openclawStatus?.hasOpenRouterX} loading={restoring}>
+                      <span className="material-symbols-outlined text-[14px] mr-1">restore</span>Reset
+                    </Button>
+                  </>
+                )}
                 <Button variant="ghost" size="sm" onClick={() => setShowManualConfigModal(true)}>
                   <span className="material-symbols-outlined text-[14px] mr-1">content_copy</span>Manual Config
                 </Button>

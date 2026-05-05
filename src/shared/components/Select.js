@@ -5,6 +5,7 @@ import { cn } from "@/shared/utils/cn";
 export default function Select({
   label,
   options = [],
+  children,
   value,
   onChange,
   placeholder = "Select an option",
@@ -42,14 +43,20 @@ export default function Select({
           )}
           {...props}
         >
-          <option value="" disabled>
-            {placeholder}
-          </option>
-          {options.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
+          {children ? (
+            children
+          ) : (
+            <>
+              <option value="" disabled>
+                {placeholder}
+              </option>
+              {options.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </>
+          )}
         </select>
         <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-text-muted">
           <span className="material-symbols-outlined text-[20px]">expand_more</span>
@@ -67,4 +74,3 @@ export default function Select({
     </div>
   );
 }
-

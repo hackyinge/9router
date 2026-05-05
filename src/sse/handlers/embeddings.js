@@ -12,6 +12,7 @@ import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
+import { resolveSubUserAccessContext, isProviderAllowedForSubUser } from "@/lib/subUserAccess";
 
 /**
  * Handle embeddings request for the SSE/Next.js server.
@@ -43,6 +44,7 @@ export async function handleEmbeddings(request) {
 
   // Enforce API key if enabled in settings
   const settings = await getSettings();
+  const subUserContext = await resolveSubUserAccessContext(request, apiKey);
   if (settings.requireApiKey) {
     if (!apiKey) {
       log.warn("AUTH", "Missing API key (requireApiKey=true)");
@@ -72,6 +74,11 @@ export async function handleEmbeddings(request) {
   }
 
   const { provider, model } = modelInfo;
+
+  if (!isProviderAllowedForSubUser(subUserContext, provider)) {
+    log.warn("AUTH", `Sub-user attempted to access disabled embedding provider: ${provider}`);
+    return errorResponse(HTTP_STATUS.FORBIDDEN, "This provider is not enabled for the current sub-user");
+  }
 
   if (modelStr !== `${provider}/${model}`) {
     log.info("ROUTING", `${modelStr} → ${provider}/${model}`);

@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { Card, Button, ModelSelectModal, ManualConfigModal } from "@/shared/components";
 import Image from "next/image";
 
-export default function OpenCodeToolCard({ tool, isExpanded, onToggle, baseUrl, apiKeys, activeProviders, cloudEnabled, initialStatus }) {
+export default function OpenCodeToolCard({ tool, isExpanded, onToggle, baseUrl, apiKeys, activeProviders, cloudEnabled, initialStatus, manualOnly = false }) {
   const [status, setStatus] = useState(initialStatus || null);
   const [checking, setChecking] = useState(false);
   const [applying, setApplying] = useState(false);
@@ -21,6 +21,7 @@ export default function OpenCodeToolCard({ tool, isExpanded, onToggle, baseUrl, 
   const [customBaseUrl, setCustomBaseUrl] = useState("");
   const [selectedModels, setSelectedModels] = useState([]);
   const [activeModel, setActiveModel] = useState("");
+  const effectiveSelectedApiKey = selectedApiKey || apiKeys?.[0]?.key || "";
 
   useEffect(() => {
     if (apiKeys?.length > 0 && !selectedApiKey) {
@@ -50,8 +51,8 @@ export default function OpenCodeToolCard({ tool, isExpanded, onToggle, baseUrl, 
     }
     
     // Parse subagent settings from agent.explorer if exists
-    if (status?.config?.agent?.explorer?.model?.startsWith("9router/")) {
-      setSubagentModel(status.config.agent.explorer.model.replace("9router/", ""));
+    if (status?.config?.agent?.explorer?.model?.match(/^openrouterx\//)) {
+      setSubagentModel(status.config.agent.explorer.model.replace(/^openrouterx\//, ""));
     }
   }, [status]);
 
@@ -68,9 +69,10 @@ export default function OpenCodeToolCard({ tool, isExpanded, onToggle, baseUrl, 
   const getConfigStatus = () => {
     if (!status?.installed) return null;
     if (!status.config) return "not_configured";
-    const url = status.config?.provider?.["9router"]?.options?.baseURL || "";
+    const providerConfig = status.config?.provider?.["openrouterx"];
+    const url = providerConfig?.options?.baseURL || "";
     const isLocal = url.includes("localhost") || url.includes("127.0.0.1");
-    return status.has9Router && (isLocal || url.includes(baseUrl)) ? "configured" : status.has9Router ? "other" : "not_configured";
+    return status.hasOpenRouterX && (isLocal || url.includes(baseUrl)) ? "configured" : status.hasOpenRouterX ? "other" : "not_configured";
   };
 
   const configStatus = getConfigStatus();
@@ -101,7 +103,7 @@ export default function OpenCodeToolCard({ tool, isExpanded, onToggle, baseUrl, 
     try {
       const keyToUse = (selectedApiKey && selectedApiKey.trim())
         ? selectedApiKey
-        : (!cloudEnabled ? "sk_9router" : selectedApiKey);
+        : (!cloudEnabled ? "sk_openrouterx" : effectiveSelectedApiKey);
 
       const res = await fetch("/api/cli-tools/opencode-settings", {
         method: "POST",
@@ -152,9 +154,9 @@ export default function OpenCodeToolCard({ tool, isExpanded, onToggle, baseUrl, 
   };
 
   const getManualConfigs = () => {
-    const keyToUse = (selectedApiKey && selectedApiKey.trim())
-      ? selectedApiKey
-      : (!cloudEnabled ? "sk_9router" : "<API_KEY_FROM_DASHBOARD>");
+    const keyToUse = (effectiveSelectedApiKey && effectiveSelectedApiKey.trim())
+      ? effectiveSelectedApiKey
+      : (!cloudEnabled ? "sk_openrouterx" : "<API_KEY_FROM_DASHBOARD>");
 
     const modelsToShow = selectedModels.length > 0 ? selectedModels : ["provider/model-id"];
     const activeModelToShow = activeModel || selectedModels[0] || modelsToShow[0];
@@ -169,18 +171,18 @@ export default function OpenCodeToolCard({ tool, isExpanded, onToggle, baseUrl, 
       filename: "~/.config/opencode/opencode.json",
       content: JSON.stringify({
         provider: {
-          "9router": {
+          "openrouterx": {
             npm: "@ai-sdk/openai-compatible",
             options: { baseURL: getEffectiveBaseUrl(), apiKey: keyToUse },
             models: modelsObj,
           },
         },
-        model: `9router/${activeModelToShow}`,
+        model: `openrouterx/${activeModelToShow}`,
         agent: {
           explorer: {
             description: "Fast explorer subagent for codebase exploration",
             mode: "subagent",
-            model: `9router/${effectiveSubagentModel}`
+            model: `openrouterx/${effectiveSubagentModel}`
           }
         }
       }, null, 2),
@@ -223,7 +225,7 @@ export default function OpenCodeToolCard({ tool, isExpanded, onToggle, baseUrl, 
                   <span className="material-symbols-outlined text-yellow-500">warning</span>
                   <div className="flex-1">
                     <p className="font-medium text-yellow-600 dark:text-yellow-400">OpenCode CLI not detected locally</p>
-                    <p className="text-sm text-text-muted">Manual configuration is still available if 9router is deployed on a remote server.</p>
+                    <p className="text-sm text-text-muted">Manual configuration is still available if OpenRouterX is deployed on a remote server.</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2 pl-9">
@@ -231,13 +233,17 @@ export default function OpenCodeToolCard({ tool, isExpanded, onToggle, baseUrl, 
                     <span className="material-symbols-outlined text-[18px] mr-1">content_copy</span>
                     Manual Config
                   </Button>
-                  <Button variant="outline" size="sm" onClick={() => setShowInstallGuide(!showInstallGuide)}>
+                  {!manualOnly && (
+
+                    <Button variant="outline" size="sm" onClick={() => setShowInstallGuide(!showInstallGuide)}>
                     <span className="material-symbols-outlined text-[18px] mr-1">{showInstallGuide ? "expand_less" : "help"}</span>
                     {showInstallGuide ? "Hide" : "How to Install"}
                   </Button>
+
+                  )}
                 </div>
               </div>
-              {showInstallGuide && (
+              {!manualOnly && showInstallGuide && (
                 <div className="p-4 bg-surface border border-border rounded-lg">
                   <h4 className="font-medium mb-3">Installation Guide</h4>
                   <div className="space-y-3 text-sm">
@@ -256,12 +262,12 @@ export default function OpenCodeToolCard({ tool, isExpanded, onToggle, baseUrl, 
             <>
               <div className="flex flex-col gap-2">
                 {/* Current base URL */}
-                {status?.config?.provider?.["9router"]?.options?.baseURL && (
+                {status?.config?.provider?.["openrouterx"]?.options?.baseURL && (
                   <div className="flex items-center gap-2">
                     <span className="w-32 shrink-0 text-sm font-semibold text-text-main text-right">Current</span>
                     <span className="material-symbols-outlined text-text-muted text-[14px]">arrow_forward</span>
                     <span className="flex-1 px-2 py-1.5 text-xs text-text-muted truncate">
-                      {status.config.provider["9router"].options.baseURL}
+                      {status.config?.provider?.["openrouterx"]?.options?.baseURL}
                     </span>
                   </div>
                 )}
@@ -277,7 +283,7 @@ export default function OpenCodeToolCard({ tool, isExpanded, onToggle, baseUrl, 
                     placeholder="https://.../v1"
                     className="flex-1 px-2 py-1.5 bg-surface rounded border border-border text-xs focus:outline-none focus:ring-1 focus:ring-primary/50"
                   />
-                  {customBaseUrl && customBaseUrl !== `${baseUrl}/v1` && (
+                  {!manualOnly && customBaseUrl && customBaseUrl !== `${baseUrl}/v1` && (
                     <button onClick={() => setCustomBaseUrl("")} className="p-1 text-text-muted hover:text-primary rounded transition-colors" title="Reset to default">
                       <span className="material-symbols-outlined text-[14px]">restart_alt</span>
                     </button>
@@ -294,7 +300,7 @@ export default function OpenCodeToolCard({ tool, isExpanded, onToggle, baseUrl, 
                     </select>
                   ) : (
                     <span className="flex-1 text-xs text-text-muted px-2 py-1.5">
-                      {cloudEnabled ? "No API keys - Create one in Keys page" : "sk_9router (default)"}
+                      {cloudEnabled ? "No API keys - Create one in Keys page" : "sk_openrouterx (default)"}
                     </span>
                   )}
                 </div>
@@ -306,7 +312,7 @@ export default function OpenCodeToolCard({ tool, isExpanded, onToggle, baseUrl, 
                   <div className="flex-1 flex flex-col gap-2">
                     <div className="flex flex-wrap gap-1.5 min-h-[28px] px-2 py-1.5 bg-surface rounded border border-border">
                       {selectedModels.length === 0 ? (
-                        <span className="text-xs text-text-muted">No models selected</span>
+                        <span className="text-xs text-text-muted">No models selected yet. Click Select Model.</span>
                       ) : (
                         selectedModels.map((model) => (
                           <span
@@ -365,14 +371,14 @@ export default function OpenCodeToolCard({ tool, isExpanded, onToggle, baseUrl, 
                       )}
                     </div>
                     <div className="flex items-center gap-2">
-                      <button onClick={() => setModalOpen(true)} disabled={!activeProviders?.length} className={`px-2 py-1 rounded border text-xs transition-colors ${activeProviders?.length ? "bg-surface border-border text-text-main hover:border-primary cursor-pointer" : "opacity-50 cursor-not-allowed border-border"}`}>Add Model</button>
+                      <button onClick={() => setModalOpen(true)} disabled={!activeProviders?.length} className={`px-2 py-1 rounded border text-xs transition-colors ${activeProviders?.length ? "bg-surface border-border text-text-main hover:border-primary cursor-pointer" : "opacity-50 cursor-not-allowed border-border"}`}>Select Model</button>
                       <span className="text-xs text-text-muted">
                         {selectedModels.length > 0 && activeModel ? (
                           <>Active: <span className="text-primary">{activeModel}</span></>
                         ) : selectedModels.length > 0 ? (
                           <span className="text-yellow-500">Click a model to set/clear active</span>
                         ) : (
-                          "Select models to add"
+                          "Click Select Model to choose one"
                         )}
                       </span>
                     </div>
@@ -397,7 +403,7 @@ export default function OpenCodeToolCard({ tool, isExpanded, onToggle, baseUrl, 
                   >
                     Select Model
                   </button>
-                  {subagentModel && (
+                  {!manualOnly && subagentModel && (
                     <button 
                       onClick={() => setSubagentModel("")} 
                       className="p-1 text-text-muted hover:text-red-500 rounded transition-colors" 
@@ -417,12 +423,16 @@ export default function OpenCodeToolCard({ tool, isExpanded, onToggle, baseUrl, 
               )}
 
               <div className="flex items-center gap-2">
-                <Button variant="primary" size="sm" onClick={handleApply} disabled={selectedModels.length === 0} loading={applying}>
-                  <span className="material-symbols-outlined text-[14px] mr-1">save</span>Apply
-                </Button>
-                <Button variant="outline" size="sm" onClick={handleReset} disabled={!status.has9Router} loading={restoring}>
-                  <span className="material-symbols-outlined text-[14px] mr-1">restore</span>Reset
-                </Button>
+                {!manualOnly && (
+                  <>
+                    <Button variant="primary" size="sm" onClick={handleApply} disabled={selectedModels.length === 0} loading={applying}>
+                      <span className="material-symbols-outlined text-[14px] mr-1">save</span>Apply
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={handleReset} disabled={!status.hasOpenRouterX} loading={restoring}>
+                      <span className="material-symbols-outlined text-[14px] mr-1">restore</span>Reset
+                    </Button>
+                  </>
+                )}
                 <Button variant="ghost" size="sm" onClick={() => setShowManualConfigModal(true)}>
                   <span className="material-symbols-outlined text-[14px] mr-1">content_copy</span>Manual Config
                 </Button>
@@ -445,7 +455,7 @@ export default function OpenCodeToolCard({ tool, isExpanded, onToggle, baseUrl, 
         selectedModel={null}
         activeProviders={activeProviders}
         modelAliases={modelAliases}
-        title="Add Model for OpenCode"
+        title="Select Model for OpenCode"
       />
 
       <ModelSelectModal

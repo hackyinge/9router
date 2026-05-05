@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
 import { getApiKeys } from "@/lib/localDb";
+import { getAuthPayload } from "@/dashboardGuard";
+import { getModelInfo } from "@/sse/services/model";
+import { resolveSubUserAccessContext, isProviderAllowedForSubUser } from "@/lib/subUserAccess";
 
 // POST /api/models/test - Ping a single model via internal completions or embeddings
 export async function POST(request) {
@@ -7,13 +10,24 @@ export async function POST(request) {
     const { model, kind } = await request.json();
     if (!model) return NextResponse.json({ error: "Model required" }, { status: 400 });
 
+    const subUserContext = await resolveSubUserAccessContext(request);
+    if (subUserContext) {
+      const modelInfo = await getModelInfo(model);
+      if (!modelInfo?.provider || !isProviderAllowedForSubUser(subUserContext, modelInfo.provider)) {
+        return NextResponse.json({ ok: false, error: "This provider is not enabled for the current sub-user." }, { status: 403 });
+      }
+    }
+
     const baseUrl = process.env.BASE_URL ||
       (() => { const u = new URL(request.url); return `${u.protocol}//${u.host}`; })();
 
     // Get an active internal API key for auth (if requireApiKey is enabled)
     let apiKey = null;
     try {
-      const keys = await getApiKeys();
+      const payload = await getAuthPayload(request);
+      const keys = payload?.role === "sub_user"
+        ? await getApiKeys({ userId: payload.userId })
+        : await getApiKeys();
       apiKey = keys.find((k) => k.isActive !== false)?.key || null;
     } catch {}
 

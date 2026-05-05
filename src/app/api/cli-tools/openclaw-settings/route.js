@@ -6,11 +6,22 @@ import { promisify } from "util";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
+import { getAuthPayload } from "@/dashboardGuard";
 
 const execAsync = promisify(exec);
 
+async function requirePayload(request) {
+  const payload = await getAuthPayload(request);
+  if (!payload) {
+    return { payload: null, response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
+  }
+  return { payload, response: null };
+}
+
 const getOpenClawDir = () => path.join(os.homedir(), ".openclaw");
 const getOpenClawSettingsPath = () => path.join(getOpenClawDir(), "openclaw.json");
+const PROVIDER_KEY = "openrouterx";
+const MODEL_PREFIX_RE = /^openrouterx\//;
 
 // Check if openclaw CLI is installed (via which/where or config file exists)
 const checkOpenClawInstalled = async () => {
@@ -45,19 +56,19 @@ const readSettings = async () => {
   }
 };
 
-// Check if settings has 9Router config
-const has9RouterConfig = (settings) => {
+// Check if settings has OpenRouterX config
+const hasOpenRouterXConfig = (settings) => {
   if (!settings || !settings.models || !settings.models.providers) return false;
-  return !!settings.models.providers["9router"];
+  return !!settings.models.providers[PROVIDER_KEY];
 };
 
-// Read per-agent models.json and return current model id (without "9router/" prefix)
+// Read per-agent models.json and return current model id (without "openrouterx/" prefix)
 const readAgentModel = async (agentDir) => {
   try {
     const modelsPath = path.join(agentDir, "models.json");
     const content = await fs.readFile(modelsPath, "utf-8");
     const data = JSON.parse(content);
-    const models = data?.providers?.["9router"]?.models;
+    const models = data?.providers?.[PROVIDER_KEY]?.models;
     return models?.[0]?.id || null;
   } catch {
     return null;
@@ -65,8 +76,11 @@ const readAgentModel = async (agentDir) => {
 };
 
 // GET - Check openclaw CLI and read current settings
-export async function GET() {
+export async function GET(request) {
   try {
+    const { response } = await requirePayload(request);
+    if (response) return response;
+
     const isInstalled = await checkOpenClawInstalled();
     
     if (!isInstalled) {
@@ -92,7 +106,7 @@ export async function GET() {
       installed: true,
       settings,
       agents: enrichedAgents,
-      has9Router: has9RouterConfig(settings),
+      hasOpenRouterX: hasOpenRouterXConfig(settings),
       settingsPath: getOpenClawSettingsPath(),
     });
   } catch (error) {
@@ -112,7 +126,7 @@ const writeAgentModels = async (agentDir, model, baseUrl, apiKey) => {
   } catch { /* No existing */ }
 
   if (!existing.providers) existing.providers = {};
-  existing.providers["9router"] = {
+  existing.providers[PROVIDER_KEY] = {
     baseUrl,
     apiKey: apiKey || "your_api_key",
     api: "openai-completions",
@@ -121,9 +135,15 @@ const writeAgentModels = async (agentDir, model, baseUrl, apiKey) => {
   await fs.writeFile(modelsPath, JSON.stringify(existing, null, 2));
 };
 
-// POST - Update 9Router settings (merge with existing settings)
+// POST - Update OpenRouterX settings (merge with existing settings)
 export async function POST(request) {
   try {
+    const { payload, response } = await requirePayload(request);
+    if (response) return response;
+    if (payload.role !== "super_admin") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     // agentModels: { [agentId]: modelId } for per-agent override
     const { baseUrl, apiKey, model, agentModels = {} } = await request.json();
     
@@ -150,11 +170,11 @@ export async function POST(request) {
     if (!settings.models.providers) settings.models.providers = {};
 
     const normalizedBaseUrl = baseUrl.endsWith("/v1") ? baseUrl : `${baseUrl}/v1`;
-    const fullModelId = `9router/${model}`;
+    const fullModelId = `${PROVIDER_KEY}/${model}`;
 
-    // Remove all old 9router/* entries from agents.defaults.models
+    // Remove all old openrouterx/* entries from agents.defaults.models
     Object.keys(settings.agents.defaults.models)
-      .filter((k) => k.startsWith("9router/"))
+      .filter((k) => MODEL_PREFIX_RE.test(k))
       .forEach((k) => { delete settings.agents.defaults.models[k]; });
 
     // Update default model
@@ -164,15 +184,15 @@ export async function POST(request) {
     const allModelIds = new Set([model]);
     Object.values(agentModels).forEach((m) => { if (m) allModelIds.add(m); });
 
-    // Add fresh 9router models to allowlist
+    // Add fresh openrouterx models to allowlist
     allModelIds.forEach((m) => {
-      settings.agents.defaults.models[`9router/${m}`] = {};
+      settings.agents.defaults.models[`${PROVIDER_KEY}/${m}`] = {};
     });
 
-    // Remove old 9router model from each agent in agents.list
+    // Remove old openrouterx model from each agent in agents.list
     if (settings.agents.list) {
       settings.agents.list = settings.agents.list.map((agent) => {
-        if (agent.model?.startsWith("9router/")) {
+        if (MODEL_PREFIX_RE.test(agent.model || "")) {
           const { model: _, ...rest } = agent;
           return rest;
         }
@@ -180,8 +200,8 @@ export async function POST(request) {
       });
     }
 
-    // Update models.providers.9router with all models
-    settings.models.providers["9router"] = {
+    // Update models.providers.openrouterx with all models
+    settings.models.providers[PROVIDER_KEY] = {
       baseUrl: normalizedBaseUrl,
       apiKey: apiKey || "your_api_key",
       api: "openai-completions",
@@ -192,7 +212,7 @@ export async function POST(request) {
     if (settings.agents.list) {
       settings.agents.list = settings.agents.list.map((agent) => {
         const agentModel = agentModels[agent.id];
-        if (agentModel) return { ...agent, model: `9router/${agentModel}` };
+        if (agentModel) return { ...agent, model: `${PROVIDER_KEY}/${agentModel}` };
         return agent;
       });
 
@@ -220,9 +240,15 @@ export async function POST(request) {
   }
 }
 
-// DELETE - Remove 9Router settings only (keep other settings)
-export async function DELETE() {
+// DELETE - Remove OpenRouterX settings only (keep other settings)
+export async function DELETE(request) {
   try {
+    const { payload, response } = await requirePayload(request);
+    if (response) return response;
+    if (payload.role !== "super_admin") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     const settingsPath = getOpenClawSettingsPath();
 
     // Read existing settings
@@ -240,19 +266,19 @@ export async function DELETE() {
       throw error;
     }
 
-    // Remove 9Router from models.providers
+    // Remove OpenRouterX from models.providers
     if (settings.models && settings.models.providers) {
-      delete settings.models.providers["9router"];
-      
+      delete settings.models.providers[PROVIDER_KEY];
+        
       // Remove providers object if empty
       if (Object.keys(settings.models.providers).length === 0) {
         delete settings.models.providers;
       }
     }
 
-    // Remove 9router models from agents.defaults.models allowlist
+    // Remove openrouterx models from agents.defaults.models allowlist
     if (settings.agents?.defaults?.models) {
-      const keysToRemove = Object.keys(settings.agents.defaults.models).filter((k) => k.startsWith("9router/"));
+      const keysToRemove = Object.keys(settings.agents.defaults.models).filter((k) => MODEL_PREFIX_RE.test(k));
       for (const key of keysToRemove) {
         delete settings.agents.defaults.models[key];
       }
@@ -261,8 +287,8 @@ export async function DELETE() {
       }
     }
 
-    // Reset agents.defaults.model.primary if it uses 9router
-    if (settings.agents?.defaults?.model?.primary?.startsWith("9router/")) {
+    // Reset agents.defaults.model.primary if it uses openrouterx
+    if (MODEL_PREFIX_RE.test(settings.agents?.defaults?.model?.primary || "")) {
       delete settings.agents.defaults.model.primary;
     }
 
@@ -271,7 +297,7 @@ export async function DELETE() {
 
     return NextResponse.json({
       success: true,
-      message: "9Router settings removed successfully",
+      message: "OpenRouterX settings removed successfully",
     });
   } catch (error) {
     console.log("Error resetting openclaw settings:", error);

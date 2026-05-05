@@ -18,8 +18,9 @@ export default function ClaudeToolCard({
   apiKeys,
   cloudEnabled,
   initialStatus,
+  manualOnly = false,
 }) {
-  const [claudeStatus, setClaudeStatus] = useState(initialStatus || null);
+  const [claudeStatus, setClaudeStatus] = useState(null);
   const [checkingClaude, setCheckingClaude] = useState(false);
   const [applying, setApplying] = useState(false);
   const [restoring, setRestoring] = useState(false);
@@ -34,9 +35,18 @@ export default function ClaudeToolCard({
   const [ccFilterNaming, setCcFilterNaming] = useState(false);
   const hasInitializedModels = useRef(false);
 
+  const effectiveStatus = claudeStatus || initialStatus || null;
+  const tokenFromFile = effectiveStatus?.settings?.env?.ANTHROPIC_AUTH_TOKEN || "";
+  const tokenFromFileInList = tokenFromFile && apiKeys?.some((k) => k.key === tokenFromFile);
+  const effectiveSelectedApiKey =
+    selectedApiKey ||
+    (tokenFromFileInList ? tokenFromFile : "") ||
+    apiKeys?.[0]?.key ||
+    "";
+
   const getConfigStatus = () => {
-    if (!claudeStatus?.installed) return null;
-    const currentUrl = claudeStatus.settings?.env?.ANTHROPIC_BASE_URL;
+    if (!effectiveStatus?.installed) return null;
+    const currentUrl = effectiveStatus.settings?.env?.ANTHROPIC_BASE_URL;
     if (!currentUrl) return "not_configured";
     const localMatch = currentUrl.includes("localhost") || currentUrl.includes("127.0.0.1");
     const cloudMatch = cloudEnabled && CLOUD_URL && currentUrl.startsWith(CLOUD_URL);
@@ -48,22 +58,19 @@ export default function ClaudeToolCard({
   const configStatus = getConfigStatus();
 
   useEffect(() => {
-    if (apiKeys?.length > 0 && !selectedApiKey) {
-      setSelectedApiKey(apiKeys[0].key);
+    if (!isExpanded) return;
+    // Fetch status lazily on expand without synchronously setting state in the effect body.
+    if (!effectiveStatus) {
+      fetch("/api/cli-tools/claude-settings")
+        .then((res) => res.json())
+        .then((data) => setClaudeStatus(data))
+        .catch((error) => setClaudeStatus({ installed: false, error: error.message }));
     }
-  }, [apiKeys, selectedApiKey]);
-
-  useEffect(() => {
-    if (initialStatus) setClaudeStatus(initialStatus);
-  }, [initialStatus]);
-
-  useEffect(() => {
-    if (isExpanded && !claudeStatus) {
-      checkClaudeStatus();
-      fetchModelAliases();
-    }
-    if (isExpanded) fetchModelAliases();
-  }, [isExpanded]);
+    fetch("/api/models/alias")
+      .then((res) => res.json())
+      .then((data) => setModelAliases(data.aliases || {}))
+      .catch((error) => console.log("Error fetching model aliases:", error));
+  }, [isExpanded, effectiveStatus]);
 
   useEffect(() => {
     fetch("/api/settings").then(r => r.json()).then(data => {
@@ -81,20 +88,10 @@ export default function ClaudeToolCard({
     }).catch(() => {});
   };
 
-  const fetchModelAliases = async () => {
-    try {
-      const res = await fetch("/api/models/alias");
-      const data = await res.json();
-      if (res.ok) setModelAliases(data.aliases || {});
-    } catch (error) {
-      console.log("Error fetching model aliases:", error);
-    }
-  };
-
   useEffect(() => {
-    if (claudeStatus?.installed && !hasInitializedModels.current) {
+    if (effectiveStatus?.installed && !hasInitializedModels.current) {
       hasInitializedModels.current = true;
-      const env = claudeStatus.settings?.env || {};
+      const env = effectiveStatus.settings?.env || {};
       
       tool.defaultModels.forEach((model) => {
         if (model.envKey) {
@@ -105,26 +102,8 @@ export default function ClaudeToolCard({
           }
         }
       });
-      // Only set selectedApiKey if it exists in apiKeys list
-      const tokenFromFile = env.ANTHROPIC_AUTH_TOKEN;
-      if (tokenFromFile && apiKeys?.some(k => k.key === tokenFromFile)) {
-        setSelectedApiKey(tokenFromFile);
-      }
     }
-  }, [claudeStatus, apiKeys, tool.defaultModels, onModelMappingChange]);
-
-  const checkClaudeStatus = async () => {
-    setCheckingClaude(true);
-    try {
-      const res = await fetch("/api/cli-tools/claude-settings");
-      const data = await res.json();
-      setClaudeStatus(data);
-    } catch (error) {
-      setClaudeStatus({ installed: false, error: error.message });
-    } finally {
-      setCheckingClaude(false);
-    }
-  };
+  }, [effectiveStatus, tool.defaultModels, onModelMappingChange]);
 
   const getEffectiveBaseUrl = () => {
     const url = customBaseUrl || baseUrl;
@@ -142,10 +121,10 @@ export default function ClaudeToolCard({
     try {
       const env = { ANTHROPIC_BASE_URL: getEffectiveBaseUrl() };
       
-      // Get key from dropdown, fallback to first key or sk_9router for localhost
-      const keyToUse = selectedApiKey?.trim() 
+      // Get key from dropdown, fallback to first key or sk_openrouterx for localhost
+      const keyToUse = effectiveSelectedApiKey?.trim()
         || (apiKeys?.length > 0 ? apiKeys[0].key : null)
-        || (!cloudEnabled ? "sk_9router" : null);
+        || (!cloudEnabled ? "sk_openrouterx" : null);
       
       if (keyToUse) {
         env.ANTHROPIC_AUTH_TOKEN = keyToUse;
@@ -205,9 +184,9 @@ export default function ClaudeToolCard({
 
   // Generate settings.json content for manual copy
   const getManualConfigs = () => {
-    const keyToUse = (selectedApiKey && selectedApiKey.trim()) 
-      ? selectedApiKey 
-      : (!cloudEnabled ? "sk_9router" : "<API_KEY_FROM_DASHBOARD>");
+    const keyToUse = (effectiveSelectedApiKey && effectiveSelectedApiKey.trim()) 
+      ? effectiveSelectedApiKey 
+      : (!cloudEnabled ? "sk_openrouterx" : "<API_KEY_FROM_DASHBOARD>");
     const env = { ANTHROPIC_BASE_URL: getEffectiveBaseUrl(), ANTHROPIC_AUTH_TOKEN: keyToUse };
     tool.defaultModels.forEach((model) => {
       const targetModel = modelMappings[model.alias];
@@ -258,7 +237,7 @@ export default function ClaudeToolCard({
                   <span className="material-symbols-outlined text-yellow-500">warning</span>
                   <div className="flex-1">
                     <p className="font-medium text-yellow-600 dark:text-yellow-400">Claude CLI not detected locally</p>
-                    <p className="text-sm text-text-muted">Manual configuration is still available if 9router is deployed on a remote server.</p>
+                    <p className="text-sm text-text-muted">Manual configuration is still available if OpenRouterX is deployed on a remote server.</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2 pl-9">
@@ -266,13 +245,17 @@ export default function ClaudeToolCard({
                     <span className="material-symbols-outlined text-[18px] mr-1">content_copy</span>
                     Manual Config
                   </Button>
-                  <Button variant="outline" size="sm" onClick={() => setShowInstallGuide(!showInstallGuide)}>
+                  {!manualOnly && (
+
+                    <Button variant="outline" size="sm" onClick={() => setShowInstallGuide(!showInstallGuide)}>
                     <span className="material-symbols-outlined text-[18px] mr-1">{showInstallGuide ? "expand_less" : "help"}</span>
                     {showInstallGuide ? "Hide" : "How to Install"}
                   </Button>
+
+                  )}
                 </div>
               </div>
-              {showInstallGuide && (
+              {!manualOnly && showInstallGuide && (
                 <div className="p-4 bg-surface border border-border rounded-lg">
                   <h4 className="font-medium mb-3">Installation Guide</h4>
                   <div className="space-y-3 text-sm">
@@ -287,16 +270,16 @@ export default function ClaudeToolCard({
             </div>
           )}
 
-          {!checkingClaude && claudeStatus?.installed && (
+          {!checkingClaude && effectiveStatus?.installed && (
             <>
               <div className="flex flex-col gap-2">
                 {/* Current Base URL */}
-                {claudeStatus?.settings?.env?.ANTHROPIC_BASE_URL && (
+                {effectiveStatus?.settings?.env?.ANTHROPIC_BASE_URL && (
                   <div className="flex items-center gap-2">
                     <span className="w-32 shrink-0 text-sm font-semibold text-text-main text-right">Current</span>
                     <span className="material-symbols-outlined text-text-muted text-[14px]">arrow_forward</span>
                     <span className="flex-1 px-2 py-1.5 text-xs text-text-muted truncate">
-                      {claudeStatus.settings.env.ANTHROPIC_BASE_URL}
+                      {effectiveStatus.settings.env.ANTHROPIC_BASE_URL}
                     </span>
                   </div>
                 )}
@@ -312,7 +295,7 @@ export default function ClaudeToolCard({
                     placeholder="https://.../v1" 
                     className="flex-1 px-2 py-1.5 bg-surface rounded border border-border text-xs focus:outline-none focus:ring-1 focus:ring-primary/50" 
                   />
-                  {customBaseUrl && customBaseUrl !== baseUrl && (
+                  {!manualOnly && customBaseUrl && customBaseUrl !== baseUrl && (
                     <button onClick={() => setCustomBaseUrl("")} className="p-1 text-text-muted hover:text-primary rounded transition-colors" title="Reset to default">
                       <span className="material-symbols-outlined text-[14px]">restart_alt</span>
                     </button>
@@ -324,12 +307,12 @@ export default function ClaudeToolCard({
                   <span className="w-32 shrink-0 text-sm font-semibold text-text-main text-right">API Key</span>
                   <span className="material-symbols-outlined text-text-muted text-[14px]">arrow_forward</span>
                   {apiKeys.length > 0 ? (
-                    <select value={selectedApiKey} onChange={(e) => setSelectedApiKey(e.target.value)} className="flex-1 px-2 py-1.5 bg-surface rounded text-xs border border-border focus:outline-none focus:ring-1 focus:ring-primary/50">
+                    <select value={effectiveSelectedApiKey} onChange={(e) => setSelectedApiKey(e.target.value)} className="flex-1 px-2 py-1.5 bg-surface rounded text-xs border border-border focus:outline-none focus:ring-1 focus:ring-primary/50">
                       {apiKeys.map((key) => <option key={key.id} value={key.key}>{key.key}</option>)}
                     </select>
                   ) : (
                     <span className="flex-1 text-xs text-text-muted px-2 py-1.5">
-                      {cloudEnabled ? "No API keys - Create one in Keys page" : "sk_9router (default)"}
+                      {cloudEnabled ? "No API keys - Create one in Keys page" : "sk_openrouterx (default)"}
                     </span>
                   )}
                 </div>
@@ -341,7 +324,7 @@ export default function ClaudeToolCard({
                     <span className="material-symbols-outlined text-text-muted text-[14px]">arrow_forward</span>
                     <input type="text" value={modelMappings[model.alias] || ""} onChange={(e) => onModelMappingChange(model.alias, e.target.value)} placeholder="provider/model-id" className="flex-1 px-2 py-1.5 bg-surface rounded border border-border text-xs focus:outline-none focus:ring-1 focus:ring-primary/50" />
                     <button onClick={() => openModelSelector(model.alias)} disabled={!hasActiveProviders} className={`px-2 py-1.5 rounded border text-xs transition-colors shrink-0 whitespace-nowrap ${hasActiveProviders ? "bg-surface border-border text-text-main hover:border-primary cursor-pointer" : "opacity-50 cursor-not-allowed border-border"}`}>Select Model</button>
-                    {modelMappings[model.alias] && <button onClick={() => onModelMappingChange(model.alias, "")} className="p-1 text-text-muted hover:text-red-500 rounded transition-colors" title="Clear"><span className="material-symbols-outlined text-[14px]">close</span></button>}
+                    {!manualOnly && modelMappings[model.alias] && <button onClick={() => onModelMappingChange(model.alias, "")} className="p-1 text-text-muted hover:text-red-500 rounded transition-colors" title="Clear"><span className="material-symbols-outlined text-[14px]">close</span></button>}
                   </div>
                 ))}
 
@@ -367,12 +350,16 @@ export default function ClaudeToolCard({
               )}
 
               <div className="flex items-center gap-2">
-                <Button variant="primary" size="sm" onClick={handleApplySettings} disabled={!hasActiveProviders} loading={applying}>
-                  <span className="material-symbols-outlined text-[14px] mr-1">save</span>Apply
-                </Button>
-                <Button variant="outline" size="sm" onClick={handleResetSettings} disabled={!claudeStatus?.has9Router} loading={restoring}>
-                  <span className="material-symbols-outlined text-[14px] mr-1">restore</span>Reset
-                </Button>
+                {!manualOnly && (
+                  <>
+                    <Button variant="primary" size="sm" onClick={handleApplySettings} disabled={!hasActiveProviders} loading={applying}>
+                      <span className="material-symbols-outlined text-[14px] mr-1">save</span>Apply
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={handleResetSettings} disabled={!effectiveStatus?.hasOpenRouterX} loading={restoring}>
+                      <span className="material-symbols-outlined text-[14px] mr-1">restore</span>Reset
+                    </Button>
+                  </>
+                )}
                 <Button variant="ghost" size="sm" onClick={() => setShowManualConfigModal(true)}>
                   <span className="material-symbols-outlined text-[14px] mr-1">content_copy</span>Manual Config
                 </Button>
@@ -393,4 +380,3 @@ export default function ClaudeToolCard({
     </Card>
   );
 }
-

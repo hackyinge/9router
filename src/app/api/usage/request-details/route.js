@@ -1,16 +1,34 @@
 import { NextResponse } from "next/server";
+import { jwtVerify } from "jose";
 import { getRequestDetails } from "@/lib/usageDb";
 
 /**
  * GET /api/usage/request-details
- * Query parameters: page, pageSize (1-100), provider, model, connectionId, status, startDate, endDate
+ * Query parameters: page, pageSize (1-100), apiKeyId, apiKeyName, provider, model, connectionId, status, startDate, endDate
  */
+const SECRET = new TextEncoder().encode(
+  process.env.JWT_SECRET || "9router-default-secret-change-me"
+);
+
+async function getSubUserId(request) {
+  const token = request.cookies.get("auth_token")?.value;
+  if (!token) return null;
+  try {
+    const { payload } = await jwtVerify(token, SECRET);
+    return payload.role === "sub_user" ? payload.userId : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
     
     const page = parseInt(searchParams.get("page")) || 1;
     const pageSize = parseInt(searchParams.get("pageSize")) || 20;
+    const apiKeyId = searchParams.get("apiKeyId");
+    const apiKeyName = searchParams.get("apiKeyName");
     const provider = searchParams.get("provider");
     const model = searchParams.get("model");
     const connectionId = searchParams.get("connectionId");
@@ -36,7 +54,12 @@ export async function GET(request) {
       page,
       pageSize
     };
+
+    const userId = await getSubUserId(request);
+    if (userId) filter.userId = userId;
     
+    if (apiKeyId) filter.apiKeyId = apiKeyId;
+    if (apiKeyName) filter.apiKeyName = apiKeyName;
     if (provider) filter.provider = provider;
     if (model) filter.model = model;
     if (connectionId) filter.connectionId = connectionId;

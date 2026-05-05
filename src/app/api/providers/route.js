@@ -8,6 +8,7 @@ import {
 } from "@/models";
 import { APIKEY_PROVIDERS } from "@/shared/constants/config";
 import { FREE_TIER_PROVIDERS, WEB_COOKIE_PROVIDERS, isOpenAICompatibleProvider, isAnthropicCompatibleProvider, isCustomEmbeddingProvider } from "@/shared/constants/providers";
+import { resolveSubUserAccessContext, filterConnectionsForSubUser } from "@/lib/subUserAccess";
 
 export const dynamic = "force-dynamic";
 
@@ -46,9 +47,10 @@ async function normalizeProxyPoolId(proxyPoolId) {
 }
 
 // GET /api/providers - List all connections
-export async function GET() {
+export async function GET(request) {
   try {
     const connections = await getProviderConnections();
+    const subUserContext = await resolveSubUserAccessContext(request);
 
     // Build nodeNameMap for compatible providers (id → name)
     let nodeNameMap = {};
@@ -60,7 +62,7 @@ export async function GET() {
     } catch { }
 
     // Hide sensitive fields, enrich name for compatible providers
-    const safeConnections = connections.map(c => {
+    const safeConnections = filterConnectionsForSubUser(connections, subUserContext).map(c => {
       const isCompatible = isOpenAICompatibleProvider(c.provider) || isAnthropicCompatibleProvider(c.provider);
       const name = isCompatible
         ? (nodeNameMap[c.provider] || c.providerSpecificData?.nodeName || c.provider)

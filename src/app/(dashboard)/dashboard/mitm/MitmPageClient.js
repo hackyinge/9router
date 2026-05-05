@@ -15,6 +15,11 @@ export default function MitmPageClient() {
   const [mitmStatus, setMitmStatus] = useState({ running: false, certExists: false, dnsStatus: {}, hasCachedPassword: false });
 
   useEffect(() => {
+    // Guard: redirect sub_user to usage dashboard
+    fetch("/api/auth/me")
+      .then(r => r.json())
+      .then(data => { if (data.role === "sub_user") window.location.href = "/dashboard/usage"; })
+      .catch(() => {});
     fetchConnections();
     fetchApiKeys();
     fetchAliases();

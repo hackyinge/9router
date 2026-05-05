@@ -99,24 +99,24 @@ export default function RequestDetailsTab() {
   const [loading, setLoading] = useState(false);
   const [selectedDetail, setSelectedDetail] = useState(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-  const [providers, setProviders] = useState([]);
+  const [apiKeys, setApiKeys] = useState([]);
   const [providerNameCache, setProviderNameCache] = useState(null);
   const [filters, setFilters] = useState({
-    provider: "",
+    apiKeyId: "",
     startDate: "",
     endDate: ""
   });
 
-  const fetchProviders = useCallback(async () => {
+  const fetchApiKeys = useCallback(async () => {
     try {
-      const res = await fetch("/api/usage/providers");
+      const res = await fetch("/api/usage/api-keys");
       const data = await res.json();
-      setProviders(data.providers || []);
+      setApiKeys(data.apiKeys || []);
 
       const cache = await fetchProviderNames();
       setProviderNameCache(cache.providerNameCache);
     } catch (error) {
-      console.error("Failed to fetch providers:", error);
+      console.error("Failed to fetch api keys:", error);
     }
   }, []);
 
@@ -127,7 +127,7 @@ export default function RequestDetailsTab() {
         page: pagination.page.toString(),
         pageSize: pagination.pageSize.toString()
       });
-      if (filters.provider) params.append("provider", filters.provider);
+      if (filters.apiKeyId) params.append("apiKeyId", filters.apiKeyId);
       if (filters.startDate) params.append("startDate", filters.startDate);
       if (filters.endDate) params.append("endDate", filters.endDate);
 
@@ -144,8 +144,8 @@ export default function RequestDetailsTab() {
   }, [pagination.page, pagination.pageSize, filters]);
 
   useEffect(() => {
-    fetchProviders();
-  }, [fetchProviders]);
+    fetchApiKeys();
+  }, [fetchApiKeys]);
 
   useEffect(() => {
     fetchDetails();
@@ -165,7 +165,7 @@ export default function RequestDetailsTab() {
   };
 
   const handleClearFilters = () => {
-    setFilters({ provider: "", startDate: "", endDate: "" });
+    setFilters({ apiKeyId: "", startDate: "", endDate: "" });
   };
 
   return (
@@ -173,21 +173,21 @@ export default function RequestDetailsTab() {
       <Card padding="md">
         <div className="flex flex-wrap gap-4">
           <div className="flex flex-col gap-2">
-            <label htmlFor="provider-filter" className="text-sm font-medium text-text-main">Provider</label>
+            <label htmlFor="apikey-filter" className="text-sm font-medium text-text-main">API Key</label>
             <select
-              id="provider-filter"
-              value={filters.provider}
-              onChange={(e) => setFilters({ ...filters, provider: e.target.value })}
+              id="apikey-filter"
+              value={filters.apiKeyId}
+              onChange={(e) => setFilters({ ...filters, apiKeyId: e.target.value })}
               className={cn(
                 "h-9 px-3 rounded-lg border border-black/10 dark:border-white/10 bg-surface",
                 "text-sm text-text-main focus:outline-none focus:ring-2 focus:ring-primary/20",
                 "cursor-pointer min-w-[150px]"
               )}
             >
-              <option value="">All Providers</option>
-              {providers.map((provider) => (
-                <option key={provider.id} value={provider.id}>
-                  {provider.name}
+              <option value="">All Keys</option>
+              {apiKeys.map((k) => (
+                <option key={k.id} value={k.id}>
+                  {k.name}
                 </option>
               ))}
             </select>
@@ -226,7 +226,7 @@ export default function RequestDetailsTab() {
             <Button 
               variant="ghost" 
               onClick={handleClearFilters}
-              disabled={!filters.provider && !filters.startDate && !filters.endDate}
+              disabled={!filters.apiKeyId && !filters.startDate && !filters.endDate}
             >
               Clear Filters
             </Button>

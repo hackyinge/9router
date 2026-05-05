@@ -6,6 +6,42 @@ let translationMap = {};
 let currentLocale = DEFAULT_LOCALE;
 let reloadCallbacks = [];
 
+const PROTECTED_TERMS = new Set([
+  "API Key Name",
+  "Usage by API Key",
+  "Usage by Model",
+  "Usage by Account",
+  "Usage by Endpoint",
+  "Model",
+  "Provider",
+  "Requests",
+  "Last Used",
+  "Total Requests",
+  "Total Input Tokens",
+  "Est. Cost",
+  "Input Cost",
+  "Output Cost",
+  "Total Cost",
+  "Input",
+  "Output",
+  "Total",
+  "Input Tokens",
+  "Output Tokens",
+  "Total Tokens",
+  "Account",
+  "Endpoint",
+  "Tokens",
+  "Costs",
+]);
+
+function normalizeLiteralKey(text) {
+  return String(text || "").replace(/\s+/g, " ").trim();
+}
+
+function isProtectedTerm(text) {
+  return PROTECTED_TERMS.has(normalizeLiteralKey(text));
+}
+
 // Read locale from cookie
 function getLocaleFromCookie() {
   if (typeof document === "undefined") return DEFAULT_LOCALE;
@@ -35,9 +71,10 @@ async function loadTranslations(locale) {
 // Translate text - exported for use in components
 export function translate(text) {
   if (!text || typeof text !== "string") return text;
-  const trimmed = text.trim();
+  const trimmed = normalizeLiteralKey(text);
   if (!trimmed) return text;
   if (currentLocale === "en") return text;
+  if (isProtectedTerm(trimmed)) return text;
   return translationMap[trimmed] || text;
 }
 

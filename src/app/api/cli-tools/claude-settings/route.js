@@ -6,8 +6,17 @@ import { promisify } from "util";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
+import { getAuthPayload } from "@/dashboardGuard";
 
 const execAsync = promisify(exec);
+
+async function requirePayload(request) {
+  const payload = await getAuthPayload(request);
+  if (!payload) {
+    return { payload: null, response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
+  }
+  return { payload, response: null };
+}
 
 // Get claude settings path based on OS
 const getClaudeSettingsPath = () => {
@@ -51,8 +60,11 @@ const readSettings = async () => {
 };
 
 // GET - Check claude CLI and read current settings
-export async function GET() {
+export async function GET(request) {
   try {
+    const { response } = await requirePayload(request);
+    if (response) return response;
+
     const isInstalled = await checkClaudeInstalled();
     
     if (!isInstalled) {
@@ -64,12 +76,12 @@ export async function GET() {
     }
 
     const settings = await readSettings();
-    const has9Router = !!(settings?.env?.ANTHROPIC_BASE_URL);
+    const hasOpenRouterX = !!(settings?.env?.ANTHROPIC_BASE_URL);
 
     return NextResponse.json({
       installed: true,
       settings: settings,
-      has9Router: has9Router,
+      hasOpenRouterX: hasOpenRouterX,
       settingsPath: getClaudeSettingsPath(),
     });
   } catch (error) {
@@ -84,6 +96,12 @@ export async function GET() {
 // POST - Backup old fields and write new settings
 export async function POST(request) {
   try {
+    const { payload, response } = await requirePayload(request);
+    if (response) return response;
+    if (payload.role !== "super_admin") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     const { env } = await request.json();
     
     if (!env || typeof env !== "object") {
@@ -154,8 +172,14 @@ const RESET_ENV_KEYS = [
 ];
 
 // DELETE - Reset settings (remove env fields)
-export async function DELETE() {
+export async function DELETE(request) {
   try {
+    const { payload, response } = await requirePayload(request);
+    if (response) return response;
+    if (payload.role !== "super_admin") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     const settingsPath = getClaudeSettingsPath();
 
     // Read current settings
@@ -200,4 +224,3 @@ export async function DELETE() {
     );
   }
 }
-

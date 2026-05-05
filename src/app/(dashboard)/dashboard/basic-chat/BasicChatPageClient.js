@@ -189,6 +189,11 @@ export default function BasicChatPageClient() {
   const historyMenuRef = useRef(null);
 
   useEffect(() => {
+    // Guard: redirect sub_user to usage dashboard
+    fetch("/api/auth/me")
+      .then(r => r.json())
+      .then(data => { if (data.role === "sub_user") window.location.href = "/dashboard/usage"; })
+      .catch(() => {});
     try {
       const savedSessions = safeParse(globalThis.localStorage.getItem(STORAGE_KEYS.sessions), []);
       setSessions(Array.isArray(savedSessions) ? savedSessions.map((session) => ({

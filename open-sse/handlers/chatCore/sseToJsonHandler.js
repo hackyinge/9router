@@ -131,7 +131,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, pr
         tokens: { prompt_tokens: usage.input_tokens || 0, completion_tokens: usage.output_tokens || 0 },
         response: { content: textContent, thinking: null, finish_reason: jsonResponse.status || "unknown" },
         status: "success"
-      }, { endpoint: clientRawRequest?.endpoint || null })).catch(() => {});
+      }, { endpoint: clientRawRequest?.endpoint || null, apiKey })).catch(() => {});
 
       // Client is Responses API → return as-is
       if (sourceFormat === FORMATS.OPENAI_RESPONSES) {
@@ -208,7 +208,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, pr
         finish_reason: parsed.choices?.[0]?.finish_reason || "unknown"
       },
       status: "success"
-    }, { endpoint: clientRawRequest?.endpoint || null })).catch(() => {});
+    }, { endpoint: clientRawRequest?.endpoint || null, apiKey })).catch(() => {});
 
     // Strip reasoning_content only when content is non-empty.
     // When content is empty (e.g. thinking models that used all tokens for reasoning),

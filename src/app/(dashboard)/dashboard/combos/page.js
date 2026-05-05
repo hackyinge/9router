@@ -18,6 +18,11 @@ export default function CombosPage() {
   const { copied, copy } = useCopyToClipboard();
 
   useEffect(() => {
+    // Guard: redirect sub_user to usage dashboard
+    fetch("/api/auth/me")
+      .then(r => r.json())
+      .then(data => { if (data.role === "sub_user") window.location.href = "/dashboard/usage"; })
+      .catch(() => {});
     fetchData();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 

@@ -195,6 +195,18 @@ export default function UsageStats() {
   const [viewMode, setViewMode] = useState("costs");
   const [providers, setProviders] = useState([]);
   const [period, setPeriod] = useState("24h");
+  const [role, setRole] = useState(null);
+  const [roleLoaded, setRoleLoaded] = useState(false);
+  const isSubUser = role === "sub_user";
+  const effectiveTableView = isSubUser ? "apiKey" : tableView;
+
+  useEffect(() => {
+    fetch("/api/auth/me")
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => setRole(data?.role || null))
+      .catch(() => setRole(null))
+      .finally(() => setRoleLoaded(true));
+  }, []);
 
   // Fetch connected providers once, deduplicate by provider type
   // Always include noAuth free providers (e.g. opencode) regardless of connections
@@ -274,7 +286,7 @@ export default function UsageStats() {
   // Compute active table data
   const activeTableConfig = useMemo(() => {
     if (!stats) return null;
-    switch (tableView) {
+    switch (effectiveTableView) {
       case "model": {
         const pendingMap = stats.pending?.byModel || {};
         return {
@@ -386,7 +398,7 @@ export default function UsageStats() {
         };
       }
     }
-  }, [stats, tableView, sortBy, sortOrder]);
+  }, [stats, effectiveTableView, sortBy, sortOrder]);
 
   if (!stats && !loading) return <div className="text-text-muted">Failed to load usage statistics.</div>;
 
@@ -421,7 +433,8 @@ export default function UsageStats() {
       {loading ? spinner : <OverviewCards stats={stats} />}
 
       {/* Provider topology + Recent Requests */}
-      {loading ? spinner : (
+      {roleLoaded && !isSubUser && loading ? spinner : null}
+      {roleLoaded && !isSubUser && !loading ? (
         <div className="grid grid-cols-1 lg:grid-cols-[2fr_1fr] gap-2 items-stretch">
           <ProviderTopology
             providers={providers}
@@ -431,7 +444,7 @@ export default function UsageStats() {
           />
           <RecentRequests requests={stats.recentRequests || []} />
         </div>
-      )}
+      ) : null}
 
       {/* Token / Cost chart - sync period */}
       {loading ? spinner : <UsageChart period={period} />}
@@ -439,15 +452,23 @@ export default function UsageStats() {
       {/* Table with dropdown selector */}
       <div className="flex flex-col gap-3">
         <div className="flex items-center justify-between">
-          <select
-            value={tableView}
-            onChange={(e) => setTableView(e.target.value)}
-            className="px-3 py-1.5 rounded-lg border border-border bg-bg-subtle text-sm font-medium text-text focus:outline-none focus:ring-2 focus:ring-primary/50"
-          >
-            {TABLE_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
-            ))}
-          </select>
+          {roleLoaded ? (isSubUser ? (
+            <div className="px-3 py-1.5 rounded-lg border border-border bg-bg-subtle text-sm font-medium text-text">
+              Usage by API Key
+            </div>
+          ) : (
+            <select
+              value={tableView}
+              onChange={(e) => setTableView(e.target.value)}
+              className="px-3 py-1.5 rounded-lg border border-border bg-bg-subtle text-sm font-medium text-text focus:outline-none focus:ring-2 focus:ring-primary/50"
+            >
+              {TABLE_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          )) : (
+            <div className="h-[38px]" />
+          )}
           <div className="flex items-center gap-1 bg-bg-subtle rounded-lg p-1 border border-border">
             <button
               onClick={() => setViewMode("costs")}
@@ -468,7 +489,7 @@ export default function UsageStats() {
             title=""
             columns={activeTableConfig.columns}
             groupedData={activeTableConfig.groupedData}
-            tableType={tableView}
+            tableType={effectiveTableView}
             sortBy={sortBy}
             sortOrder={sortOrder}
             onToggleSort={toggleSort}
