@@ -12,8 +12,14 @@ const { getCertForDomain } = require("./cert/generate");
 const DB_FILE = path.join(DATA_DIR, "db.json");
 const LOCAL_PORT = 443;
 const IS_WIN = process.platform === "win32";
-const ENABLE_FILE_LOG = false;
+const ENABLE_FILE_LOG = true;
 const INTERNAL_REQUEST_HEADER = { name: "x-request-source", value: "local" };
+
+// Host rewrite for upstream forward: PROD cloudcode-pa is rate-limited (429),
+// daily-cloudcode-pa (dev endpoint) accepts same body+token. Same trick as open-sse.
+const HOST_REWRITE = {
+  "cloudcode-pa.googleapis.com": "daily-cloudcode-pa.googleapis.com",
+};
 
 // Load handlers — dev/ overrides handlers/ for private implementations
 function loadHandler(name) {
@@ -44,7 +50,6 @@ function sniCallback(servername, cb) {
       cert: `${certData.cert}\n${rootCAPem}`
     });
     certCache.set(servername, ctx);
-    log(`🔐 Cert generated: ${servername}`);
     cb(null, ctx);
   } catch (e) {
     err(`SNI error for ${servername}: ${e.message}`);
@@ -124,7 +129,8 @@ function getMappedModel(tool, model) {
  * Also tees full stream into a dump file when ENABLE_FILE_LOG is on.
  */
 async function passthrough(req, res, bodyBuffer, onResponse) {
-  const targetHost = (req.headers.host || TARGET_HOSTS[0]).split(":")[0];
+  const originalHost = (req.headers.host || TARGET_HOSTS[0]).split(":")[0];
+  const targetHost = HOST_REWRITE[originalHost] || originalHost;
   const targetIP = await resolveTargetIP(targetHost);
   const dumper = ENABLE_FILE_LOG ? createResponseDumper(req, "passthrough") : null;
 
@@ -195,18 +201,13 @@ const server = https.createServer(sslOptions, async (req, res) => {
     const isChat = patterns.some(p => req.url.includes(p));
     if (!isChat) return passthrough(req, res, bodyBuffer);
 
-    log(`🔍 [${tool}] url=${req.url} | bodyLen=${bodyBuffer.length}`);
-
     // Cursor uses binary proto — model extraction not possible at this layer.
     // Delegate directly to handler which decodes proto internally.
     if (tool === "cursor") {
-      log(`⚡ intercept | cursor | proto`);
       return handlers[tool].intercept(req, res, bodyBuffer, null, passthrough);
     }
 
     const model = extractModel(req.url, bodyBuffer);
-    log(`🔍 [${tool}] model="${model}"`);
-
     const mappedModel = getMappedModel(tool, model);
     const db = fs.existsSync(DB_FILE) ? JSON.parse(fs.readFileSync(DB_FILE, "utf-8")) : {};
     const aliasMappings = db.mitmAlias?.[tool] || {};

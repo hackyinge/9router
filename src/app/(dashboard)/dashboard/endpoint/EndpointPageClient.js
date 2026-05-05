@@ -14,6 +14,13 @@ const TUNNEL_BENEFITS = [
 
 const TUNNEL_PING_INTERVAL_MS = 2000;
 const TUNNEL_PING_MAX_MS = 300000;
+const STATUS_POLL_INTERVAL_MS = 5000;
+
+const CAVEMAN_LEVELS = [
+  { id: "lite", label: "Lite", desc: "Drop filler, keep grammar" },
+  { id: "full", label: "Full", desc: "Drop articles, fragments OK" },
+  { id: "ultra", label: "Ultra", desc: "Telegraphic, max compression" },
+];
 export default function APIPageClient({ machineId }) {
   const [keys, setKeys] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -26,6 +33,8 @@ export default function APIPageClient({ machineId }) {
   const [hasPassword, setHasPassword] = useState(true);
   const [tunnelDashboardAccess, setTunnelDashboardAccess] = useState(false);
   const [rtkEnabled, setRtkEnabledState] = useState(true);
+  const [cavemanEnabled, setCavemanEnabled] = useState(false);
+  const [cavemanLevel, setCavemanLevel] = useState("full");
 
   // Cloudflare Tunnel state
   const [tunnelChecking, setTunnelChecking] = useState(true);
@@ -71,14 +80,42 @@ export default function APIPageClient({ machineId }) {
       .catch(() => {});
     fetchData();
     loadSettings();
+    // Poll status periodically + on tab visible to sync after watchdog restarts
+    const interval = setInterval(() => { syncTunnelStatus(); }, STATUS_POLL_INTERVAL_MS);
+    const onVisible = () => { if (!document.hidden) syncTunnelStatus(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, []);
+
+  // Trust user intent (settingsEnabled): UI stays "enabled" while watchdog restarts process
+  const syncTunnelStatus = async () => {
+    try {
+      const statusRes = await fetch("/api/tunnel/status", { cache: "no-store" });
+      if (!statusRes.ok) return;
+      const data = await statusRes.json();
+      const tEnabled = data.tunnel?.settingsEnabled ?? data.tunnel?.enabled ?? false;
+      const tUrl = data.tunnel?.tunnelUrl || "";
+      const tPublicUrl = data.tunnel?.publicUrl || "";
+      setTunnelUrl(tUrl);
+      setTunnelPublicUrl(tPublicUrl);
+      setTunnelEnabled(tEnabled);
+
+      const tsEn = data.tailscale?.settingsEnabled ?? data.tailscale?.enabled ?? false;
+      const tsUrlVal = data.tailscale?.tunnelUrl || "";
+      setTsUrl(tsUrlVal);
+      setTsEnabled(tsEn);
+    } catch { /* ignore poll errors */ }
+  };
 
   const loadSettings = async () => {
     setTunnelChecking(true);
     try {
       const [settingsRes, statusRes] = await Promise.all([
         fetch("/api/settings"),
-        fetch("/api/tunnel/status")
+        fetch("/api/tunnel/status", { cache: "no-store" })
       ]);
       if (settingsRes.ok) {
         const data = await settingsRes.json();
@@ -87,58 +124,35 @@ export default function APIPageClient({ machineId }) {
         setHasPassword(data.hasPassword || false);
         setTunnelDashboardAccess(data.tunnelDashboardAccess || false);
         setRtkEnabledState(data.rtkEnabled !== false);
+        setCavemanEnabled(!!data.cavemanEnabled);
+        setCavemanLevel(data.cavemanLevel || "full");
       }
       if (statusRes.ok) {
         const data = await statusRes.json();
-        const tEnabled = data.tunnel?.enabled || false;
+        const tEnabled = data.tunnel?.settingsEnabled ?? data.tunnel?.enabled ?? false;
         const tUrl = data.tunnel?.tunnelUrl || "";
         const tPublicUrl = data.tunnel?.publicUrl || "";
         setTunnelUrl(tUrl);
         setTunnelPublicUrl(tPublicUrl);
-        const tsEn = data.tailscale?.enabled || false;
+        // Trust user intent: stays enabled while watchdog restores process
+        setTunnelEnabled(tEnabled);
+
+        const tsEn = data.tailscale?.settingsEnabled ?? data.tailscale?.enabled ?? false;
         const tsUrlVal = data.tailscale?.tunnelUrl || "";
         setTsUrl(tsUrlVal);
+        setTsEnabled(tsEn);
 
-        if (tsEn && tsUrlVal) {
-          setTsLoading(true);
-          setTsProgress("Checking Tailscale...");
-          const tsHealthUrl = `${tsUrlVal}/api/health`;
-          try {
-            const tsPing = await fetch(tsHealthUrl, { mode: "no-cors", cache: "no-store" });
-            if (tsPing.ok || tsPing.type === "opaque") {
-              setTsEnabled(true);
-            } else {
-              const ok = await pingTsHealth(tsUrlVal);
-              setTsEnabled(ok);
-              if (!ok) setTsStatus({ type: "warning", message: "Tailscale not reachable." });
-            }
-          } catch {
-            const ok = await pingTsHealth(tsUrlVal);
-            setTsEnabled(ok);
-            if (!ok) setTsStatus({ type: "warning", message: "Tailscale not reachable." });
-          } finally {
-            setTsLoading(false);
-            setTsProgress("");
-          }
-        } else {
-          setTsEnabled(tsEn);
-        }
-
+        // Background reachability probes (non-blocking, only show warning)
         if (tEnabled && (tPublicUrl || tUrl)) {
-          // Ping once to verify reachable
           const healthUrl = `${tPublicUrl || tUrl}/api/health`;
-          try {
-            const ping = await fetch(healthUrl, { cache: "no-store" });
-            if (ping.ok) {
-              setTunnelEnabled(true);
-            } else {
-              pingTunnelHealth(tPublicUrl || tUrl);
-            }
-          } catch {
-            pingTunnelHealth(tPublicUrl || tUrl);
-          }
-        } else {
-          setTunnelEnabled(tEnabled);
+          fetch(healthUrl, { cache: "no-store" })
+            .then((r) => { if (!r.ok) setTunnelStatus({ type: "warning", message: "Tunnel reconnecting..." }); })
+            .catch(() => setTunnelStatus({ type: "warning", message: "Tunnel reconnecting..." }));
+        }
+        if (tsEn && tsUrlVal) {
+          fetch(`${tsUrlVal}/api/health`, { mode: "no-cors", cache: "no-store" })
+            .then((r) => { if (!(r.ok || r.type === "opaque")) setTsStatus({ type: "warning", message: "Tailscale reconnecting..." }); })
+            .catch(() => setTsStatus({ type: "warning", message: "Tailscale reconnecting..." }));
         }
       }
     } catch (error) {
@@ -185,6 +199,28 @@ export default function APIPageClient({ machineId }) {
     } catch (error) {
       console.log("Error updating rtkEnabled:", error);
     }
+  };
+
+  const patchSetting = async (patch) => {
+    try {
+      await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+    } catch (error) {
+      console.log("Error updating setting:", error);
+    }
+  };
+
+  const handleCavemanEnabled = (value) => {
+    setCavemanEnabled(value);
+    patchSetting({ cavemanEnabled: value });
+  };
+
+  const handleCavemanLevel = (level) => {
+    setCavemanLevel(level);
+    patchSetting({ cavemanLevel: level });
   };
 
   const fetchData = async () => {
@@ -634,7 +670,10 @@ export default function APIPageClient({ machineId }) {
     <div className="flex flex-col gap-8">
       {/* Endpoint Card */}
       <Card>
-        <h2 className="text-lg font-semibold mb-4">API Endpoint</h2>
+        <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+          <span className="material-symbols-outlined text-primary">api</span>
+          API Endpoint
+        </h2>
 
         {/* Endpoint rows */}
         <div className="flex flex-col gap-2">
@@ -648,8 +687,8 @@ export default function APIPageClient({ machineId }) {
           />
           {/* Cloudflare Tunnel */}
           <div className="flex items-center gap-2">
-            <span className={`text-xs font-mono px-1.5 py-0.5 rounded shrink-0 min-w-[68px] text-center ${
-              tunnelEnabled ? "bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400" : "bg-sidebar text-text-muted"
+            <span className={`text-xs font-mono px-1.5 py-0.5 rounded shrink-0 min-w-[88px] text-center ${
+              tunnelEnabled ? "bg-primary/10 text-primary" : "bg-surface-2 text-text-muted"
             }`}>Tunnel</span>
             {tunnelEnabled && !tunnelLoading ? (
               <>
@@ -715,7 +754,6 @@ export default function APIPageClient({ machineId }) {
                   }
                   setShowEnableTunnelModal(true);
                 }}
-                className="bg-linear-to-r from-primary to-blue-500 hover:from-primary-hover hover:to-blue-600 text-white!"
               >
                 Enable
               </Button>
@@ -723,8 +761,8 @@ export default function APIPageClient({ machineId }) {
           </div>
           {/* Tailscale */}
           <div className="flex items-center gap-2">
-            <span className={`text-xs font-mono px-1.5 py-0.5 rounded shrink-0 min-w-[68px] text-center ${
-              tsEnabled ? "bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400" : "bg-sidebar text-text-muted"
+            <span className={`text-xs font-mono px-1.5 py-0.5 rounded shrink-0 min-w-[88px] text-center ${
+              tsEnabled ? "bg-primary/10 text-primary" : "bg-surface-2 text-text-muted"
             }`}>Tailscale</span>
             {tsEnabled && !tsLoading ? (
               <>
@@ -818,16 +856,29 @@ export default function APIPageClient({ machineId }) {
         )}
       </Card>
 
-      {/* Token Saver (RTK) */}
+      {/* Token Saver (RTK + Caveman) */}
       <Card id="rtk">
         <div className="flex items-center justify-between mb-2">
-          <h2 className="text-lg font-semibold">Token Saver</h2>
+          <h2 className="text-lg font-semibold flex items-center gap-2">
+            <span className="material-symbols-outlined text-primary">bolt</span>
+            Token Saver
+          </h2>
         </div>
-        <div className="flex items-center justify-between pt-2">
-          <div className="pr-4">
-            <p className="font-medium">Compress tool output</p>
+        <div className="flex items-center justify-between pt-2 pb-4 border-b border-border gap-4">
+          <div className="min-w-0 flex-1">
+            <p className="font-medium">
+              Compress tool output{" "}
+              <a
+                href="https://github.com/rtk-ai/rtk"
+                target="_blank"
+                rel="noreferrer"
+                className="text-xs font-normal text-primary underline hover:opacity-80"
+              >
+                (RTK)
+              </a>
+            </p>
             <p className="text-sm text-text-muted">
-              Auto-compress tool output (git diff/grep/ls/tree/logs) before sending to LLM to save tokens. Disable if you see issues.
+              git/grep/ls/tree/logs → 60-90% fewer input tokens
             </p>
           </div>
           <Toggle
@@ -835,12 +886,57 @@ export default function APIPageClient({ machineId }) {
             onChange={() => handleRtkEnabled(!rtkEnabled)}
           />
         </div>
+        <div className="flex items-center justify-between pt-4 gap-4 flex-wrap">
+          <div className="min-w-0 flex-1">
+            <p className="font-medium">
+              Compress LLM output{" "}
+              <a
+                href="https://github.com/JuliusBrussee/caveman"
+                target="_blank"
+                rel="noreferrer"
+                className="text-xs font-normal text-primary underline hover:opacity-80"
+              >
+                (Caveman)
+              </a>
+            </p>
+            <p className="text-sm text-text-muted">
+              Terse-style system prompt → ~65% fewer output tokens (up to 87%)
+            </p>
+          </div>
+          <div className="flex items-center gap-3 shrink-0">
+            {cavemanEnabled && (
+              <div className="flex items-center gap-1.5">
+                {CAVEMAN_LEVELS.map((lvl) => (
+                  <button
+                    key={lvl.id}
+                    onClick={() => handleCavemanLevel(lvl.id)}
+                    className={`px-3 py-1.5 rounded text-xs font-medium border transition-colors ${
+                      cavemanLevel === lvl.id
+                        ? "bg-primary text-white border-primary"
+                        : "bg-transparent border-border text-text-muted hover:bg-surface-2"
+                    }`}
+                    title={lvl.desc}
+                  >
+                    {lvl.label}
+                  </button>
+                ))}
+              </div>
+            )}
+            <Toggle
+              checked={cavemanEnabled}
+              onChange={() => handleCavemanEnabled(!cavemanEnabled)}
+            />
+          </div>
+        </div>
       </Card>
 
       {/* API Keys */}
       <Card id="require-api-key">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold">API Keys</h2>
+          <h2 className="text-lg font-semibold flex items-center gap-2">
+            <span className="material-symbols-outlined text-primary">vpn_key</span>
+            API Keys
+          </h2>
           <Button icon="add" onClick={() => setShowAddModal(true)}>
             Create Key
           </Button>
@@ -1012,14 +1108,14 @@ export default function APIPageClient({ machineId }) {
         onClose={() => setShowEnableTunnelModal(false)}
       >
         <div className="flex flex-col gap-4">
-          <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+          <div className="bg-surface-2 border border-border-subtle rounded-lg p-4">
             <div className="flex items-start gap-3">
-              <span className="material-symbols-outlined text-blue-600 dark:text-blue-400">cloud_upload</span>
+              <span className="material-symbols-outlined text-primary">cloud_upload</span>
               <div>
-                <p className="text-sm text-blue-800 dark:text-blue-200 font-medium mb-1">
+                <p className="text-sm text-text-main font-medium mb-1">
                   Cloudflare Tunnel
                 </p>
-                <p className="text-sm text-blue-700 dark:text-blue-300">
+                <p className="text-sm text-text-muted">
                   Expose your local 9Router to the internet. No port forwarding, no static IP needed. Share endpoint URL with your team or use it in Cursor, Cline, and other AI tools from anywhere.
                 </p>
               </div>
@@ -1041,11 +1137,7 @@ export default function APIPageClient({ machineId }) {
           </p>
 
           <div className="flex gap-2">
-            <Button
-              onClick={handleEnableTunnel}
-              fullWidth
-              className="bg-linear-to-r from-primary to-blue-500 hover:from-primary-hover hover:to-blue-600 text-white!"
-            >
+            <Button onClick={handleEnableTunnel} fullWidth>
               Start Tunnel
             </Button>
             <Button onClick={() => setShowEnableTunnelModal(false)} variant="ghost" fullWidth>Cancel</Button>
@@ -1062,7 +1154,7 @@ export default function APIPageClient({ machineId }) {
         <div className="flex flex-col gap-4">
           <p className="text-sm text-text-muted">The Cloudflare tunnel will be disconnected. Remote access via tunnel URL will stop working.</p>
           <div className="flex gap-2">
-            <Button onClick={handleDisableTunnel} fullWidth disabled={tunnelLoading} className="bg-red-500! hover:bg-red-600! text-white!">
+            <Button onClick={handleDisableTunnel} fullWidth disabled={tunnelLoading} variant="danger">
               {tunnelLoading ? "Disabling..." : "Disable"}
             </Button>
             <Button onClick={() => setShowDisableTunnelModal(false)} variant="ghost" fullWidth disabled={tunnelLoading}>Cancel</Button>
@@ -1090,11 +1182,7 @@ export default function APIPageClient({ machineId }) {
             <div className="flex flex-col gap-3">
               <p className="text-sm text-text-muted">Tailscale is not installed. Install it to enable Funnel.</p>
               <div className="flex gap-2">
-                <Button
-                  onClick={handleInstallTailscale}
-                  fullWidth
-                  className="bg-linear-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 text-white!"
-                >
+                <Button onClick={handleInstallTailscale} fullWidth>
                   Install Tailscale
                 </Button>
                 <Button onClick={() => setShowTsModal(false)} variant="ghost" fullWidth>Cancel</Button>
@@ -1134,7 +1222,6 @@ export default function APIPageClient({ machineId }) {
                     handleConnectTailscale(tab);
                   }}
                   fullWidth
-                  className="bg-linear-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 text-white!"
                 >
                   Connect
                 </Button>
@@ -1156,7 +1243,7 @@ export default function APIPageClient({ machineId }) {
         <div className="flex flex-col gap-4">
           <p className="text-sm text-text-muted">Tailscale Funnel will be stopped. Remote access via Tailscale URL will stop working.</p>
           <div className="flex gap-2">
-            <Button onClick={handleDisableTailscale} fullWidth disabled={tsLoading} className="bg-red-500! hover:bg-red-600! text-white!">
+            <Button onClick={handleDisableTailscale} fullWidth disabled={tsLoading} variant="danger">
               {tsLoading ? "Disabling..." : "Disable"}
             </Button>
             <Button onClick={() => setShowDisableTsModal(false)} variant="ghost" fullWidth disabled={tsLoading}>Cancel</Button>
@@ -1171,9 +1258,8 @@ export default function APIPageClient({ machineId }) {
 function EndpointRow({ label, url, copyId, copied, onCopy, badge, actions }) {
   return (
     <div className="flex items-center gap-2">
-      <span className={`text-xs font-mono px-1.5 py-0.5 rounded shrink-0 min-w-[68px] text-center ${badge === "CF" ? "bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400" :
-          badge === "TS" ? "bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400" :
-            "bg-sidebar text-text-muted"
+      <span className={`text-xs font-mono px-1.5 py-0.5 rounded shrink-0 min-w-[88px] text-center ${
+          (badge === "CF" || badge === "TS") ? "bg-primary/10 text-primary" : "bg-surface-2 text-text-muted"
         }`}>{label}</span>
       <Input value={url} readOnly className="flex-1 font-mono text-sm" />
       <button

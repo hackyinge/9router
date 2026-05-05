@@ -80,7 +80,7 @@ export default function MitmPageClient() {
   const mitmTools = Object.entries(MITM_TOOLS);
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex w-full flex-col gap-6">
       {/* MITM Server Card */}
       <MitmServerCard
         apiKeys={apiKeys}
@@ -89,7 +89,7 @@ export default function MitmPageClient() {
       />
 
       {/* Tool Cards */}
-      <div className="flex flex-col gap-2">
+      <div className="grid gap-3 sm:gap-4">
         {mitmTools.map(([toolId, tool]) => (
           <MitmToolCard
             key={toolId}
@@ -99,6 +99,8 @@ export default function MitmPageClient() {
             serverRunning={mitmStatus.running}
             dnsActive={mitmStatus.dnsStatus?.[toolId] || false}
             hasCachedPassword={mitmStatus.hasCachedPassword || false}
+            needsSudoPassword={mitmStatus.needsSudoPassword !== false}
+            isWin={mitmStatus.isWin === true}
             apiKeys={apiKeys}
             activeProviders={getActiveProviders()}
             hasActiveProviders={hasActiveProviders()}

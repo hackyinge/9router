@@ -75,3 +75,4 @@ ecosystem.config.*
 
 scripts/agSniffer/*
 .omx/
+gitbooks/*

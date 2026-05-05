@@ -82,8 +82,12 @@ function findStandaloneAppDir(standaloneDir) {
 
 function ensureSourceContract() {
   const pkg = readJson(path.join(rootDir, "package.json"));
-  assert(pkg.name === "9router", "package.json name must be 9router");
-  assert(pkg.private === false, "package.json private must be false");
+  const isLegacyCliPackage = pkg.name === "9router" && pkg.private === false;
+  const isAppSourcePackage = pkg.name === "9router-app" && pkg.private === true;
+  assert(
+    isLegacyCliPackage || isAppSourcePackage,
+    "package.json must be either legacy 9router publish layout or current 9router-app source layout"
+  );
 
   const cli = fs.readFileSync(path.join(rootDir, "cli.js"), "utf8");
   assert(cli.startsWith("#!/usr/bin/env node"), "cli.js must start with a node shebang");

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Card, CardSkeleton } from "@/shared/components";
 import { CLI_TOOLS } from "@/shared/constants/cliTools";
 import { getModelsByProviderId, PROVIDER_ID_TO_ALIAS } from "@/shared/constants/models";
-import { ClaudeToolCard, CodexToolCard, DroidToolCard, OpenClawToolCard, HermesToolCard, DefaultToolCard, OpenCodeToolCard, MitmLinkCard } from "./components";
+import { ClaudeToolCard, CodexToolCard, DroidToolCard, OpenClawToolCard, HermesToolCard, DefaultToolCard, OpenCodeToolCard, CoworkToolCard, MitmLinkCard } from "./components";
 import { MITM_TOOLS } from "@/shared/constants/cliTools";
 
 const CLOUD_URL = process.env.NEXT_PUBLIC_CLOUD_URL;
@@ -18,6 +18,7 @@ const STATUS_ENDPOINTS = {
   droid: "/api/cli-tools/droid-settings",
   openclaw: "/api/cli-tools/openclaw-settings",
   hermes: "/api/cli-tools/hermes-settings",
+  cowork: "/api/cli-tools/cowork-settings",
 };
 
 export default function CLIToolsPageClient({ machineId }) {
@@ -28,6 +29,8 @@ export default function CLIToolsPageClient({ machineId }) {
   const [cloudEnabled, setCloudEnabled] = useState(false);
   const [tunnelEnabled, setTunnelEnabled] = useState(false);
   const [tunnelPublicUrl, setTunnelPublicUrl] = useState("");
+  const [tailscaleEnabled, setTailscaleEnabled] = useState(false);
+  const [tailscaleUrl, setTailscaleUrl] = useState("");
   const [apiKeys, setApiKeys] = useState([]);
   const [toolStatuses, setToolStatuses] = useState({});
   const [role, setRole] = useState(null);
@@ -77,8 +80,10 @@ export default function CLIToolsPageClient({ machineId }) {
       }
       if (tunnelRes.ok) {
         const data = await tunnelRes.json();
-        setTunnelEnabled(data.enabled || false);
-        setTunnelPublicUrl(data.publicUrl || "");
+        setTunnelEnabled(!!(data.tunnel?.enabled || data.tunnel?.settingsEnabled));
+        setTunnelPublicUrl(data.tunnel?.publicUrl || "");
+        setTailscaleEnabled(!!(data.tailscale?.enabled || data.tailscale?.settingsEnabled));
+        setTailscaleUrl(data.tailscale?.tunnelUrl || "");
       }
     } catch (error) {
       console.log("Error loading settings:", error);
@@ -188,6 +193,22 @@ export default function CLIToolsPageClient({ machineId }) {
         return <CodexToolCard key={toolId} {...commonProps} activeProviders={getActiveProviders()} cloudEnabled={cloudEnabled} initialStatus={toolStatuses.codex} />;
       case "opencode":
         return <OpenCodeToolCard key={toolId} {...commonProps} activeProviders={getActiveProviders()} cloudEnabled={cloudEnabled} initialStatus={toolStatuses.opencode} />;
+      case "cowork":
+        return (
+          <CoworkToolCard
+            key={toolId}
+            {...commonProps}
+            activeProviders={getActiveProviders()}
+            hasActiveProviders={hasActiveProviders}
+            cloudEnabled={cloudEnabled}
+            cloudUrl={CLOUD_URL}
+            tunnelEnabled={tunnelEnabled}
+            tunnelPublicUrl={tunnelPublicUrl}
+            tailscaleEnabled={tailscaleEnabled}
+            tailscaleUrl={tailscaleUrl}
+            initialStatus={toolStatuses.cowork}
+          />
+        );
       case "droid":
         return <DroidToolCard key={toolId} {...commonProps} activeProviders={getActiveProviders()} hasActiveProviders={hasActiveProviders} cloudEnabled={cloudEnabled} initialStatus={toolStatuses.droid} />;
       case "openclaw":
@@ -203,23 +224,33 @@ export default function CLIToolsPageClient({ machineId }) {
   const mitmTools = isSubUser ? [] : Object.entries(MITM_TOOLS);
 
   return (
-    <div className="flex flex-col gap-6">
-      {isSubUser && (
-        <div className="flex items-center">
-          <Link
-            href="/dashboard"
-            className="inline-flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-main transition-colors hover:border-primary hover:text-primary"
-          >
-            <span className="material-symbols-outlined text-[18px]">dashboard</span>
-            <span>Dashboard</span>
-          </Link>
+    <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-1 sm:px-0">
+      <div className="flex flex-col gap-3">
+        {isSubUser && (
+          <div className="flex items-center">
+            <Link
+              href="/dashboard"
+              className="inline-flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-main transition-colors hover:border-primary hover:text-primary"
+            >
+              <span className="material-symbols-outlined text-[18px]">dashboard</span>
+              <span>Dashboard</span>
+            </Link>
+          </div>
+        )}
+        <div className="flex flex-col gap-1">
+          <h1 className="text-xl font-semibold text-text-main sm:text-2xl">CLI Tools</h1>
+          <p className="text-sm text-text-muted">Configure local coding tools to use your openrouterX providers.</p>
         </div>
-      )}
-      <div className="flex flex-col gap-4">
+      </div>
+      <div className="grid gap-3 sm:gap-4">
         {regularTools.map(([toolId, tool]) => renderToolCard(toolId, tool))}
       </div>
       {mitmTools.length > 0 && (
-        <div className="flex flex-col gap-4">
+        <div className="grid gap-3 sm:gap-4">
+          <div className="flex items-center gap-2 px-1">
+            <span className="material-symbols-outlined text-[18px] text-primary">security</span>
+            <h2 className="text-sm font-semibold text-text-main">MITM Tools</h2>
+          </div>
           {mitmTools.map(([toolId, tool]) => (
             <MitmLinkCard key={toolId} tool={tool} />
           ))}
