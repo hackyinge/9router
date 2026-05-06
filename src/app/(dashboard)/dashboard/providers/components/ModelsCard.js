@@ -91,8 +91,8 @@ function AddCustomModelModal({ isOpen, onSave, onClose }) {
           />
         </div>
         <div className="flex gap-2">
-          <Button onClick={handleSave} fullWidth disabled={!modelId.trim()}>Add</Button>
-          <Button onClick={onClose} variant="ghost" fullWidth>Cancel</Button>
+          <Button type="button" onClick={handleSave} fullWidth disabled={!modelId.trim()}>Add</Button>
+          <Button type="button" onClick={onClose} variant="ghost" fullWidth>Cancel</Button>
         </div>
       </div>
     </Modal>

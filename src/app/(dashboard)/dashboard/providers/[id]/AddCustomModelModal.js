@@ -12,7 +12,7 @@ export default function AddCustomModelModal({ isOpen, providerAlias, providerDis
 
   // Reset state when modal opens
   useEffect(() => {
-    if (isOpen) { setModelId(""); setTestStatus(null); setTestError(""); }
+    if (isOpen) { setModelId(""); setTestStatus(null); setTestError(""); setSaving(false); }
   }, [isOpen]);
 
   // Strip provider's own alias prefix (e.g. "cc/model" -> "model" for cc provider)
@@ -20,17 +20,17 @@ export default function AddCustomModelModal({ isOpen, providerAlias, providerDis
     const prefix = `${providerAlias}/`;
     return id.startsWith(prefix) ? id.slice(prefix.length) : id;
   };
+  const cleanModelId = stripAlias(modelId.trim());
 
   const handleTest = async () => {
-    const cleanId = stripAlias(modelId.trim());
-    if (!cleanId) return;
+    if (!cleanModelId) return;
     setTestStatus("testing");
     setTestError("");
     try {
       const res = await fetch("/api/models/test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: `${providerAlias}/${cleanId}` }),
+        body: JSON.stringify({ model: `${providerAlias}/${cleanModelId}` }),
       });
       const data = await res.json();
       setTestStatus(data.ok ? "ok" : "error");
@@ -42,11 +42,10 @@ export default function AddCustomModelModal({ isOpen, providerAlias, providerDis
   };
 
   const handleSave = async () => {
-    const cleanId = stripAlias(modelId.trim());
-    if (!cleanId || saving) return;
+    if (!cleanModelId || saving) return;
     setSaving(true);
     try {
-      await onSave(cleanId);
+      await onSave(cleanModelId);
     } finally {
       setSaving(false);
     }
@@ -72,17 +71,18 @@ export default function AddCustomModelModal({ isOpen, providerAlias, providerDis
               autoFocus
             />
             <Button
+              type="button"
               variant="secondary"
               icon="science"
               loading={testStatus === "testing"}
               onClick={handleTest}
-              disabled={!modelId.trim() || testStatus === "testing"}
+              disabled={!cleanModelId || testStatus === "testing"}
             >
               {testStatus === "testing" ? "Testing..." : "Test"}
             </Button>
           </div>
           <p className="text-xs text-text-muted mt-1">
-            Sent to provider as: <code className="font-mono bg-sidebar px-1 rounded">{stripAlias(modelId.trim()) || "model-id"}</code>
+            Sent to provider as: <code className="font-mono bg-sidebar px-1 rounded">{cleanModelId || "model-id"}</code>
           </p>
         </div>
 
@@ -101,12 +101,13 @@ export default function AddCustomModelModal({ isOpen, providerAlias, providerDis
         )}
 
         <div className="flex gap-2 pt-1">
-          <Button onClick={onClose} variant="ghost" fullWidth size="sm">Cancel</Button>
+          <Button type="button" onClick={onClose} variant="ghost" fullWidth size="sm">Cancel</Button>
           <Button
+            type="button"
             onClick={handleSave}
             fullWidth
             size="sm"
-            disabled={!modelId.trim() || saving}
+            disabled={!cleanModelId || saving}
           >
             {saving ? "Adding..." : "Add Model"}
           </Button>

@@ -7,6 +7,7 @@ const TOOL_HOSTS = {
   copilot: ["api.individual.githubcopilot.com"],
   kiro: ["q.us-east-1.amazonaws.com", "codewhisperer.us-east-1.amazonaws.com"],
   cursor: ["api2.cursor.sh"],
+  openrouter: ["openrouter.ai", "api.openrouter.ai"],
 };
 
 module.exports = { TOOL_HOSTS };

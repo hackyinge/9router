@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import PropTypes from "prop-types";
 import { Button, Badge, Input, Modal, Select } from "@/shared/components";
 
@@ -33,6 +33,30 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
   const [validating, setValidating] = useState(false);
   const [validationResult, setValidationResult] = useState(null);
   const [saving, setSaving] = useState(false);
+  const defaultConnectionName = isOllamaLocal
+    ? "Ollama Local"
+    : (isCookie ? `${providerName || provider} Cookie` : "Production Key");
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setFormData({
+      name: isCompatible ? defaultConnectionName : "",
+      apiKey: "",
+      priority: 1,
+      proxyPoolId: NONE_PROXY_POOL_VALUE,
+      ollamaHostUrl: "",
+    });
+    setAzureData({
+      azureEndpoint: "",
+      apiVersion: "2024-10-01-preview",
+      deployment: "",
+      organization: "",
+    });
+    setCloudflareData({ accountId: "" });
+    setValidating(false);
+    setValidationResult(null);
+    setSaving(false);
+  }, [defaultConnectionName, isCompatible, isOpen]);
 
   const buildProviderSpecificData = () => {
     if (isOllamaLocal && formData.ollamaHostUrl.trim()) {
@@ -72,10 +96,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
   const handleSubmit = async () => {
     if (!provider) return;
     if (!isOllamaLocal && !formData.apiKey) return;
-    if (!isOllamaLocal) {
-      // Non-ollama providers require a name
-      if (!formData.name) return;
-    }
+    const resolvedName = formData.name.trim() || defaultConnectionName;
 
     setSaving(true);
     try {
@@ -98,7 +119,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
       }
 
       await onSave({
-        name: formData.name || (isOllamaLocal ? "Ollama Local" : ""),
+        name: resolvedName,
         apiKey: formData.apiKey,
         priority: formData.priority,
         proxyPoolId: formData.proxyPoolId === NONE_PROXY_POOL_VALUE ? null : formData.proxyPoolId,
@@ -119,7 +140,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
           label="Name"
           value={formData.name}
           onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-          placeholder={isOllamaLocal ? "Ollama Local" : "Production Key"}
+          placeholder={defaultConnectionName}
         />
         {isOllamaLocal && (
           <div className="flex gap-2">
@@ -260,7 +281,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
         </p>
 
         <div className="flex gap-2">
-          <Button onClick={handleSubmit} fullWidth disabled={saving || (!isOllamaLocal && (!formData.name || !formData.apiKey)) || (isAzure && (!azureData.azureEndpoint || !azureData.deployment || !azureData.organization)) || (isCloudflareAi && !cloudflareData.accountId)}>
+          <Button onClick={handleSubmit} fullWidth disabled={saving || (!isOllamaLocal && !formData.apiKey) || (isAzure && (!azureData.azureEndpoint || !azureData.deployment || !azureData.organization)) || (isCloudflareAi && !cloudflareData.accountId)}>
             {saving ? "Saving..." : "Save"}
           </Button>
           <Button onClick={onClose} variant="ghost" fullWidth>

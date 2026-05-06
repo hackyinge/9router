@@ -164,14 +164,26 @@ export async function PATCH(request) {
   try {
     const { tool, action, sudoPassword } = await request.json();
     const pwd = getPassword(sudoPassword) || await loadEncryptedPassword() || "";
+    // #region debug-point A:patch-entry
+    fetch("http://127.0.0.1:7777/event",{method:"POST",body:JSON.stringify({sessionId:"antigravity-mitm-500",runId:"pre-fix",hypothesisId:"A",location:"src/app/api/cli-tools/antigravity-mitm/route.js:167",msg:"[DEBUG] antigravity-mitm PATCH entry",data:{tool,action,hasSudoPassword:!!sudoPassword,hasResolvedPassword:!!pwd,isWin},ts:Date.now()})}).catch(()=>{});
+    // #endregion
 
     if (!tool || !action) {
+      // #region debug-point A:missing-input
+      fetch("http://127.0.0.1:7777/event",{method:"POST",body:JSON.stringify({sessionId:"antigravity-mitm-500",runId:"pre-fix",hypothesisId:"A",location:"src/app/api/cli-tools/antigravity-mitm/route.js:173",msg:"[DEBUG] antigravity-mitm PATCH rejected for missing input",data:{tool,action},ts:Date.now()})}).catch(()=>{});
+      // #endregion
       return NextResponse.json({ error: "tool and action required" }, { status: 400 });
     }
     if (requiresSudoPassword(pwd)) {
+      // #region debug-point B:missing-password
+      fetch("http://127.0.0.1:7777/event",{method:"POST",body:JSON.stringify({sessionId:"antigravity-mitm-500",runId:"pre-fix",hypothesisId:"B",location:"src/app/api/cli-tools/antigravity-mitm/route.js:178",msg:"[DEBUG] antigravity-mitm PATCH missing sudo password",data:{tool,action,isWin},ts:Date.now()})}).catch(()=>{});
+      // #endregion
       return NextResponse.json({ error: "Missing sudoPassword" }, { status: 400 });
     }
     if (!checkPrivilege(pwd)) {
+      // #region debug-point B:privilege-denied
+      fetch("http://127.0.0.1:7777/event",{method:"POST",body:JSON.stringify({sessionId:"antigravity-mitm-500",runId:"pre-fix",hypothesisId:"B",location:"src/app/api/cli-tools/antigravity-mitm/route.js:183",msg:"[DEBUG] antigravity-mitm PATCH privilege denied",data:{tool,action,isWin},ts:Date.now()})}).catch(()=>{});
+      // #endregion
       return NextResponse.json(
         { error: isWin ? "Administrator required — restart 9Router as Administrator" : "Root or sudo password required to modify DNS" },
         { status: 403 }
@@ -179,8 +191,14 @@ export async function PATCH(request) {
     }
 
     if (action === "enable") {
+      // #region debug-point C:enable-start
+      fetch("http://127.0.0.1:7777/event",{method:"POST",body:JSON.stringify({sessionId:"antigravity-mitm-500",runId:"pre-fix",hypothesisId:"C",location:"src/app/api/cli-tools/antigravity-mitm/route.js:191",msg:"[DEBUG] antigravity-mitm enabling tool dns",data:{tool},ts:Date.now()})}).catch(()=>{});
+      // #endregion
       await enableToolDNS(tool, pwd);
     } else if (action === "disable") {
+      // #region debug-point C:disable-start
+      fetch("http://127.0.0.1:7777/event",{method:"POST",body:JSON.stringify({sessionId:"antigravity-mitm-500",runId:"pre-fix",hypothesisId:"C",location:"src/app/api/cli-tools/antigravity-mitm/route.js:196",msg:"[DEBUG] antigravity-mitm disabling tool dns",data:{tool},ts:Date.now()})}).catch(()=>{});
+      // #endregion
       await disableToolDNS(tool, pwd);
     } else if (action === "trust-cert") {
       await trustCert(pwd);
@@ -194,8 +212,14 @@ export async function PATCH(request) {
     if (!isWin && sudoPassword) setCachedPassword(sudoPassword);
 
     const status = await getMitmStatus();
+    // #region debug-point D:patch-success
+    fetch("http://127.0.0.1:7777/event",{method:"POST",body:JSON.stringify({sessionId:"antigravity-mitm-500",runId:"pre-fix",hypothesisId:"D",location:"src/app/api/cli-tools/antigravity-mitm/route.js:210",msg:"[DEBUG] antigravity-mitm PATCH success",data:{tool,action,dnsStatus:status.dnsStatus||{}},ts:Date.now()})}).catch(()=>{});
+    // #endregion
     return NextResponse.json({ success: true, dnsStatus: status.dnsStatus });
   } catch (error) {
+    // #region debug-point E:patch-error
+    fetch("http://127.0.0.1:7777/event",{method:"POST",body:JSON.stringify({sessionId:"antigravity-mitm-500",runId:"pre-fix",hypothesisId:"E",location:"src/app/api/cli-tools/antigravity-mitm/route.js:213",msg:"[DEBUG] antigravity-mitm PATCH error",data:{message:error?.message||null,stack:error?.stack||null,code:error?.code||null},ts:Date.now()})}).catch(()=>{});
+    // #endregion
     console.log("Error toggling DNS:", error.message);
     return NextResponse.json({ error: error.message || "Failed to toggle DNS" }, { status: 500 });
   }
