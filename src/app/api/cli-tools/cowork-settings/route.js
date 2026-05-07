@@ -5,8 +5,114 @@ import fs from "fs/promises";
 import path from "path";
 import os from "os";
 import crypto from "crypto";
+import { COWORK_PLUGINS, buildManagedMcpServers } from "@/shared/constants/coworkPlugins";
 
 const PROVIDER = "gateway";
+
+// Plugin folder mount location.
+// Claude Cowork 3p actually launches with --user-data-dir=Claude-3p, so plugins
+// must live there (not the system /Library path which requires admin & isn't read in 3p).
+const getOrgPluginsCandidates = () => {
+  if (os.platform() === "darwin") {
+    const home = os.homedir();
+    return [
+      path.join(home, "Library", "Application Support", "Claude-3p", "org-plugins"),
+      path.join(home, "Library", "Application Support", "Claude", "org-plugins"),
+      "/Library/Application Support/Claude/org-plugins",
+    ];
+  }
+  if (os.platform() === "win32") {
+    const localApp = process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local");
+    const programData = process.env.ProgramData || "C:\\ProgramData";
+    return [
+      path.join(localApp, "Claude-3p", "org-plugins"),
+      path.join(localApp, "Claude", "org-plugins"),
+      path.join(programData, "Claude", "org-plugins"),
+    ];
+  }
+  return [path.join(os.homedir(), ".config", "Claude-3p", "org-plugins"), "/etc/Claude/org-plugins"];
+};
+
+// Pick first writable candidate for org-plugins
+async function pickPluginsRoot() {
+  for (const dir of getOrgPluginsCandidates()) {
+    try {
+      await fs.mkdir(dir, { recursive: true });
+      // Probe write
+      const probe = path.join(dir, ".__9router_probe");
+      await fs.writeFile(probe, "ok");
+      await fs.unlink(probe);
+      return dir;
+    } catch { /* try next */ }
+  }
+  return null;
+}
+
+// Create plugin folder mount: org-plugins/<name>/claude-plugin/{plugin.json, version.json, .mcp.json}
+async function writeOrgPluginsFolder(selectedPluginNames) {
+  const root = await pickPluginsRoot();
+  if (!root) return { error: "no_writable_plugins_dir", written: [] };
+  const set = new Set(selectedPluginNames || []);
+  const selectedPlugins = COWORK_PLUGINS.filter((p) => set.has(p.name));
+  // Remove previously-managed plugin subfolders (best-effort)
+  for (const p of COWORK_PLUGINS) {
+    try { await fs.rm(path.join(root, p.name), { recursive: true, force: true }); } catch { /* ignore */ }
+  }
+  const written = [];
+  for (const p of selectedPlugins) {
+    const pluginRoot = path.join(root, p.name);
+    const metaDir = path.join(pluginRoot, ".claude-plugin");
+    try {
+      await fs.mkdir(metaDir, { recursive: true });
+      const manifest = { name: p.name, version: "1.0.0", description: p.description || p.name, author: { name: "9router" } };
+      await fs.writeFile(path.join(metaDir, "plugin.json"), JSON.stringify(manifest, null, 2));
+      // .mcp.json at plugin root, schema: {mcpServers: {name: {type, url, oauth?}}}
+      const mcpServers = {};
+      for (const s of p.servers) {
+        const key = p.servers.length === 1 ? p.name : `${p.name}-${s.key}`;
+        mcpServers[key] = {
+          type: /\/sse(\b|\/)/i.test(s.url) ? "sse" : "http",
+          url: s.url,
+        };
+      }
+      await fs.writeFile(path.join(pluginRoot, ".mcp.json"), JSON.stringify({ mcpServers }, null, 2));
+      written.push(p.name);
+    } catch (e) {
+      return { error: e.code || e.message, written, root };
+    }
+  }
+  return { written, root };
+}
+
+// Set operonSkipMcpApprovals[serverName]=true in Claude-3p/config.json so user
+// is not prompted for every tool call. Mirrors mcpToolAccessProvider.setSkipApprovals.
+async function writeSkipApprovals(managedServers) {
+  const cfgPath = path.join(getWriteRoot(), "config.json");
+  let cfg = {};
+  try {
+    cfg = JSON.parse(await fs.readFile(cfgPath, "utf-8")) || {};
+  } catch (e) {
+    if (e.code !== "ENOENT") return { error: e.code };
+  }
+  // Reset previous managed entries (those we own == COWORK_PLUGINS server names)
+  const ownedNames = new Set();
+  for (const p of COWORK_PLUGINS) {
+    for (const s of p.servers) {
+      ownedNames.add(p.servers.length === 1 ? p.name : `${p.name}-${s.key}`);
+    }
+  }
+  const skip = (cfg.operonSkipMcpApprovals && typeof cfg.operonSkipMcpApprovals === "object") ? cfg.operonSkipMcpApprovals : {};
+  for (const k of Object.keys(skip)) {
+    if (ownedNames.has(k)) delete skip[k];
+  }
+  for (const srv of managedServers) {
+    if (srv?.name) skip[srv.name] = true;
+  }
+  cfg.operonSkipMcpApprovals = skip;
+  await fs.mkdir(getWriteRoot(), { recursive: true });
+  await fs.writeFile(cfgPath, JSON.stringify(cfg, null, 2));
+  return { written: Object.keys(skip).length };
+}
 
 // Candidate user-data roots — Cowork can run from either Claude-3p (3p mode) or Claude (1p mode w/ cowork features)
 const getCandidateRoots = () => {
@@ -107,8 +213,6 @@ const checkInstalled = async () => {
   return false;
 };
 
-const isLocalhostUrl = (url) => /localhost|127\.0\.0\.1|0\.0\.0\.0/i.test(url || "");
-
 const readJson = async (filePath) => {
   try {
     const content = await fs.readFile(filePath, "utf-8");
@@ -160,6 +264,12 @@ export async function GET() {
       ? config.inferenceModels.map((m) => (typeof m === "string" ? m : m?.name)).filter(Boolean)
       : [];
 
+    // managedMcpServers stored as native array in configLibrary <uuid>.json
+    const managedMcpArr = Array.isArray(config?.managedMcpServers) ? config.managedMcpServers : [];
+    const selectedPlugins = COWORK_PLUGINS
+      .filter((p) => p.servers.some((s) => managedMcpArr.some((v) => v?.url === s.url)))
+      .map((p) => p.name);
+
     const has9Router = !!(config?.inferenceProvider === PROVIDER && baseUrl);
 
     return NextResponse.json({
@@ -172,7 +282,9 @@ export async function GET() {
         baseUrl,
         models,
         provider: config?.inferenceProvider || null,
+        selectedPlugins,
       },
+      availablePlugins: COWORK_PLUGINS.map((p) => ({ name: p.name, description: p.description })),
     });
   } catch (error) {
     console.log("Error reading cowork settings:", error);
@@ -182,22 +294,19 @@ export async function GET() {
 
 export async function POST(request) {
   try {
-    const { baseUrl, apiKey, models } = await request.json();
+    const { baseUrl, apiKey, models, plugins } = await request.json();
 
     if (!baseUrl || !apiKey) {
       return NextResponse.json({ error: "baseUrl and apiKey are required" }, { status: 400 });
-    }
-
-    if (isLocalhostUrl(baseUrl)) {
-      return NextResponse.json({
-        error: "Claude Cowork sandbox cannot reach localhost. Enable Tunnel/Cloud Endpoint or use Tailscale/VPS.",
-      }, { status: 400 });
     }
 
     const modelsArray = Array.isArray(models) ? models.filter((m) => typeof m === "string" && m.trim()) : [];
     if (modelsArray.length === 0) {
       return NextResponse.json({ error: "At least one model is required" }, { status: 400 });
     }
+
+    const pluginsArray = Array.isArray(plugins) ? plugins.filter((p) => typeof p === "string") : [];
+    const managedMcpServers = buildManagedMcpServers(pluginsArray);
 
     const bootstrapped = await bootstrapDeploymentMode();
     const meta = await ensureMeta();
@@ -208,9 +317,20 @@ export async function POST(request) {
       inferenceGatewayBaseUrl: baseUrl,
       inferenceGatewayApiKey: apiKey,
       inferenceModels: modelsArray.map((name) => ({ name })),
+      isLocalDevMcpEnabled: true,
+      isDesktopExtensionEnabled: true,
     };
+    if (managedMcpServers.length > 0) {
+      newConfig.managedMcpServers = managedMcpServers;
+    }
 
     await fs.writeFile(configPath, JSON.stringify(newConfig, null, 2));
+
+    // Plugin folder mount (best-effort, doesn't fail the request)
+    const pluginsResult = await writeOrgPluginsFolder(pluginsArray);
+    // Auto-skip approvals for managed servers
+    let skipResult = null;
+    try { skipResult = await writeSkipApprovals(managedMcpServers); } catch (e) { skipResult = { error: e.message }; }
 
     return NextResponse.json({
       success: true,
@@ -219,6 +339,8 @@ export async function POST(request) {
         ? "Cowork enabled (3p mode set). Quit & reopen Claude Desktop."
         : "Cowork settings applied. Quit & reopen Claude Desktop.",
       configPath,
+      plugins: pluginsResult,
+      skipApprovals: skipResult,
     });
   } catch (error) {
     console.log("Error applying cowork settings:", error);
@@ -238,6 +360,8 @@ export async function DELETE() {
     } catch (error) {
       if (error.code !== "ENOENT") throw error;
     }
+    await writeOrgPluginsFolder([]);
+    try { await writeSkipApprovals([]); } catch { /* ignore */ }
     return NextResponse.json({ success: true, message: "Cowork config reset" });
   } catch (error) {
     console.log("Error resetting cowork settings:", error);

@@ -12,6 +12,8 @@ const IS_WINDOWS = os.platform() === "win32";
 const BIN_NAME = IS_WINDOWS ? `${BINARY_NAME}.exe` : BINARY_NAME;
 const BIN_PATH = path.join(BIN_DIR, BIN_NAME);
 const POWERSHELL_HIDDEN_COMMAND = "powershell -NoProfile -NonInteractive -WindowStyle Hidden -Command";
+const DEFAULT_QUICK_TUNNEL_PROTOCOL = "http2";
+const QUICK_TUNNEL_PROTOCOLS = new Set(["http2", "quic", "auto"]);
 
 const GITHUB_BASE_URL = "https://github.com/cloudflare/cloudflared/releases/latest/download";
 
@@ -284,10 +286,16 @@ export async function spawnQuickTunnel(localPort, onUrlUpdate) {
     } catch (e) { /* ignore */ }
   };
 
-  const child = spawn(binaryPath, ["tunnel", "--url", `http://localhost:${localPort}`, "--config", configPath, "--no-autoupdate"], {
+  const requestedProtocol = String(process.env.TUNNEL_TRANSPORT_PROTOCOL || process.env.CLOUDFLARED_PROTOCOL || DEFAULT_QUICK_TUNNEL_PROTOCOL).trim().toLowerCase();
+  const tunnelProtocol = QUICK_TUNNEL_PROTOCOLS.has(requestedProtocol) ? requestedProtocol : DEFAULT_QUICK_TUNNEL_PROTOCOL;
+  const child = spawn(binaryPath, ["tunnel", "--url", `http://127.0.0.1:${localPort}`, "--config", configPath, "--no-autoupdate"], {
     detached: false,
     windowsHide: true,
-    stdio: ["ignore", "pipe", "pipe"]
+    env: {
+      ...process.env,
+      TUNNEL_TRANSPORT_PROTOCOL: tunnelProtocol,
+    },
+    stdio: ["ignore", "pipe", "pipe"],
   });
 
   cloudflaredProcess = child;

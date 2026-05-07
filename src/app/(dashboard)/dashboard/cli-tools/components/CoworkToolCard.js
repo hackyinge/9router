@@ -1,12 +1,11 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
-import { Card, Button, ModelSelectModal, ManualConfigModal } from "@/shared/components";
+import { useState, useEffect } from "react";
+import { Card, Button, ManualConfigModal, ComboFormModal } from "@/shared/components";
 import Image from "next/image";
+import BaseUrlSelect from "./BaseUrlSelect";
 
 const ENDPOINT = "/api/cli-tools/cowork-settings";
-
-const isLocalhostUrl = (url) => /localhost|127\.0\.0\.1|0\.0\.0\.0/i.test(url || "");
 
 const stripV1 = (url) => (url || "").replace(/\/v1\/?$/, "");
 const ensureV1 = (url) => {
@@ -38,26 +37,11 @@ export default function CoworkToolCard({
   const [message, setMessage] = useState(null);
   const [selectedApiKey, setSelectedApiKey] = useState("");
   const [selectedModels, setSelectedModels] = useState([]);
-  const [modalOpen, setModalOpen] = useState(false);
-  const [modelAliases, setModelAliases] = useState({});
   const [showManualConfigModal, setShowManualConfigModal] = useState(false);
-  const [endpointMode, setEndpointMode] = useState("custom");
   const [customBaseUrl, setCustomBaseUrl] = useState("");
-
-  const endpointOptions = useMemo(() => {
-    const opts = [];
-    if (tunnelEnabled && tunnelPublicUrl) {
-      opts.push({ value: "tunnel", label: `Tunnel - ${tunnelPublicUrl}`, url: ensureV1(tunnelPublicUrl) });
-    }
-    if (tailscaleEnabled && tailscaleUrl) {
-      opts.push({ value: "tailscale", label: `Tailscale - ${tailscaleUrl}`, url: ensureV1(tailscaleUrl) });
-    }
-    if (cloudEnabled && cloudUrl) {
-      opts.push({ value: "cloud", label: `Cloud - ${cloudUrl}`, url: ensureV1(cloudUrl) });
-    }
-    opts.push({ value: "custom", label: "Custom URL (VPS / public host)", url: "" });
-    return opts;
-  }, [tunnelEnabled, tunnelPublicUrl, tailscaleEnabled, tailscaleUrl, cloudEnabled, cloudUrl]);
+  const [selectedPlugins, setSelectedPlugins] = useState([]);
+  const [pluginsExpanded, setPluginsExpanded] = useState(false);
+  const [comboModalOpen, setComboModalOpen] = useState(false);
 
   useEffect(() => {
     if (apiKeys?.length > 0 && !selectedApiKey) {
@@ -70,11 +54,7 @@ export default function CoworkToolCard({
   }, [initialStatus]);
 
   useEffect(() => {
-    if (isExpanded && !status) {
-      checkStatus();
-      fetchModelAliases();
-    }
-    if (isExpanded) fetchModelAliases();
+    if (isExpanded && !status) checkStatus();
   }, [isExpanded]);
 
   useEffect(() => {
@@ -83,27 +63,11 @@ export default function CoworkToolCard({
     }
     if (status?.cowork?.baseUrl && !customBaseUrl) {
       setCustomBaseUrl(stripV1(status.cowork.baseUrl));
-      setEndpointMode("custom");
+    }
+    if (Array.isArray(status?.cowork?.selectedPlugins)) {
+      setSelectedPlugins(status.cowork.selectedPlugins);
     }
   }, [status]);
-
-  // Auto-pick first available preset when expand if user has not set anything
-  useEffect(() => {
-    if (!customBaseUrl && endpointOptions[0]?.url) {
-      setEndpointMode(endpointOptions[0].value);
-      setCustomBaseUrl(stripV1(endpointOptions[0].url));
-    }
-  }, [endpointOptions]);
-
-  const fetchModelAliases = async () => {
-    try {
-      const res = await fetch("/api/models/alias");
-      const data = await res.json();
-      if (res.ok) setModelAliases(data.aliases || {});
-    } catch (error) {
-      console.log("Error fetching model aliases:", error);
-    }
-  };
 
   const checkStatus = async () => {
     setChecking(true);
@@ -124,31 +88,16 @@ export default function CoworkToolCard({
     if (!status?.installed) return null;
     const url = status?.cowork?.baseUrl;
     if (!url) return "not_configured";
-    if (isLocalhostUrl(url)) return "invalid";
     return status.has9Router ? "configured" : "other";
   };
 
   const configStatus = getConfigStatus();
   const hasCustomSelectedApiKey = selectedApiKey && !apiKeys.some((key) => key.key === selectedApiKey);
 
-  const handleEndpointModeChange = (value) => {
-    setEndpointMode(value);
-    const opt = endpointOptions.find((o) => o.value === value);
-    if (opt?.url) {
-      setCustomBaseUrl(stripV1(opt.url));
-    } else {
-      setCustomBaseUrl("");
-    }
-  };
-
   const handleApply = async () => {
     setMessage(null);
     const effectiveUrl = getEffectiveBaseUrl();
 
-    if (isLocalhostUrl(effectiveUrl)) {
-      setMessage({ type: "error", text: "Localhost is not allowed. Enable Tunnel/Tailscale or use VPS." });
-      return;
-    }
     if (selectedModels.length === 0) {
       setMessage({ type: "error", text: "Please select at least one model" });
       return;
@@ -167,6 +116,7 @@ export default function CoworkToolCard({
           baseUrl: effectiveUrl,
           apiKey: keyToUse,
           models: selectedModels,
+          plugins: selectedPlugins,
         }),
       });
       const data = await res.json();
@@ -180,6 +130,29 @@ export default function CoworkToolCard({
       setMessage({ type: "error", text: error.message });
     } finally {
       setApplying(false);
+    }
+  };
+
+  const handleCreateCombo = async ({ name, models }) => {
+    try {
+      const res = await fetch("/api/combos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, models }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        setMessage({ type: "error", text: err.error || "Failed to create combo" });
+        return;
+      }
+      // Add combo name into selected models for Cowork
+      if (!selectedModels.includes(name)) {
+        setSelectedModels([...selectedModels, name]);
+      }
+      setComboModalOpen(false);
+      setMessage({ type: "success", text: `Combo "${name}" created and added.` });
+    } catch (error) {
+      setMessage({ type: "error", text: error.message });
     }
   };
 
@@ -234,7 +207,6 @@ export default function CoworkToolCard({
               <h3 className="font-medium text-sm">{tool.name}</h3>
               {configStatus === "configured" && <span className="px-1.5 py-0.5 text-[10px] font-medium bg-green-500/10 text-green-600 dark:text-green-400 rounded-full">Connected</span>}
               {configStatus === "not_configured" && <span className="px-1.5 py-0.5 text-[10px] font-medium bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 rounded-full">Not configured</span>}
-              {configStatus === "invalid" && <span className="px-1.5 py-0.5 text-[10px] font-medium bg-red-500/10 text-red-600 dark:text-red-400 rounded-full">Localhost (invalid)</span>}
               {configStatus === "other" && <span className="px-1.5 py-0.5 text-[10px] font-medium bg-blue-500/10 text-blue-600 dark:text-blue-400 rounded-full">Other</span>}
             </div>
             <p className="text-xs text-text-muted truncate">{tool.description}</p>
@@ -245,11 +217,6 @@ export default function CoworkToolCard({
 
       {isExpanded && (
         <div className="mt-4 pt-4 border-t border-border flex flex-col gap-4">
-          <div className="flex items-start gap-2 p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg text-xs text-blue-700 dark:text-blue-300">
-            <span className="material-symbols-outlined text-[16px] mt-0.5">info</span>
-            <span>Claude Cowork runs in a sandboxed VM and <b>cannot reach localhost</b>. Use Tunnel, Tailscale, or VPS public URL.</span>
-          </div>
-
           {checking && (
             <div className="flex items-center gap-2 text-text-muted">
               <span className="material-symbols-outlined animate-spin">progress_activity</span>
@@ -278,6 +245,21 @@ export default function CoworkToolCard({
           {!checking && status?.installed && (
             <>
               <div className="flex flex-col gap-2">
+                <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-[8rem_auto_1fr] sm:items-center sm:gap-2">
+                  <span className="text-xs font-semibold text-text-main sm:text-right sm:text-sm">Select Endpoint</span>
+                  <span className="material-symbols-outlined hidden text-text-muted text-[14px] sm:inline">arrow_forward</span>
+                  <BaseUrlSelect
+                    value={getEffectiveBaseUrl()}
+                    onChange={(url) => setCustomBaseUrl(stripV1(url))}
+                    tunnelEnabled={tunnelEnabled}
+                    tunnelPublicUrl={tunnelPublicUrl}
+                    tailscaleEnabled={tailscaleEnabled}
+                    tailscaleUrl={tailscaleUrl}
+                    cloudEnabled={cloudEnabled}
+                    cloudUrl={cloudUrl}
+                  />
+                </div>
+
                 {status?.cowork?.baseUrl && (
                   <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-[8rem_auto_1fr_auto] sm:items-center sm:gap-2">
                     <span className="text-xs font-semibold text-text-main sm:text-right sm:text-sm">Current</span>
@@ -287,32 +269,6 @@ export default function CoworkToolCard({
                     </span>
                   </div>
                 )}
-
-                <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-[8rem_auto_1fr_auto] sm:items-center sm:gap-2">
-                  <span className="text-xs font-semibold text-text-main sm:text-right sm:text-sm">Endpoint Mode</span>
-                  <span className="material-symbols-outlined hidden text-text-muted text-[14px] sm:inline">arrow_forward</span>
-                  <select
-                    value={endpointMode}
-                    onChange={(e) => handleEndpointModeChange(e.target.value)}
-                    className="w-full min-w-0 px-2 py-2 bg-surface rounded text-xs border border-border focus:outline-none focus:ring-1 focus:ring-primary/50 sm:py-1.5"
-                  >
-                    {endpointOptions.map((opt) => (
-                      <option key={opt.value} value={opt.value}>{opt.label}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-[8rem_auto_1fr_auto] sm:items-center sm:gap-2">
-                  <span className="text-xs font-semibold text-text-main sm:text-right sm:text-sm">Base URL</span>
-                  <span className="material-symbols-outlined hidden text-text-muted text-[14px] sm:inline">arrow_forward</span>
-                  <input
-                    type="text"
-                    value={getEffectiveBaseUrl()}
-                    onChange={(e) => setCustomBaseUrl(stripV1(e.target.value))}
-                    placeholder="https://your-host.com/v1"
-                    className="w-full min-w-0 px-2 py-2 bg-surface rounded border border-border text-xs focus:outline-none focus:ring-1 focus:ring-primary/50 sm:py-1.5"
-                  />
-                </div>
 
                 <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-[8rem_auto_1fr_auto] sm:items-center sm:gap-2">
                   <span className="text-xs font-semibold text-text-main sm:text-right sm:text-sm">API Key</span>
@@ -347,9 +303,55 @@ export default function CoworkToolCard({
                         ))
                       )}
                     </div>
-                    <button onClick={() => setModalOpen(true)} disabled={!hasActiveProviders} className={`self-start px-2 py-1 rounded border text-xs transition-colors ${hasActiveProviders ? "bg-surface border-border text-text-main hover:border-primary cursor-pointer" : "opacity-50 cursor-not-allowed border-border"}`}>Add Model</button>
+                    <button onClick={() => setComboModalOpen(true)} disabled={!hasActiveProviders} className={`self-start px-2 py-1 rounded border text-xs transition-colors ${hasActiveProviders ? "bg-primary/10 border-primary/40 text-primary hover:bg-primary/20 cursor-pointer" : "opacity-50 cursor-not-allowed border-border"}`}>+ Add Combo (claude-)</button>
                   </div>
                 </div>
+
+                {false && (<div className="grid grid-cols-1 gap-1.5 sm:grid-cols-[8rem_auto_1fr] sm:items-start sm:gap-2">
+                  <span className="w-32 shrink-0 text-sm font-semibold text-text-main text-right pt-1">Connectors</span>
+                  <span className="material-symbols-outlined text-text-muted text-[14px] mt-1.5">arrow_forward</span>
+                  <div className="flex-1 flex flex-col gap-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-text-muted">{selectedPlugins.length} of {(status?.availablePlugins || []).length} selected</span>
+                      <button onClick={() => setPluginsExpanded(!pluginsExpanded)} className="text-xs text-primary hover:underline">
+                        {pluginsExpanded ? "Hide" : "Show"} all
+                      </button>
+                    </div>
+                    {pluginsExpanded && (
+                      <div className="flex flex-col gap-1 max-h-64 overflow-y-auto px-2 py-2 bg-surface rounded border border-border">
+                        {(status?.availablePlugins || []).map((p) => {
+                          const checked = selectedPlugins.includes(p.name);
+                          return (
+                            <label key={p.name} className="flex items-start gap-2 text-xs cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 px-1 py-0.5 rounded">
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={() => setSelectedPlugins((prev) => checked ? prev.filter((n) => n !== p.name) : [...prev, p.name])}
+                                className="mt-0.5"
+                              />
+                              <div className="flex-1 min-w-0">
+                                <div className="font-medium">{p.name}</div>
+                                {p.description && <div className="text-text-muted text-[10px] truncate">{p.description}</div>}
+                              </div>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    )}
+                    {!pluginsExpanded && selectedPlugins.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 px-2 py-1.5 bg-surface rounded border border-border">
+                        {selectedPlugins.map((name) => (
+                          <span key={name} className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-black/5 dark:bg-white/5 text-text-muted border border-transparent hover:border-border">
+                            {name}
+                            <button onClick={() => setSelectedPlugins((prev) => prev.filter((x) => x !== name))} className="ml-0.5 hover:text-red-500">
+                              <span className="material-symbols-outlined text-[12px]">close</span>
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>)}
               </div>
 
               {message && (
@@ -370,31 +372,27 @@ export default function CoworkToolCard({
                   <span className="material-symbols-outlined text-[14px] mr-1">content_copy</span>Manual Config
                 </Button>
               </div>
+
             </>
           )}
         </div>
       )}
-
-      <ModelSelectModal
-        isOpen={modalOpen}
-        onClose={() => setModalOpen(false)}
-        onSelect={(model) => {
-          if (!selectedModels.includes(model.value)) {
-            setSelectedModels([...selectedModels, model.value]);
-          }
-          setModalOpen(false);
-        }}
-        selectedModel={null}
-        activeProviders={activeProviders}
-        modelAliases={modelAliases}
-        title="Add Model for Claude Cowork"
-      />
 
       <ManualConfigModal
         isOpen={showManualConfigModal}
         onClose={() => setShowManualConfigModal(false)}
         title="Claude Cowork - Manual Configuration"
         configs={getManualConfigs()}
+      />
+
+      <ComboFormModal
+        isOpen={comboModalOpen}
+        combo={null}
+        onClose={() => setComboModalOpen(false)}
+        onSave={handleCreateCombo}
+        activeProviders={activeProviders}
+        forcePrefix="claude-"
+        title="Create Cowork Combo"
       />
     </Card>
   );

@@ -21,11 +21,14 @@ export default function ModelSelectModal({
   isOpen,
   onClose,
   onSelect,
+  onDeselect,
   selectedModel,
   activeProviders = [],
   title = "Select Model",
   modelAliases = {},
   kindFilter = null,
+  addedModelValues = [],
+  closeOnSelect = true,
 }) {
   // Filter activeProviders by serviceKinds when kindFilter set (e.g. "webSearch", "webFetch")
   const filteredActiveProviders = useMemo(() => {
@@ -342,9 +345,19 @@ export default function ModelSelectModal({
   }, [groupedModels, searchQuery]);
 
   const handleSelect = (model) => {
-    onSelect(model);
-    onClose();
-    setSearchQuery("");
+    const value = model?.value || model?.name || model;
+    const isAdded = addedModelValues.includes(value);
+
+    if (isAdded && onDeselect) {
+      onDeselect(model);
+    } else {
+      onSelect(model);
+    }
+
+    if (closeOnSelect) {
+      onClose();
+      setSearchQuery("");
+    }
   };
 
   return (
@@ -392,13 +405,18 @@ export default function ModelSelectModal({
                     key={combo.id}
                     onClick={() => handleSelect({ id: combo.name, name: combo.name, value: combo.name })}
                     className={`
-                      px-2 py-1 rounded-xl text-xs font-medium transition-all border hover:cursor-pointer
+                      px-2 py-1 rounded-xl text-xs font-medium transition-all border hover:cursor-pointer flex items-center gap-1
                       ${isSelected
                         ? "bg-primary text-white border-primary"
-                        : "bg-surface border-border text-text-main hover:border-primary/50 hover:bg-primary/5"
+                        : addedModelValues.includes(combo.name)
+                          ? "bg-green-500/10 border-green-500/30 text-green-700 dark:text-green-400 hover:border-green-500/50"
+                          : "bg-surface border-border text-text-main hover:border-primary/50 hover:bg-primary/5"
                       }
                     `}
                   >
+                    {addedModelValues.includes(combo.name) && (
+                      <span className="material-symbols-outlined text-[12px]">check_circle</span>
+                    )}
                     {combo.name}
                   </button>
                 );
@@ -439,21 +457,30 @@ export default function ModelSelectModal({
                         ? "border-dashed border-border text-text-muted hover:border-primary/50 hover:text-primary bg-surface italic"
                         : isSelected
                           ? "bg-primary text-white border-primary"
-                          : "bg-surface border-border text-text-main hover:border-primary/50 hover:bg-primary/5"
+                          : addedModelValues.includes(model.value)
+                            ? "bg-green-500/10 border-green-500/30 text-green-700 dark:text-green-400 hover:border-green-500/50"
+                            : "bg-surface border-border text-text-main hover:border-primary/50 hover:bg-primary/5"
                       }
                     `}
                   >
-                    {isPlaceholder ? (
-                      <span className="flex items-center gap-1">
-                        <span className="material-symbols-outlined text-[11px]">edit</span>
-                        {model.name}
-                      </span>
-                    ) : model.isCustom ? (
-                      <span className="flex items-center gap-1">
-                        {model.name}
-                        <span className="text-[9px] opacity-60 font-normal">custom</span>
-                      </span>
-                    ) : model.name}
+                    <span className="flex items-center gap-1">
+                      {addedModelValues.includes(model.value) && !isPlaceholder && (
+                        <span className="material-symbols-outlined text-[12px]">check_circle</span>
+                      )}
+                      {isPlaceholder ? (
+                        <>
+                          <span className="material-symbols-outlined text-[11px]">edit</span>
+                          {model.name}
+                        </>
+                      ) : model.isCustom ? (
+                        <>
+                          {model.name}
+                          <span className="text-[9px] opacity-60 font-normal">custom</span>
+                        </>
+                      ) : (
+                        model.name
+                      )}
+                    </span>
                   </button>
                 );
               })}
@@ -478,6 +505,7 @@ ModelSelectModal.propTypes = {
   isOpen: PropTypes.bool.isRequired,
   onClose: PropTypes.func.isRequired,
   onSelect: PropTypes.func.isRequired,
+  onDeselect: PropTypes.func,
   selectedModel: PropTypes.string,
   activeProviders: PropTypes.arrayOf(
     PropTypes.shape({
@@ -487,5 +515,7 @@ ModelSelectModal.propTypes = {
   title: PropTypes.string,
   modelAliases: PropTypes.object,
   kindFilter: PropTypes.string,
+  addedModelValues: PropTypes.arrayOf(PropTypes.string),
+  closeOnSelect: PropTypes.bool,
 };
 

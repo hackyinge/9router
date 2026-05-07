@@ -1,3 +1,21 @@
+# v0.4.19 (2026-05-07)
+
+## Features
+- Add OllamaLocalExecutor cho local Ollama provider
+- Add audio input support cho Gemini translation
+- Add configurable tunnel transport protocols
+- Add model deselection trong ComboFormModal & ComboDetailPage
+- ComboFormModal/BaseUrlSelect: cloud endpoint option, custom URL local state, default first option
+- New API: `/v1/audio/voices`, `/v1/models/info`; `/v1/models` filter disabled models
+- CLI tool cards refactor dùng BaseUrlSelect
+
+## Fixes
+- Fix compatible provider API key setup
+- Fix usage: filter `totalRequests` theo time period đã chọn
+- Fix Kiro IDE MITM handler bugs (AWS CodeWhisperer translation)
+- geminiHelper: `ensureObjectType` cho schemas có properties nhưng thiếu type
+- initializeApp: guard tunnel/tailscale auto-resume once-per-process
+
 # v0.4.18 (2026-05-05)
 
 ## Features

@@ -3,9 +3,10 @@
 import { useState, useEffect } from "react";
 import { Card, Button, ModelSelectModal, ManualConfigModal } from "@/shared/components";
 import Image from "next/image";
-import EndpointPresetControl from "./EndpointPresetControl";
+import BaseUrlSelect from "./BaseUrlSelect";
+import { matchKnownEndpoint } from "./cliEndpointMatch";
 
-export default function CopilotToolCard({ tool, isExpanded, onToggle, baseUrl, apiKeys, activeProviders, cloudEnabled, initialStatus }) {
+export default function CopilotToolCard({ tool, isExpanded, onToggle, baseUrl, apiKeys, activeProviders, cloudEnabled, initialStatus, tunnelEnabled, tunnelPublicUrl, tailscaleEnabled, tailscaleUrl }) {
   const [status, setStatus] = useState(initialStatus || null);
   const [checking, setChecking] = useState(false);
   const [applying, setApplying] = useState(false);
@@ -63,8 +64,7 @@ export default function CopilotToolCard({ tool, isExpanded, onToggle, baseUrl, a
     if (!status) return null;
     if (!status.hasOpenRouterX) return "not_configured";
     const url = status.currentUrl || "";
-    return url.includes("localhost") || url.includes("127.0.0.1") || url.includes(baseUrl)
-      ? "configured" : "other";
+    return matchKnownEndpoint(url, { tunnelPublicUrl, tailscaleUrl }) ? "configured" : "other";
   };
 
   const configStatus = getConfigStatus();
@@ -206,21 +206,16 @@ export default function CopilotToolCard({ tool, isExpanded, onToggle, baseUrl, a
               </div>
 
               <div className="flex flex-col gap-3">
-                <EndpointPresetControl
-                  baseUrl={getEffectiveBaseUrl()}
-                  apiKey={selectedApiKey}
-                  onBaseUrlChange={setCustomBaseUrl}
-                  onApiKeyChange={setSelectedApiKey}
-                />
-
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-medium text-text-muted">Base URL</label>
-                  <input
-                    type="text"
-                    value={getEffectiveBaseUrl()}
-                    onChange={(e) => setCustomBaseUrl(e.target.value)}
-                    placeholder="https://.../v1"
-                    className="px-3 py-2 bg-bg-secondary rounded-lg text-sm border border-border focus:outline-none focus:ring-1 focus:ring-primary/50"
+                  <label className="text-xs font-medium text-text-muted">Select Endpoint</label>
+                  <BaseUrlSelect
+                    value={customBaseUrl || getEffectiveBaseUrl()}
+                    onChange={setCustomBaseUrl}
+                    requiresExternalUrl={tool.requiresExternalUrl}
+                    tunnelEnabled={tunnelEnabled}
+                    tunnelPublicUrl={tunnelPublicUrl}
+                    tailscaleEnabled={tailscaleEnabled}
+                    tailscaleUrl={tailscaleUrl}
                   />
                 </div>
 

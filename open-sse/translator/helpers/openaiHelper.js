@@ -1,7 +1,7 @@
 // OpenAI helper functions for translator
 
 // Valid OpenAI content block types
-export const VALID_OPENAI_CONTENT_TYPES = ["text", "image_url", "image"];
+export const VALID_OPENAI_CONTENT_TYPES = ["text", "image_url", "image", "input_audio", "audio_url"];
 export const VALID_OPENAI_MESSAGE_TYPES = ["text", "image_url", "image", "tool_calls", "tool_result"];
 
 // Filter messages to OpenAI standard format
