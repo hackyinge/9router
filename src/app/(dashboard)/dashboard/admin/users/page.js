@@ -10,11 +10,11 @@ export default function AdminUsersPage() {
   const [providerOptions, setProviderOptions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
-  const [form, setForm] = useState({ username: "", password: "", displayName: "", role: "sub_user", permissions: [], allowedProviders: [] });
+  const [form, setForm] = useState({ username: "", password: "", displayName: "", role: "sub_user", permissions: [], allowedProviders: [], showQuotaTracker: true });
   const [formLoading, setFormLoading] = useState(false);
   const [formError, setFormError] = useState("");
   const [editingUser, setEditingUser] = useState(null);
-  const [editForm, setEditForm] = useState({ displayName: "", role: "", permissions: [], allowedProviders: [], password: "" });
+  const [editForm, setEditForm] = useState({ displayName: "", role: "", permissions: [], allowedProviders: [], showQuotaTracker: true, password: "" });
   const [deleteConfirm, setDeleteConfirm] = useState(null);
 
   useEffect(() => {
@@ -34,14 +34,16 @@ export default function AdminUsersPage() {
   async function fetchUsers() {
     setLoading(true);
     try {
-      const [usersRes, providersRes] = await Promise.all([
+      const [usersRes, providersRes, nodesRes] = await Promise.all([
         fetch("/api/users"),
         fetch("/api/providers"),
+        fetch("/api/provider-nodes"),
       ]);
       const usersData = await usersRes.json();
       const providersData = await providersRes.json();
+      const nodesData = await nodesRes.json();
       setUsers(usersData.users || []);
-      setProviderOptions(buildProviderOptions(providersData.connections || []));
+      setProviderOptions(buildProviderOptions(providersData.connections || [], nodesData.nodes || []));
     } finally {
       setLoading(false);
     }
@@ -60,7 +62,7 @@ export default function AdminUsersPage() {
       const data = await res.json();
       if (!res.ok) { setFormError(data.error || "Failed"); return; }
       setShowCreate(false);
-      setForm({ username: "", password: "", displayName: "", role: "sub_user", permissions: [], allowedProviders: getDefaultAllowedProviders(providerOptions) });
+      setForm({ username: "", password: "", displayName: "", role: "sub_user", permissions: [], allowedProviders: getDefaultAllowedProviders(providerOptions), showQuotaTracker: true });
       fetchUsers();
     } catch {
       setFormError("Network error");
@@ -76,6 +78,7 @@ export default function AdminUsersPage() {
       role: user.role,
       permissions: user.permissions || [],
       allowedProviders: getEffectiveAllowedProviders(user, getDefaultAllowedProviders(providerOptions)),
+      showQuotaTracker: user.showQuotaTracker !== false,
       password: "",
     });
   }
@@ -89,6 +92,7 @@ export default function AdminUsersPage() {
         role: editForm.role,
         permissions: editForm.permissions,
         allowedProviders: editForm.allowedProviders,
+        showQuotaTracker: editForm.showQuotaTracker,
       };
       if (editForm.password) body.password = editForm.password;
       const res = await fetch(`/api/users/${editingUser.id}`, {
@@ -119,6 +123,7 @@ export default function AdminUsersPage() {
       role: "sub_user",
       permissions: [],
       allowedProviders: getDefaultAllowedProviders(providerOptions),
+      showQuotaTracker: true,
     });
     setFormError("");
     setShowCreate(true);
@@ -172,6 +177,9 @@ export default function AdminUsersPage() {
                 <span className="text-xs px-2 py-1 rounded-full bg-primary/10 text-primary">
                   {formatAllowedProviders(user, providerOptions)}
                 </span>
+                <span className={`text-xs px-2 py-1 rounded-full ${user.showQuotaTracker !== false ? "bg-emerald-500/10 text-emerald-600" : "bg-surface-alt text-text-muted"}`}>
+                  {user.showQuotaTracker !== false ? "Quota On" : "Quota Off"}
+                </span>
                 <Button variant="secondary" size="sm" onClick={() => openEdit(user)}>Edit</Button>
                 <Button variant="danger" size="sm" onClick={() => setDeleteConfirm(user)}>Delete</Button>
               </div>
@@ -207,6 +215,14 @@ export default function AdminUsersPage() {
               selectedProviders={form.allowedProviders}
               onToggle={(providerId) => toggleAllowedProvider(providerId, setForm)}
             />
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <input
+                type="checkbox"
+                checked={form.showQuotaTracker}
+                onChange={(e) => setForm((f) => ({ ...f, showQuotaTracker: e.target.checked }))}
+              />
+              Allow Quota Tracker for this sub-user
+            </label>
             {formError && <p className="text-red-500 text-sm">{formError}</p>}
             <div className="flex justify-end gap-2 mt-2">
               <Button variant="secondary" type="button" onClick={() => setShowCreate(false)}>Cancel</Button>
@@ -242,6 +258,14 @@ export default function AdminUsersPage() {
               selectedProviders={editForm.allowedProviders}
               onToggle={(providerId) => toggleAllowedProvider(providerId, setEditForm)}
             />
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <input
+                type="checkbox"
+                checked={editForm.showQuotaTracker}
+                onChange={(e) => setEditForm((f) => ({ ...f, showQuotaTracker: e.target.checked }))}
+              />
+              Allow Quota Tracker for this sub-user
+            </label>
             <Input label="New Password (leave blank to keep)" type="password" value={editForm.password}
               onChange={e => setEditForm(f => ({ ...f, password: e.target.value }))} />
             <div className="flex justify-end gap-2 mt-2">
@@ -266,27 +290,45 @@ export default function AdminUsersPage() {
   );
 }
 
-function buildProviderOptions(connections) {
-  const byProvider = new Map();
+function buildProviderOptions(connections, nodes) {
+  const nodeMap = new Map((nodes || []).map((node) => [node.id, node]));
+  const options = new Map();
 
-  for (const connection of connections) {
-    if (!connection?.provider || byProvider.has(connection.provider)) continue;
+  for (const connection of connections || []) {
+    const providerId = connection?.provider;
+    if (!providerId || options.has(providerId)) continue;
 
-    byProvider.set(connection.provider, {
-      id: connection.provider,
-      label: AI_PROVIDERS[connection.provider]?.name || connection.name || connection.provider,
+    const providerMeta = AI_PROVIDERS[providerId];
+    const providerNode = nodeMap.get(providerId);
+    const typeLabel = providerNode ? ({
+      "openai-compatible": "OpenAI Compatible",
+      "anthropic-compatible": "Anthropic Compatible",
+      "custom-embedding": "Custom Embedding",
+      "custom-image": "Custom Image",
+    }[providerNode.type] || "Custom Provider") : null;
+
+    options.set(providerId, {
+      id: providerId,
+      label: providerNode
+        ? `${providerNode.name || providerNode.prefix || providerId} (${typeLabel})`
+        : (providerMeta?.name || connection.name || providerId),
+      defaultEnabled: true,
     });
   }
 
-  return Array.from(byProvider.values()).sort((a, b) => a.label.localeCompare(b.label, "en"));
+  return Array.from(options.values()).sort((a, b) => a.label.localeCompare(b.label, "en"));
 }
 
 function getDefaultAllowedProviders(providerOptions) {
+  const defaultProviderIds = providerOptions
+    .filter((option) => option.defaultEnabled)
+    .map((option) => option.id);
   const providerIds = providerOptions.map((option) => option.id);
   const legacyMatches = LEGACY_SUB_USER_VISIBLE_PROVIDERS.filter((providerId) =>
     providerIds.includes(providerId)
   );
 
+  if (defaultProviderIds.length > 0) return defaultProviderIds;
   if (legacyMatches.length > 0) return legacyMatches;
   return providerIds;
 }

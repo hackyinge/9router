@@ -46,7 +46,7 @@ export async function handleImageGenerationCore({
 
   const url = adapter.buildUrl(model, credentials);
   const headers = adapter.buildHeaders(credentials);
-  const requestBody = adapter.buildBody(model, body);
+  const requestBody = adapter.buildBody(model, body, credentials);
 
   log?.debug?.("IMAGE", `${provider.toUpperCase()} | ${model} | prompt="${body.prompt.slice(0, 50)}..."`);
 

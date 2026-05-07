@@ -13,7 +13,7 @@ export {
   getModelQuotaFamily
 } from "open-sse/config/providerModels.js";
 
-import { AI_PROVIDERS, isOpenAICompatibleProvider } from "./providers.js";
+import { AI_PROVIDERS, isCustomImageProvider, isOpenAICompatibleProvider } from "./providers.js";
 import { PROVIDER_MODELS as MODELS } from "open-sse/config/providerModels.js";
 
 // Providers that accept any model (passthrough)
@@ -26,6 +26,7 @@ const PASSTHROUGH_PROVIDERS = new Set(
 // Wrap isValidModel with passthrough providers
 export function isValidModel(aliasOrId, modelId) {
   if (isOpenAICompatibleProvider(aliasOrId)) return true;
+  if (isCustomImageProvider(aliasOrId)) return true;
   if (PASSTHROUGH_PROVIDERS.has(aliasOrId)) return true;
   const models = MODELS[aliasOrId];
   if (!models) return false;

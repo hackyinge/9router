@@ -7,7 +7,14 @@ import {
   getProxyPoolById,
 } from "@/models";
 import { APIKEY_PROVIDERS } from "@/shared/constants/config";
-import { FREE_TIER_PROVIDERS, WEB_COOKIE_PROVIDERS, isOpenAICompatibleProvider, isAnthropicCompatibleProvider, isCustomEmbeddingProvider } from "@/shared/constants/providers";
+import {
+  FREE_TIER_PROVIDERS,
+  WEB_COOKIE_PROVIDERS,
+  isOpenAICompatibleProvider,
+  isAnthropicCompatibleProvider,
+  isCustomEmbeddingProvider,
+  isCustomImageProvider,
+} from "@/shared/constants/providers";
 import { resolveSubUserAccessContext, filterConnectionsForSubUser } from "@/lib/subUserAccess";
 
 export const dynamic = "force-dynamic";
@@ -107,7 +114,8 @@ export async function POST(request) {
       isWebCookieProvider ||
       isOpenAICompatibleProvider(provider) ||
       isAnthropicCompatibleProvider(provider) ||
-      isCustomEmbeddingProvider(provider);
+      isCustomEmbeddingProvider(provider) ||
+      isCustomImageProvider(provider);
 
     if (!provider || !isValidProvider) {
       return NextResponse.json({ error: "Invalid provider" }, { status: 400 });
@@ -168,6 +176,23 @@ export async function POST(request) {
       providerSpecificData = {
         prefix: node.prefix,
         baseUrl: node.baseUrl,
+        nodeName: node.name,
+      };
+    } else if (isCustomImageProvider(provider)) {
+      const node = await getProviderNodeById(provider);
+      if (!node) {
+        return NextResponse.json({ error: "Custom Image node not found" }, { status: 404 });
+      }
+
+      const existingConnections = await getProviderConnections({ provider });
+      if (existingConnections.length > 0) {
+        return NextResponse.json({ error: "Only one connection is allowed for this Custom Image node" }, { status: 400 });
+      }
+
+      providerSpecificData = {
+        prefix: node.prefix,
+        baseUrl: node.baseUrl,
+        defaultSize: node.defaultSize || "",
         nodeName: node.name,
       };
     }

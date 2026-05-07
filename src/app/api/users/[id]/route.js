@@ -42,6 +42,7 @@ export async function PATCH(request, { params }) {
       permissions: body.permissions,
       displayName: body.displayName,
       allowedProviders: normalizeProviderIds(body.allowedProviders),
+      showQuotaTracker: body.showQuotaTracker !== false,
     };
     if (body.password) {
       const bcrypt = await import("bcryptjs");

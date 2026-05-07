@@ -3,9 +3,10 @@
 import { useParams, notFound, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useState, useEffect, useRef } from "react";
-import { Card, Badge, Button, AddCustomEmbeddingModal, NoAuthProxyCard, ProviderInfoCard } from "@/shared/components";
+import { Card, Badge, Button, AddCustomEmbeddingModal, AddCustomImageModal, NoAuthProxyCard, ProviderInfoCard } from "@/shared/components";
 import ProviderIcon from "@/shared/components/ProviderIcon";
-import { MEDIA_PROVIDER_KINDS, AI_PROVIDERS, getProviderAlias, isCustomEmbeddingProvider } from "@/shared/constants/providers";
+import { IMAGE_SIZE_OPTIONS } from "@/shared/constants/imageSizes";
+import { MEDIA_PROVIDER_KINDS, AI_PROVIDERS, getProviderAlias, isCustomEmbeddingProvider, isCustomImageProvider } from "@/shared/constants/providers";
 import { getModelsByProviderId } from "@/shared/constants/models";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import ConnectionsCard from "@/app/(dashboard)/dashboard/providers/components/ConnectionsCard";
@@ -96,7 +97,7 @@ const KIND_EXAMPLE_CONFIG = {
     defaultResponse: `{\n  "data": [\n    { "url": "...", "b64_json": "..." }\n  ]\n}`,
     extraFields: [
       { key: "n", label: "n", type: "number", default: 1, min: 1, max: 4 },
-      { key: "size", label: "Size", type: "select", default: "auto", options: ["auto", "1024x1024", "1024x1536", "1536x1024", "1024x1792", "1792x1024"] },
+      { key: "size", label: "Size", type: "select", default: "", options: ["", ...IMAGE_SIZE_OPTIONS] },
       { key: "quality", label: "Quality", type: "select", default: "auto", options: ["auto", "low", "medium", "high", "standard", "hd"] },
       { key: "background", label: "Background", type: "select", default: "auto", options: ["auto", "transparent", "opaque"] },
       { key: "style", label: "Style", type: "select", default: "", options: ["", "vivid", "natural"] },
@@ -914,18 +915,21 @@ function TtsExampleCard({ providerId }) {
 }
 
 // Generic Example Card — config-driven for webSearch, webFetch, image, imageToText, stt, video, music
-function GenericExampleCard({ providerId, kind }) {
-  const providerAlias = getProviderAlias(providerId);
+function GenericExampleCard({ providerId, kind, providerAliasOverride = "", customNode = null }) {
+  const providerAlias = providerAliasOverride || getProviderAlias(providerId);
   const kindConfig = MEDIA_PROVIDER_KINDS.find((k) => k.id === kind);
   const exConfig = KIND_EXAMPLE_CONFIG[kind];
   const safeExConfig = exConfig || {};
 
   // Get models for this kind (e.g., type="image")
-  const kindModels = getModelsByProviderId(providerId).filter((m) => m.type === kind);
+  const builtInKindModels = getModelsByProviderId(providerId).filter((m) => m.type === kind);
+  const [customKindModels, setCustomKindModels] = useState([]);
+  const kindModels = [...builtInKindModels, ...customKindModels];
   // Kinds that need a model identifier in the request (image/video/music)
   const KIND_NEEDS_MODEL = new Set(["image", "video", "music", "imageToText"]);
   const needsModel = KIND_NEEDS_MODEL.has(kind);
-  const allowManualModel = needsModel && kindModels.length === 0;
+  const preferManagedModels = Boolean(providerAliasOverride && kind === "image");
+  const allowManualModel = needsModel && kindModels.length === 0 && !preferManagedModels;
   const [selectedModel, setSelectedModel] = useState(kindModels[0]?.id ?? "");
   const selectedModelObj = kindModels.find((m) => m.id === selectedModel);
   const supportsEdit = !!selectedModelObj?.capabilities?.includes("edit");
@@ -935,7 +939,12 @@ function GenericExampleCard({ providerId, kind }) {
   const [refImageUrl, setRefImageUrl] = useState(""); // URL input field
   const fileInputRef = useRef(null);
   const [extraValues, setExtraValues] = useState(() =>
-    (safeExConfig.extraFields || []).reduce((acc, f) => { acc[f.key] = f.default ?? ""; return acc; }, {})
+    (safeExConfig.extraFields || []).reduce((acc, f) => {
+      acc[f.key] = (kind === "image" && f.key === "size" && customNode?.defaultSize)
+        ? customNode.defaultSize
+        : (f.default ?? "");
+      return acc;
+    }, {})
   );
   const [apiKey, setApiKey] = useState("");
   const [useTunnel, setUseTunnel] = useState(false);
@@ -1009,7 +1018,40 @@ function GenericExampleCard({ providerId, kind }) {
         setConnections(conns);
       })
       .catch(() => {});
-  }, [providerId]);
+    const loadCustom = () => {
+      fetch("/api/models/custom", { cache: "no-store" })
+        .then((r) => r.json())
+        .then((d) => {
+          const list = (d.models || [])
+            .filter((m) => m.providerAlias === providerAlias && (m.type || "llm") === kind)
+            .map((m) => ({ id: m.id, name: m.name || m.id, type: kind, isCustom: true }));
+          setCustomKindModels(list);
+        })
+        .catch(() => {});
+    };
+    loadCustom();
+    window.addEventListener("focus", loadCustom);
+    window.addEventListener("customModelChanged", loadCustom);
+    return () => {
+      window.removeEventListener("focus", loadCustom);
+      window.removeEventListener("customModelChanged", loadCustom);
+    };
+  }, [providerAlias, providerId, kind]);
+
+  useEffect(() => {
+    if (!selectedModel && kindModels.length > 0) {
+      setSelectedModel(kindModels[0].id);
+      return;
+    }
+    if (selectedModel && !kindModels.some((m) => m.id === selectedModel)) {
+      setSelectedModel(kindModels[0]?.id || "");
+    }
+  }, [kindModels, selectedModel]);
+
+  useEffect(() => {
+    if (kind !== "image" || !customNode?.defaultSize) return;
+    setExtraValues((prev) => ({ ...prev, size: customNode.defaultSize }));
+  }, [kind, customNode?.defaultSize]);
 
   // Safe to early-return now that all hooks are declared
   if (!kindConfig || !exConfig) return null;
@@ -1171,6 +1213,19 @@ function GenericExampleCard({ providerId, kind }) {
               className="w-full px-3 py-1.5 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary font-mono"
             />
           </Row>
+        ) : needsModel ? (
+          <Row label="Model">
+            <select
+              value={selectedModel}
+              onChange={(e) => setSelectedModel(e.target.value)}
+              className="w-full px-3 py-1.5 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary"
+            >
+              {kindModels.length === 0 && <option value="">Please add a model first</option>}
+              {kindModels.map((m) => (
+                <option key={m.id} value={m.id}>{m.name || m.id}</option>
+              ))}
+            </select>
+          </Row>
         ) : null}
 
         {/* Endpoint */}
@@ -1328,7 +1383,10 @@ function GenericExampleCard({ providerId, kind }) {
 
         {/* Extra fields — for kinds without model concept (webSearch/webFetch), show all; otherwise filter by model.params */}
         {(exConfig.extraFields || [])
-          .filter((f) => kindModels.length === 0 || (Array.isArray(selectedModelObj?.params) && selectedModelObj.params.includes(f.key)))
+          .filter((f) => {
+            if (kind === "image") return true;
+            return kindModels.length === 0 || (Array.isArray(selectedModelObj?.params) && selectedModelObj.params.includes(f.key));
+          })
           .map((f) => (
           <Row key={f.key} label={f.label}>
             {f.type === "select" ? (
@@ -1762,23 +1820,26 @@ export default function MediaProviderDetailPage() {
   const { kind, id } = useParams();
   const router = useRouter();
   const kindConfig = MEDIA_PROVIDER_KINDS.find((k) => k.id === kind);
-  const isCustom = isCustomEmbeddingProvider(id) && kind === "embedding";
+  const isCustomEmbedding = isCustomEmbeddingProvider(id) && kind === "embedding";
+  const isCustomImage = isCustomImageProvider(id) && kind === "image";
+  const isCustom = isCustomEmbedding || isCustomImage;
 
   const handleDeleteCustom = async () => {
-    if (!confirm("Delete this Custom Embedding node?")) return;
+    if (!confirm(`Delete this ${isCustomImage ? "Custom Image" : "Custom Embedding"} node?`)) return;
     try {
       const res = await fetch(`/api/provider-nodes/${id}`, { method: "DELETE" });
       if (res.ok) router.push(`/dashboard/media-providers/${kind}`);
     } catch (error) {
-      console.log("Error deleting custom embedding node:", error);
+      console.log("Error deleting custom media node:", error);
     }
   };
 
   const [customNode, setCustomNode] = useState(null);
   const [customLoading, setCustomLoading] = useState(isCustom);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [accessReady, setAccessReady] = useState(false);
 
-  // Fetch custom node info from API for custom embedding nodes
+  // Fetch custom node info from API for custom media nodes
   useEffect(() => {
     if (!isCustom) return;
     let cancelled = false;
@@ -1793,13 +1854,41 @@ export default function MediaProviderDetailPage() {
     return () => { cancelled = true; };
   }, [id, isCustom]);
 
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/auth/me", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((data) => {
+        if (cancelled) return;
+        if (data.role === "sub_user" && !((data.allowedProviders || []).includes(id))) {
+          router.replace(`/dashboard/media-providers/${kind}`);
+          return;
+        }
+        setAccessReady(true);
+      })
+      .catch(() => {
+        if (!cancelled) setAccessReady(true);
+      });
+    return () => { cancelled = true; };
+  }, [id, kind, router]);
+
   if (!kindConfig) return notFound();
+  if (!accessReady) {
+    return <div className="text-text-muted text-sm py-12 text-center">Loading...</div>;
+  }
 
   const builtInProvider = AI_PROVIDERS[id];
 
-  // For custom embedding nodes, build a synthetic provider object
+  // For custom nodes, build a synthetic provider object
   const provider = isCustom
-    ? (customNode ? { id, name: customNode.name || "Custom Embedding", color: "#6366F1", textIcon: "CE" } : null)
+    ? (customNode
+      ? {
+          id,
+          name: customNode.name || (isCustomImage ? "Custom Image" : "Custom Embedding"),
+          color: isCustomImage ? "#EC4899" : "#6366F1",
+          textIcon: isCustomImage ? "CI" : "CE",
+        }
+      : null)
     : builtInProvider;
 
   if (!isCustom && !builtInProvider) return notFound();
@@ -1808,7 +1897,7 @@ export default function MediaProviderDetailPage() {
     return <div className="text-text-muted text-sm py-12 text-center">Loading...</div>;
   }
 
-  const kinds = isCustom ? ["embedding"] : (provider.serviceKinds ?? ["llm"]);
+  const kinds = isCustom ? [kind] : (provider.serviceKinds ?? ["llm"]);
   if (!isCustom && !kinds.includes(kind)) return notFound();
 
   return (
@@ -1902,10 +1991,10 @@ export default function MediaProviderDetailPage() {
       {!isCustom && provider.noAuth ? (
         <NoAuthProxyCard providerId={id} />
       ) : (
-        <ConnectionsCard providerId={id} isOAuth={false} />
+        <ConnectionsCard providerId={id} providerName={provider.name} isOAuth={false} />
       )}
 
-      {/* Models - hidden for tts/webSearch/webFetch (provider IS the model); custom uses prefix as alias */}
+      {/* Models - hidden for tts/webSearch/webFetch */}
       {kind !== "tts" && kind !== "webSearch" && kind !== "webFetch" && (
         <ModelsCard
           providerId={id}
@@ -1935,10 +2024,23 @@ export default function MediaProviderDetailPage() {
       )}
       {kind === "tts" && <TtsExampleCard providerId={id} />}
       {kind === "stt" && !isCustom && <SttExampleCard providerId={id} />}
-      {!isCustom && KIND_EXAMPLE_CONFIG[kind] && <GenericExampleCard providerId={id} kind={kind} />}
+      {((!isCustom && KIND_EXAMPLE_CONFIG[kind]) || (isCustomImage && KIND_EXAMPLE_CONFIG[kind])) && (
+        <GenericExampleCard providerId={id} kind={kind} providerAliasOverride={customNode?.prefix} customNode={isCustomImage ? customNode : null} />
+      )}
 
-      {isCustom && (
+      {isCustomEmbedding && (
         <AddCustomEmbeddingModal
+          isOpen={showEditModal}
+          node={customNode}
+          onClose={() => setShowEditModal(false)}
+          onSaved={(updated) => {
+            setCustomNode(updated);
+            setShowEditModal(false);
+          }}
+        />
+      )}
+      {isCustomImage && (
+        <AddCustomImageModal
           isOpen={showEditModal}
           node={customNode}
           onClose={() => setShowEditModal(false)}

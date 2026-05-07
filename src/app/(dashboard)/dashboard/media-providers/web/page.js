@@ -117,7 +117,7 @@ function Section({ title, icon, kind, providers, connections, combos, onCreateCo
           <h2 className="text-base font-semibold">{title}</h2>
           <span className="text-xs text-text-muted">({providers.length} providers · {combos.length} combos)</span>
         </div>
-        <Button size="sm" icon="add" onClick={onCreateCombo}>Create Combo</Button>
+        {onCreateCombo && <Button size="sm" icon="add" onClick={onCreateCombo}>Create Combo</Button>}
       </div>
 
       {/* Combos — top */}
@@ -147,13 +147,21 @@ export default function WebProvidersPage() {
   const router = useRouter();
   const [connections, setConnections] = useState([]);
   const [combos, setCombos] = useState([]);
+  const [allowedProviders, setAllowedProviders] = useState([]);
+  const [isSubUser, setIsSubUser] = useState(false);
 
   const fetchAll = async () => {
     try {
-      const [connsRes, combosRes] = await Promise.all([
+      const [authRes, connsRes, combosRes] = await Promise.all([
+        fetch("/api/auth/me", { cache: "no-store" }),
         fetch("/api/providers", { cache: "no-store" }),
         fetch("/api/combos", { cache: "no-store" }),
       ]);
+      if (authRes.ok) {
+        const authData = await authRes.json();
+        setIsSubUser(authData.role === "sub_user");
+        setAllowedProviders(authData.role === "sub_user" ? (authData.allowedProviders || []) : []);
+      }
       if (connsRes.ok) setConnections((await connsRes.json()).connections || []);
       if (combosRes.ok) setCombos((await combosRes.json()).combos || []);
     } catch { /* noop */ }
@@ -162,8 +170,12 @@ export default function WebProvidersPage() {
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { fetchAll(); }, []);
 
-  const searchProviders = getProvidersByKind("webSearch");
-  const fetchProviders = getProvidersByKind("webFetch");
+  const searchProviders = getProvidersByKind("webSearch").filter((provider) =>
+    !isSubUser || allowedProviders.includes(provider.id)
+  );
+  const fetchProviders = getProvidersByKind("webFetch").filter((provider) =>
+    !isSubUser || allowedProviders.includes(provider.id)
+  );
   const searchCombos = combos.filter((c) => c.kind === "webSearch");
   const fetchCombos = combos.filter((c) => c.kind === "webFetch");
 
@@ -193,7 +205,7 @@ export default function WebProvidersPage() {
       <Section
         title="Web Search" icon="search" kind="webSearch"
         providers={searchProviders} connections={connections} combos={searchCombos}
-        onCreateCombo={() => handleCreateCombo("webSearch")}
+        onCreateCombo={isSubUser ? undefined : () => handleCreateCombo("webSearch")}
       />
 
       {/* Divider between sections */}
@@ -202,7 +214,7 @@ export default function WebProvidersPage() {
       <Section
         title="Web Fetch" icon="travel_explore" kind="webFetch"
         providers={fetchProviders} connections={connections} combos={fetchCombos}
-        onCreateCombo={() => handleCreateCombo("webFetch")}
+        onCreateCombo={isSubUser ? undefined : () => handleCreateCombo("webFetch")}
       />
     </div>
   );

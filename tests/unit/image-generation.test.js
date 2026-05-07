@@ -237,6 +237,57 @@ describe("handleImageGenerationCore", () => {
     );
   });
 
+  it("uses custom image defaultSize when request size is missing", async () => {
+    global.fetch.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          created: 1234567890,
+          data: [{ url: "https://example.com/custom-image.png" }],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    );
+
+    const result = await handleImageGenerationCore({
+      body: { prompt: "A cinematic portrait" },
+      modelInfo: { provider: "custom-image-demo", model: "sensenova-u1-fast" },
+      credentials: {
+        apiKey: "test-key",
+        providerSpecificData: { defaultSize: "1664x2496" },
+      },
+      log: null,
+    });
+
+    expect(result.success).toBe(true);
+    const fetchCall = global.fetch.mock.calls[0];
+    const requestBody = JSON.parse(fetchCall[1].body);
+    expect(requestBody.size).toBe("1664x2496");
+  });
+
+  it("does not force 1024x1024 for custom image nodes without defaultSize", async () => {
+    global.fetch.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          created: 1234567890,
+          data: [{ url: "https://example.com/custom-image-no-size.png" }],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    );
+
+    const result = await handleImageGenerationCore({
+      body: { prompt: "A futuristic poster" },
+      modelInfo: { provider: "custom-image-demo", model: "sensenova-u1-fast" },
+      credentials: { apiKey: "test-key", providerSpecificData: {} },
+      log: null,
+    });
+
+    expect(result.success).toBe(true);
+    const fetchCall = global.fetch.mock.calls[0];
+    const requestBody = JSON.parse(fetchCall[1].body);
+    expect(requestBody.size).toBeUndefined();
+  });
+
   it("handles HuggingFace binary response", async () => {
     const imageBuffer = new Uint8Array([0x89, 0x50, 0x4e, 0x47]); // PNG header
     global.fetch.mockResolvedValueOnce(

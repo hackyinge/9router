@@ -25,6 +25,11 @@ const getCodexAuthPath = () => path.join(getCodexDir(), "auth.json");
 const PROVIDER_KEY = "openrouterx";
 const PROVIDER_LABEL = "OpenRouterX";
 
+const normalizeCodexModel = (model) => {
+  if (typeof model !== "string") return model;
+  return model.startsWith("cx/") ? model.slice(3) : model;
+};
+
 // Flatten confbox-parsed TOML into a writable object, preserving nested tables
 const parsedToWritable = (obj) => obj ?? {};
 
@@ -130,8 +135,10 @@ export async function POST(request) {
     }
 
     const { baseUrl, apiKey, model, subagentModel } = await request.json();
+    const normalizedModel = normalizeCodexModel(model);
+    const normalizedSubagentModel = normalizeCodexModel(subagentModel);
     
-    if (!baseUrl || !apiKey || !model) {
+    if (!baseUrl || !apiKey || !normalizedModel) {
       return NextResponse.json({ error: "baseUrl, apiKey and model are required" }, { status: 400 });
     }
 
@@ -149,7 +156,7 @@ export async function POST(request) {
     } catch { /* No existing config */ }
 
     // Update only OpenRouterX related fields (api_key goes to auth.json, not config.toml)
-    parsed.model = model;
+    parsed.model = normalizedModel;
     parsed.model_provider = PROVIDER_KEY;
 
     // Update or create openrouterx provider section (no api_key - Codex reads from auth.json)
@@ -162,7 +169,7 @@ export async function POST(request) {
     });
 
     // Add subagent configuration
-    const effectiveSubagentModel = subagentModel || model;
+    const effectiveSubagentModel = normalizedSubagentModel || normalizedModel;
     setNestedSection(parsed, "agents.subagent", {
       model: effectiveSubagentModel,
     });

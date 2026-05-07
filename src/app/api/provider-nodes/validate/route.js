@@ -1,4 +1,8 @@
 import { NextResponse } from "next/server";
+import {
+  inferOpenAICompatibleApiType,
+  normalizeCompatibleBaseUrl,
+} from "@/shared/utils/compatibleProvider";
 
 // Fetch with timeout wrapper
 const fetchWithTimeout = (url, options, timeout = 10000) => {
@@ -53,7 +57,7 @@ const getChatErrorMessage = (status) => {
 export async function POST(request) {
   try {
     const body = await request.json();
-    const { baseUrl, apiKey, type, modelId } = body;
+    const { baseUrl, apiKey, type, modelId, imageSize } = body;
 
     if (!baseUrl || !apiKey) {
       return NextResponse.json({ error: "Base URL and API key required" }, { status: 400 });
@@ -66,7 +70,7 @@ export async function POST(request) {
 
     // Custom Embedding Validation - test POST /embeddings directly
     if (type === "custom-embedding") {
-      const normalizedBase = baseUrl.trim().replace(/\/$/, "");
+      const normalizedBase = normalizeCompatibleBaseUrl(baseUrl, "openai-compatible");
       if (!modelId?.trim()) {
         return NextResponse.json({ valid: false, error: "Model ID required for embedding validation" });
       }
@@ -94,12 +98,46 @@ export async function POST(request) {
       });
     }
 
+    if (type === "custom-image") {
+      const normalizedBase = normalizeCompatibleBaseUrl(baseUrl, "custom-image");
+      if (!modelId?.trim()) {
+        return NextResponse.json({ valid: false, error: "Model ID required for image validation" });
+      }
+      const imageRes = await fetchWithTimeout(`${normalizedBase}/images/generations`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: modelId.trim(),
+          prompt: "ping",
+          n: 1,
+          size: imageSize?.trim() || "1024x1024",
+        }),
+      });
+      if (imageRes.ok || imageRes.status === 400 || imageRes.status === 422) {
+        return NextResponse.json({
+          valid: true,
+          method: "images",
+          normalizedBaseUrl: normalizedBase,
+        });
+      }
+      if (imageRes.status === 401 || imageRes.status === 403) {
+        return NextResponse.json({ valid: false, error: "API key unauthorized" });
+      }
+      const errBody = await imageRes.text().catch(() => "");
+      return NextResponse.json({
+        valid: false,
+        error: `Images request failed (${imageRes.status})${errBody ? `: ${errBody.slice(0, 200)}` : ""}`,
+        method: "images",
+        normalizedBaseUrl: normalizedBase,
+      });
+    }
+
     // Anthropic Compatible Validation
     if (type === "anthropic-compatible") {
-      let normalizedBase = baseUrl.trim().replace(/\/$/, "");
-      if (normalizedBase.endsWith("/messages")) {
-        normalizedBase = normalizedBase.slice(0, -9);
-      }
+      const normalizedBase = normalizeCompatibleBaseUrl(baseUrl, "anthropic-compatible");
 
       const modelsUrl = `${normalizedBase}/models`;
       const res = await fetchWithTimeout(modelsUrl, {
@@ -148,12 +186,16 @@ export async function POST(request) {
     }
 
     // OpenAI Compatible Validation (Default)
-    const modelsUrl = `${baseUrl.replace(/\/$/, "")}/models`;
+    const normalizedBase = normalizeCompatibleBaseUrl(baseUrl, "openai-compatible");
+    const inferredApiType = inferOpenAICompatibleApiType({ url: baseUrl, body: null });
+    const modelsUrl = `${normalizedBase}/models`;
     const res = await fetchWithTimeout(modelsUrl, {
       headers: { "Authorization": `Bearer ${apiKey}` },
     });
 
-    if (res.ok) return NextResponse.json({ valid: true });
+    if (res.ok) {
+      return NextResponse.json({ valid: true, normalizedBaseUrl: normalizedBase, inferredApiType });
+    }
 
     // Auth errors - no point trying chat fallback
     if (res.status === 401 || res.status === 403) {
@@ -162,29 +204,49 @@ export async function POST(request) {
 
     // Fallback: try chat/completions if modelId provided
     if (modelId) {
-      const chatRes = await fetchWithTimeout(`${baseUrl.replace(/\/$/, "")}/chat/completions`, {
+      const path = inferredApiType === "responses" ? "/responses" : "/chat/completions";
+      const bodyPayload = inferredApiType === "responses"
+        ? {
+            model: modelId,
+            input: "ping",
+            max_output_tokens: 1,
+          }
+        : {
+            model: modelId,
+            messages: [{ role: "user", content: "ping" }],
+            max_tokens: 1,
+          };
+      const chatRes = await fetchWithTimeout(`${normalizedBase}${path}`, {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${apiKey}`,
           "Content-Type": "application/json"
         },
-        body: JSON.stringify({
-          model: modelId,
-          messages: [{ role: "user", content: "ping" }],
-          max_tokens: 1
-        })
+        body: JSON.stringify(bodyPayload)
       });
       if (chatRes.ok) {
-        return NextResponse.json({ valid: true, method: "chat" });
+        return NextResponse.json({
+          valid: true,
+          method: inferredApiType === "responses" ? "responses" : "chat",
+          normalizedBaseUrl: normalizedBase,
+          inferredApiType,
+        });
       }
       return NextResponse.json({
         valid: false,
         error: getChatErrorMessage(chatRes.status),
-        method: "chat"
+        method: inferredApiType === "responses" ? "responses" : "chat",
+        normalizedBaseUrl: normalizedBase,
+        inferredApiType,
       });
     }
 
-    return NextResponse.json({ valid: false, error: getModelsErrorMessage(res.status) });
+    return NextResponse.json({
+      valid: false,
+      error: getModelsErrorMessage(res.status),
+      normalizedBaseUrl: normalizedBase,
+      inferredApiType,
+    });
   } catch (error) {
     const errorMessage = getErrorMessage(error);
     console.error("Error validating provider node:", {

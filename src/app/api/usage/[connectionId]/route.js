@@ -6,6 +6,7 @@ import { getUsageForProvider } from "open-sse/services/usage.js";
 import { getExecutor } from "open-sse/executors/index.js";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { USAGE_APIKEY_PROVIDERS } from "@/shared/constants/providers";
+import { isProviderAllowedForSubUser, resolveSubUserAccessContext } from "@/lib/subUserAccess";
 
 // Detect auth-expired messages returned by usage providers instead of throwing
 const AUTH_EXPIRED_PATTERNS = ["expired", "authentication", "unauthorized", "401", "re-authorize"];
@@ -106,12 +107,16 @@ export async function GET(request, { params }) {
   let connection;
   try {
     const { connectionId } = await params;
+    const subUserContext = await resolveSubUserAccessContext(request);
 
 
     // Get connection from database
     connection = await getProviderConnectionById(connectionId);
     if (!connection) {
       return Response.json({ error: "Connection not found" }, { status: 404 });
+    }
+    if (subUserContext && !isProviderAllowedForSubUser(subUserContext, connection.provider)) {
+      return Response.json({ error: "Forbidden" }, { status: 403 });
     }
 
     // Allow OAuth connections, plus whitelisted apikey providers (glm/minimax/...)

@@ -6,14 +6,15 @@ import { UPDATER_CONFIG } from "@/shared/constants/config";
 
 const KILL_TIMEOUT_MS = 5000;
 const PROCESS_WAIT_MS = 1500;
+const APP_DATA_DIR_NAME = "openrouterx";
 
 // Kill MITM server by PID file (MITM may run as admin/sudo)
 function killMitmByPidFile() {
   try {
     const mitmPidFile = path.join(
       process.platform === "win32"
-        ? path.join(process.env.APPDATA || "", "9router")
-        : path.join(os.homedir(), ".9router"),
+        ? path.join(process.env.APPDATA || "", APP_DATA_DIR_NAME)
+        : path.join(os.homedir(), `.${APP_DATA_DIR_NAME}`),
       "mitm",
       ".mitm.pid"
     );
@@ -65,7 +66,7 @@ function collectAppPids() {
     try {
       const output = execSync("ps aux 2>/dev/null", { encoding: "utf8", timeout: KILL_TIMEOUT_MS });
       output.split("\n").forEach(line => {
-        const isAppProcess = line.includes("9router") || line.includes("next-server") || line.includes("cloudflared");
+        const isAppProcess = line.includes("openrouterx") || line.includes("9router") || line.includes("next-server") || line.includes("cloudflared");
         if (isAppProcess) {
           const parts = line.trim().split(/\s+/);
           const pid = parts[1];
@@ -82,9 +83,12 @@ function collectAppPids() {
 function getDataDir() {
   if (process.env.DATA_DIR) return process.env.DATA_DIR;
   if (process.platform === "win32") {
-    return path.join(process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming"), "9router");
+    return path.join(
+      process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming"),
+      APP_DATA_DIR_NAME
+    );
   }
-  return path.join(os.homedir(), ".9router");
+  return path.join(os.homedir(), `.${APP_DATA_DIR_NAME}`);
 }
 
 function resolveBundledUpdaterPath() {
@@ -142,7 +146,6 @@ export async function killAppProcesses() {
 // Resolve npx/9router binary to relaunch after update (cross-platform)
 function resolveRelaunchCommand() {
   const isWin = process.platform === "win32";
-  // Prefer `npx 9router` — works regardless of global bin path changes after npm i -g
   const npx = isWin ? "npx.cmd" : "npx";
   return { cmd: npx, args: [UPDATER_CONFIG.npmPackageName] };
 }

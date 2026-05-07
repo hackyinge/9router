@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getProviderConnectionById } from "@/models";
 import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider } from "@/shared/constants/providers";
+import { normalizeCompatibleBaseUrl } from "@/shared/utils/compatibleProvider";
 import { KiroService } from "@/lib/oauth/services/kiro";
 import { GEMINI_CONFIG } from "@/lib/oauth/constants/oauth";
 import { refreshGoogleToken, updateProviderCredentials, refreshKiroToken } from "@/sse/services/tokenRefresh";
@@ -219,7 +220,7 @@ export async function GET(request, { params }) {
       if (!baseUrl) {
         return NextResponse.json({ error: "No base URL configured for OpenAI compatible provider" }, { status: 400 });
       }
-      const url = `${baseUrl.replace(/\/$/, "")}/models`;
+      const url = `${normalizeCompatibleBaseUrl(baseUrl, "openai-compatible")}/models`;
       const response = await fetch(url, {
         method: "GET",
         headers: {
@@ -252,11 +253,7 @@ export async function GET(request, { params }) {
       if (!baseUrl) {
         return NextResponse.json({ error: "No base URL configured for Anthropic compatible provider" }, { status: 400 });
       }
-
-      baseUrl = baseUrl.replace(/\/$/, "");
-      if (baseUrl.endsWith("/messages")) {
-        baseUrl = baseUrl.slice(0, -9);
-      }
+      baseUrl = normalizeCompatibleBaseUrl(baseUrl, "anthropic-compatible");
 
       const url = `${baseUrl}/models`;
       const response = await fetch(url, {

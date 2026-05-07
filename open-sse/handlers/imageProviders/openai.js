@@ -1,4 +1,6 @@
-// OpenAI-compatible adapter (used by openai, minimax, openrouter, recraft)
+import { normalizeCompatibleBaseUrl } from "../../../src/shared/utils/compatibleProvider.js";
+
+// OpenAI-compatible adapter (used by openai, minimax, openrouter, recraft, custom image nodes)
 
 const ENDPOINTS = {
   openai: "https://api.openai.com/v1/images/generations",
@@ -9,7 +11,13 @@ const ENDPOINTS = {
 
 export default function createOpenAIAdapter(providerId) {
   return {
-    buildUrl: () => ENDPOINTS[providerId],
+    buildUrl: (_, creds) => {
+      const configuredBaseUrl = creds?.providerSpecificData?.baseUrl;
+      if (configuredBaseUrl) {
+        return `${normalizeCompatibleBaseUrl(configuredBaseUrl, "custom-image")}/images/generations`;
+      }
+      return ENDPOINTS[providerId];
+    },
     buildHeaders: (creds) => {
       const headers = { "Content-Type": "application/json" };
       const key = creds?.apiKey || creds?.accessToken;
@@ -20,9 +28,20 @@ export default function createOpenAIAdapter(providerId) {
       }
       return headers;
     },
-    buildBody: (model, body) => {
-      const { prompt, n = 1, size = "1024x1024", quality, style, response_format } = body;
-      const req = { model, prompt, n, size };
+    buildBody: (model, body, creds) => {
+      const { prompt, n = 1, size, quality, style, response_format } = body;
+      const requestedSize = typeof size === "string" ? size.trim() : size;
+      const fallbackSize = typeof creds?.providerSpecificData?.defaultSize === "string"
+        ? creds.providerSpecificData.defaultSize.trim()
+        : "";
+      const isCustomImageNode = providerId?.startsWith?.("custom-image-");
+      const resolvedSize = requestedSize && requestedSize !== "auto"
+        ? requestedSize
+        : isCustomImageNode
+          ? (fallbackSize && fallbackSize !== "auto" ? fallbackSize : "")
+          : (requestedSize || "1024x1024");
+      const req = { model, prompt, n };
+      if (resolvedSize) req.size = resolvedSize;
       if (quality) req.quality = quality;
       if (style) req.style = style;
       if (response_format) req.response_format = response_format;

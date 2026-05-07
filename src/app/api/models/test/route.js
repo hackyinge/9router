@@ -3,6 +3,7 @@ import { getApiKeys } from "@/lib/localDb";
 import { getAuthPayload } from "@/dashboardGuard";
 import { getModelInfo } from "@/sse/services/model";
 import { resolveSubUserAccessContext, isProviderAllowedForSubUser } from "@/lib/subUserAccess";
+import { getProviderNodeById } from "@/models";
 
 // POST /api/models/test - Ping a single model via internal completions or embeddings
 export async function POST(request) {
@@ -57,6 +58,53 @@ export async function POST(request) {
       if (!hasEmbedding) {
         return NextResponse.json({ ok: false, latencyMs, status: res.status, error: "Provider returned no embedding data" });
       }
+      return NextResponse.json({ ok: true, latencyMs, error: null, status: res.status });
+    }
+
+    if (kind === "image") {
+      const resolvedModelInfo = await getModelInfo(model);
+      const customImageNode = resolvedModelInfo?.provider
+        ? await getProviderNodeById(resolvedModelInfo.provider)
+        : null;
+      const resolvedSize = customImageNode?.type === "custom-image" && customImageNode?.defaultSize
+        ? customImageNode.defaultSize
+        : "1024x1024";
+      const res = await fetch(`${baseUrl}/api/v1/images/generations`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          model,
+          prompt: "test",
+          n: 1,
+          size: resolvedSize,
+        }),
+        signal: AbortSignal.timeout(20000),
+      });
+      const latencyMs = Date.now() - start;
+      const rawText = await res.text().catch(() => "");
+      let parsed = null;
+      try { parsed = rawText ? JSON.parse(rawText) : null; } catch {}
+
+      if (!res.ok) {
+        const detail = parsed?.error?.message || parsed?.msg || parsed?.message || parsed?.error || rawText;
+        return NextResponse.json({
+          ok: false,
+          latencyMs,
+          error: `HTTP ${res.status}${detail ? `: ${String(detail).slice(0, 240)}` : ""}`,
+          status: res.status,
+        });
+      }
+
+      const hasData = Array.isArray(parsed?.data) && parsed.data.length > 0;
+      if (!hasData) {
+        return NextResponse.json({
+          ok: false,
+          latencyMs,
+          status: res.status,
+          error: "Provider returned no image generation data",
+        });
+      }
+
       return NextResponse.json({ ok: true, latencyMs, error: null, status: res.status });
     }
 

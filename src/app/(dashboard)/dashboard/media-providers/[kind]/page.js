@@ -3,7 +3,7 @@
 import { useParams, notFound, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Card, Badge, Button, AddCustomEmbeddingModal } from "@/shared/components";
+import { Card, Badge, Button, AddCustomEmbeddingModal, AddCustomImageModal } from "@/shared/components";
 import ProviderIcon from "@/shared/components/ProviderIcon";
 import { MEDIA_PROVIDER_KINDS, AI_PROVIDERS, getProvidersByKind } from "@/shared/constants/providers";
 
@@ -123,6 +123,9 @@ export default function MediaProviderKindPage() {
   const [customNodes, setCustomNodes] = useState([]);
   const [combos, setCombos] = useState([]);
   const [showAddCustomEmbedding, setShowAddCustomEmbedding] = useState(false);
+  const [showAddCustomImage, setShowAddCustomImage] = useState(false);
+  const [allowedProviders, setAllowedProviders] = useState([]);
+  const [isSubUser, setIsSubUser] = useState(false);
 
   // webSearch/webFetch listing pages are merged into /web
   useEffect(() => {
@@ -137,14 +140,21 @@ export default function MediaProviderKindPage() {
 
   useEffect(() => {
     if (!kindConfig) return;
+    fetch("/api/auth/me", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((data) => {
+        setIsSubUser(data.role === "sub_user");
+        setAllowedProviders(data.role === "sub_user" ? (data.allowedProviders || []) : []);
+      })
+      .catch(() => {});
     fetch("/api/providers", { cache: "no-store" })
       .then((r) => r.json())
       .then((d) => setConnections(d.connections || []))
       .catch(() => {});
-    if (isEmbedding) {
+    if (isEmbedding || kind === "image") {
       fetch("/api/provider-nodes", { cache: "no-store" })
         .then((r) => r.json())
-        .then((d) => setCustomNodes((d.nodes || []).filter((n) => n.type === "custom-embedding")))
+        .then((d) => setCustomNodes((d.nodes || []).filter((n) => n.type === (isEmbedding ? "custom-embedding" : "custom-image"))))
         .catch(() => {});
     }
     if (supportsCombo) {
@@ -157,15 +167,19 @@ export default function MediaProviderKindPage() {
 
   if (!kindConfig) return notFound();
 
-  const providers = getProvidersByKind(kind);
+  const providers = getProvidersByKind(kind).filter((provider) =>
+    !isSubUser || allowedProviders.includes(provider.id)
+  );
   const kindCombos = combos.filter((c) => c.kind === kind);
 
   // Map custom nodes to MediaProviderCard shape
-  const customProviders = customNodes.map((n) => ({
+  const customProviders = customNodes
+    .filter((node) => !isSubUser || allowedProviders.includes(node.id))
+    .map((n) => ({
     id: n.id,
-    name: n.name || "Custom Embedding",
-    color: "#6366F1",
-    textIcon: "CE",
+    name: n.name || (kind === "image" ? "Custom Image" : "Custom Embedding"),
+    color: kind === "image" ? "#EC4899" : "#6366F1",
+    textIcon: kind === "image" ? "CI" : "CE",
   }));
 
   const allProviders = [...providers, ...customProviders];
@@ -192,7 +206,7 @@ export default function MediaProviderKindPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      {(isEmbedding || supportsCombo) && (
+      {!isSubUser && (isEmbedding || kind === "image" || supportsCombo) && (
         <div className="flex items-center justify-end gap-2">
           {supportsCombo && (
             <Button size="sm" icon="add" onClick={handleCreateCombo}>Create Combo</Button>
@@ -200,6 +214,11 @@ export default function MediaProviderKindPage() {
           {isEmbedding && (
             <Button size="sm" icon="add" onClick={() => setShowAddCustomEmbedding(true)}>
               Add Custom Embedding
+            </Button>
+          )}
+          {kind === "image" && (
+            <Button size="sm" icon="add" onClick={() => setShowAddCustomImage(true)}>
+              Add Custom Image
             </Button>
           )}
         </div>
@@ -242,6 +261,16 @@ export default function MediaProviderKindPage() {
           onCreated={(node) => {
             setCustomNodes((prev) => [...prev, node]);
             setShowAddCustomEmbedding(false);
+          }}
+        />
+      )}
+      {kind === "image" && (
+        <AddCustomImageModal
+          isOpen={showAddCustomImage}
+          onClose={() => setShowAddCustomImage(false)}
+          onCreated={(node) => {
+            setCustomNodes((prev) => [...prev, node]);
+            setShowAddCustomImage(false);
           }}
         />
       )}

@@ -14,8 +14,8 @@ export const GITHUB_CONFIG = {
 
 // Updater configuration
 export const UPDATER_CONFIG = {
-  npmPackageName: "9router",
-  installCmd: "npm i -g 9router",
+  npmPackageName: "@yina-npm/openrouterx",
+  installCmd: "npm i -g @yina-npm/openrouterx --registry=https://registry.npmjs.org/",
   exitDelayMs: 500,
   statusPort: 20129,
   statusPollIntervalMs: 1000,

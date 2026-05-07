@@ -29,9 +29,12 @@ const ADAPTERS = {
 };
 
 export function getImageAdapter(provider) {
+  if (provider?.startsWith?.("custom-image-")) {
+    return createOpenAIAdapter(provider);
+  }
   return ADAPTERS[provider] || null;
 }
 
 export function isImageProvider(provider) {
-  return provider in ADAPTERS;
+  return provider in ADAPTERS || provider?.startsWith?.("custom-image-");
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
@@ -74,6 +74,7 @@ export default function ProviderDetailPage() {
   const providerDisplayAlias = isCompatible
     ? (providerNode?.prefix || providerId)
     : providerAlias;
+  const hideProviderPrefixInModelLabel = providerId === "codex";
 
   const fetchDisabledModels = useCallback(async () => {
     try {
@@ -292,9 +293,14 @@ export default function ProviderDetailPage() {
   };
 
   useEffect(() => {
-    fetchConnections();
-    fetchAliases();
-    fetchDisabledModels();
+    const loadProviderData = async () => {
+      await Promise.all([
+        fetchConnections(),
+        fetchAliases(),
+        fetchDisabledModels(),
+      ]);
+    };
+    loadProviderData();
   }, [fetchConnections, fetchAliases, fetchDisabledModels]);
 
   // Fetch suggested models from provider's public API (if configured)
@@ -430,8 +436,16 @@ export default function ProviderDetailPage() {
     }
   };
 
-  const selectedConnections = connections.filter((conn) => selectedConnectionIds.includes(conn.id));
-  const allSelected = connections.length > 0 && selectedConnectionIds.length === connections.length;
+  const activeConnectionIdSet = useMemo(
+    () => new Set(connections.map((conn) => conn.id)),
+    [connections]
+  );
+  const activeSelectedConnectionIds = useMemo(
+    () => selectedConnectionIds.filter((id) => activeConnectionIdSet.has(id)),
+    [selectedConnectionIds, activeConnectionIdSet]
+  );
+  const selectedConnections = connections.filter((conn) => activeSelectedConnectionIds.includes(conn.id));
+  const allSelected = connections.length > 0 && activeSelectedConnectionIds.length === connections.length;
 
   const toggleSelectConnection = (connectionId) => {
     setSelectedConnectionIds((prev) => (
@@ -453,10 +467,6 @@ export default function ProviderDetailPage() {
     setSelectedConnectionIds([]);
     setBulkProxyPoolId("__none__");
   };
-
-  useEffect(() => {
-    setSelectedConnectionIds((prev) => prev.filter((id) => connections.some((conn) => conn.id === id)));
-  }, [connections]);
 
   const selectedProxySummary = (() => {
     if (selectedConnections.length === 0) return "";
@@ -483,13 +493,13 @@ export default function ProviderDetailPage() {
   };
 
   const handleBulkApplyProxyPool = async () => {
-    if (selectedConnectionIds.length === 0) return;
+    if (activeSelectedConnectionIds.length === 0) return;
 
     const proxyPoolId = bulkProxyPoolId === "__none__" ? null : bulkProxyPoolId;
     setBulkUpdatingProxy(true);
     try {
       const results = [];
-      for (const connectionId of selectedConnectionIds) {
+      for (const connectionId of activeSelectedConnectionIds) {
         try {
           const res = await fetch(`/api/providers/${connectionId}`, {
             method: "PUT",
@@ -519,10 +529,10 @@ export default function ProviderDetailPage() {
   };
 
 
-  const isSelected = (connectionId) => selectedConnectionIds.includes(connectionId);
+  const isSelected = (connectionId) => activeSelectedConnectionIds.includes(connectionId);
 
   const connectionsList = (
-    <div className="flex min-w-0 flex-col divide-y divide-black/[0.03] dark:divide-white/[0.03]">
+    <div className="flex min-w-0 flex-col divide-y divide-black/3 dark:divide-white/3">
       {connections
         .map((conn, index) => (
           <div key={conn.id} className="flex min-w-0 items-stretch">
@@ -571,17 +581,17 @@ export default function ProviderDetailPage() {
     ...proxyPools.map((pool) => ({ value: pool.id, label: pool.name })),
   ];
 
-  const bulkHint = selectedConnectionIds.length === 0
+  const bulkHint = activeSelectedConnectionIds.length === 0
     ? "Select one or more connections, then click Proxy Action."
     : selectedProxySummary;
 
-  const canApplyBulkProxy = selectedConnectionIds.length > 0 && !bulkUpdatingProxy;
+  const canApplyBulkProxy = activeSelectedConnectionIds.length > 0 && !bulkUpdatingProxy;
 
   const bulkActionModal = (
     <Modal
       isOpen={showBulkProxyModal}
       onClose={closeBulkProxyModal}
-      title={`Proxy Action (${selectedConnectionIds.length} selected)`}
+      title={`Proxy Action (${activeSelectedConnectionIds.length} selected)`}
     >
       <div className="flex flex-col gap-4">
         <Select
@@ -677,6 +687,7 @@ export default function ProviderDetailPage() {
             key={model.id}
             model={{ id: model.id }}
             fullModel={`${providerDisplayAlias}/${model.id}`}
+            displayModel={hideProviderPrefixInModelLabel ? model.id : `${providerDisplayAlias}/${model.id}`}
             alias={model.alias}
             copied={copied}
             onCopy={copy}
@@ -701,6 +712,7 @@ export default function ProviderDetailPage() {
               key={model.id}
               model={model}
               fullModel={`${providerDisplayAlias}/${model.id}`}
+              displayModel={hideProviderPrefixInModelLabel ? model.id : `${providerDisplayAlias}/${model.id}`}
               alias={existingAlias}
               copied={copied}
               onCopy={copy}
@@ -1074,7 +1086,7 @@ export default function ProviderDetailPage() {
           })()}
         </div>
         {!!modelsTestError && (
-          <p className="text-xs text-red-500 mb-3 break-words">{modelsTestError}</p>
+          <p className="text-xs text-red-500 mb-3 wrap-break-word">{modelsTestError}</p>
         )}
         {renderModelsSection()}
       </Card>

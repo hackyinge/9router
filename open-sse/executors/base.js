@@ -1,5 +1,6 @@
 import { HTTP_STATUS, RETRY_CONFIG, DEFAULT_RETRY_CONFIG, resolveRetryEntry } from "../config/runtimeConfig.js";
 import { resolveOllamaLocalHost } from "../config/providers.js";
+import { inferOpenAICompatibleApiType, normalizeCompatibleBaseUrl } from "../../src/shared/utils/compatibleProvider.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 
 /**
@@ -26,14 +27,20 @@ export class BaseExecutor {
 
   buildUrl(model, stream, urlIndex = 0, credentials = null) {
     if (this.provider?.startsWith?.("openai-compatible-")) {
-      const baseUrl = credentials?.providerSpecificData?.baseUrl || "https://api.openai.com/v1";
-      const normalized = baseUrl.replace(/\/$/, "");
-      const path = this.provider.includes("responses") ? "/responses" : "/chat/completions";
+      const rawBaseUrl = credentials?.providerSpecificData?.baseUrl || "https://api.openai.com/v1";
+      const normalized = normalizeCompatibleBaseUrl(rawBaseUrl, "openai-compatible");
+      const inferredApiType = rawBaseUrl.replace(/\/+$/, "") !== normalized
+        ? inferOpenAICompatibleApiType({ url: rawBaseUrl })
+        : null;
+      const apiType = inferredApiType
+        || credentials?.providerSpecificData?.apiType
+        || (this.provider.includes("responses") ? "responses" : "chat");
+      const path = apiType === "responses" ? "/responses" : "/chat/completions";
       return `${normalized}${path}`;
     }
     if (this.provider?.startsWith?.("anthropic-compatible-")) {
       const baseUrl = credentials?.providerSpecificData?.baseUrl || "https://api.anthropic.com/v1";
-      const normalized = baseUrl.replace(/\/$/, "");
+      const normalized = normalizeCompatibleBaseUrl(baseUrl, "anthropic-compatible");
       return `${normalized}/messages`;
     }
     if (this.provider === "ollama-local") {

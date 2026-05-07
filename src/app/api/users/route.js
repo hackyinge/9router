@@ -45,6 +45,7 @@ export async function POST(request) {
       permissions,
       displayName,
       allowedProviders,
+      showQuotaTracker,
     } = await request.json();
     if (!username || !password) {
       return NextResponse.json({ error: "username and password are required" }, { status: 400 });
@@ -58,6 +59,7 @@ export async function POST(request) {
       permissions: permissions || [],
       displayName: displayName || username,
       allowedProviders: normalizeProviderIds(allowedProviders),
+      showQuotaTracker: showQuotaTracker !== false,
     });
     return NextResponse.json({ user }, { status: 201 });
   } catch (error) {

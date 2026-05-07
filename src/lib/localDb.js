@@ -241,6 +241,7 @@ export async function createProviderNode(data) {
     prefix: data.prefix,
     apiType: data.apiType,
     baseUrl: data.baseUrl,
+    defaultSize: data.defaultSize,
     createdAt: now,
     updatedAt: now,
   };
@@ -685,6 +686,7 @@ export async function createUser({
   permissions = [],
   displayName = "",
   allowedProviders,
+  showQuotaTracker = true,
 }) {
   const db = await getDb();
   if (!db.data.users) db.data.users = [];
@@ -699,6 +701,7 @@ export async function createUser({
     role,
     permissions,
     displayName: displayName || username,
+    showQuotaTracker,
     createdAt: now,
     updatedAt: now,
   };

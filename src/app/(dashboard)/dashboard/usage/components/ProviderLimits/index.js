@@ -18,7 +18,7 @@ const REFRESH_INTERVAL_MS = 60000; // 60 seconds
 const DEPLETED_QUOTA_THRESHOLD = 5; // percent
 const AUTO_REFRESH_STORAGE_KEY = "quotaAutoRefresh";
 
-export default function ProviderLimits() {
+export default function ProviderLimits({ readOnly = false }) {
   const [connections, setConnections] = useState([]);
   const [quotaData, setQuotaData] = useState({});
   const [loading, setLoading] = useState({});
@@ -220,6 +220,7 @@ export default function ProviderLimits() {
   );
 
   useEffect(() => {
+    if (readOnly) return;
     let cancelled = false;
     fetch("/api/proxy-pools?isActive=true", { cache: "no-store" })
       .then((res) => res.json())
@@ -232,7 +233,7 @@ export default function ProviderLimits() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [readOnly]);
 
   // Refresh all providers
   const refreshAll = useCallback(async () => {
@@ -558,29 +559,31 @@ export default function ProviderLimits() {
             <span className="hidden sm:inline">Expiring first</span>
           </button>
 
-          {/* Bulk: disable depleted */}
-          <button
-            type="button"
-            onClick={handleDisableDepleted}
-            disabled={bulkToggling}
-            className="flex h-8 shrink-0 items-center gap-1 rounded-lg border border-red-500/30 px-2 text-xs text-red-500 transition-colors hover:bg-red-500/10 disabled:opacity-50"
-            title="Disable connections with depleted quota (within current filter)"
-          >
-            <span className="material-symbols-outlined text-[14px]">block</span>
-            <span className="hidden sm:inline">Turn off Empty</span>
-          </button>
+          {!readOnly && (
+            <>
+              <button
+                type="button"
+                onClick={handleDisableDepleted}
+                disabled={bulkToggling}
+                className="flex h-8 shrink-0 items-center gap-1 rounded-lg border border-red-500/30 px-2 text-xs text-red-500 transition-colors hover:bg-red-500/10 disabled:opacity-50"
+                title="Disable connections with depleted quota (within current filter)"
+              >
+                <span className="material-symbols-outlined text-[14px]">block</span>
+                <span className="hidden sm:inline">Turn off Empty</span>
+              </button>
 
-          {/* Bulk: enable available */}
-          <button
-            type="button"
-            onClick={handleEnableAvailable}
-            disabled={bulkToggling}
-            className="flex h-8 shrink-0 items-center gap-1 rounded-lg border border-emerald-500/30 px-2 text-xs text-emerald-500 transition-colors hover:bg-emerald-500/10 disabled:opacity-50"
-            title="Enable connections that still have quota (within current filter)"
-          >
-            <span className="material-symbols-outlined text-[14px]">check_circle</span>
-            <span className="hidden sm:inline">Turn on Available</span>
-          </button>
+              <button
+                type="button"
+                onClick={handleEnableAvailable}
+                disabled={bulkToggling}
+                className="flex h-8 shrink-0 items-center gap-1 rounded-lg border border-emerald-500/30 px-2 text-xs text-emerald-500 transition-colors hover:bg-emerald-500/10 disabled:opacity-50"
+                title="Enable connections that still have quota (within current filter)"
+              >
+                <span className="material-symbols-outlined text-[14px]">check_circle</span>
+                <span className="hidden sm:inline">Turn on Available</span>
+              </button>
+            </>
+          )}
 
           {/* Auto-refresh toggle */}
           <button
@@ -673,50 +676,54 @@ export default function ProviderLimits() {
                         refresh
                       </span>
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedConnection(conn);
-                        setShowEditModal(true);
-                      }}
-                      disabled={rowBusy}
-                      className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 text-text-muted hover:text-primary transition-colors disabled:opacity-50"
-                      title="Edit connection"
-                    >
-                      <span className="material-symbols-outlined text-[18px]">
-                        edit
-                      </span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteConnection(conn.id)}
-                      disabled={rowBusy}
-                      className="p-1.5 rounded-lg hover:bg-red-500/10 text-red-500 transition-colors disabled:opacity-50"
-                      title="Delete connection"
-                    >
-                      <span
-                        className={`material-symbols-outlined text-[18px] ${deletingId === conn.id ? "animate-pulse" : ""}`}
-                      >
-                        delete
-                      </span>
-                    </button>
-                    <div
-                      className="inline-flex items-center pl-0.5"
-                      title={
-                        (conn.isActive ?? true)
-                          ? "Disable connection"
-                          : "Enable connection"
-                      }
-                    >
-                      <Toggle
-                        size="sm"
-                        checked={conn.isActive ?? true}
-                        disabled={rowBusy}
-                        onChange={(nextActive) =>
-                          handleToggleConnectionActive(conn.id, nextActive)
-                        }
-                      />
-                    </div>
+                    {!readOnly && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedConnection(conn);
+                            setShowEditModal(true);
+                          }}
+                          disabled={rowBusy}
+                          className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 text-text-muted hover:text-primary transition-colors disabled:opacity-50"
+                          title="Edit connection"
+                        >
+                          <span className="material-symbols-outlined text-[18px]">
+                            edit
+                          </span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteConnection(conn.id)}
+                          disabled={rowBusy}
+                          className="p-1.5 rounded-lg hover:bg-red-500/10 text-red-500 transition-colors disabled:opacity-50"
+                          title="Delete connection"
+                        >
+                          <span
+                            className={`material-symbols-outlined text-[18px] ${deletingId === conn.id ? "animate-pulse" : ""}`}
+                          >
+                            delete
+                          </span>
+                        </button>
+                        <div
+                          className="inline-flex items-center pl-0.5"
+                          title={
+                            (conn.isActive ?? true)
+                              ? "Disable connection"
+                              : "Enable connection"
+                          }
+                        >
+                          <Toggle
+                            size="sm"
+                            checked={conn.isActive ?? true}
+                            disabled={rowBusy}
+                            onChange={(nextActive) =>
+                              handleToggleConnectionActive(conn.id, nextActive)
+                            }
+                          />
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
@@ -748,16 +755,18 @@ export default function ProviderLimits() {
         })}
       </div>
 
-      <EditConnectionModal
-        isOpen={showEditModal}
-        connection={selectedConnection}
-        proxyPools={proxyPools}
-        onSave={handleUpdateConnection}
-        onClose={() => {
-          setShowEditModal(false);
-          setSelectedConnection(null);
-        }}
-      />
+      {!readOnly && (
+        <EditConnectionModal
+          isOpen={showEditModal}
+          connection={selectedConnection}
+          proxyPools={proxyPools}
+          onSave={handleUpdateConnection}
+          onClose={() => {
+            setShowEditModal(false);
+            setSelectedConnection(null);
+          }}
+        />
+      )}
     </div>
   );
 }

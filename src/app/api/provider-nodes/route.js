@@ -1,6 +1,13 @@
 import { NextResponse } from "next/server";
 import { createProviderNode, getProviderNodes } from "@/models";
-import { OPENAI_COMPATIBLE_PREFIX, ANTHROPIC_COMPATIBLE_PREFIX, CUSTOM_EMBEDDING_PREFIX } from "@/shared/constants/providers";
+import {
+  OPENAI_COMPATIBLE_PREFIX,
+  ANTHROPIC_COMPATIBLE_PREFIX,
+  CUSTOM_EMBEDDING_PREFIX,
+  CUSTOM_IMAGE_PREFIX,
+} from "@/shared/constants/providers";
+import { isProviderAllowedForSubUser, resolveSubUserAccessContext } from "@/lib/subUserAccess";
+import { inferOpenAICompatibleApiType, normalizeCompatibleBaseUrl } from "@/shared/utils/compatibleProvider";
 import { generateId } from "@/shared/utils";
 
 export const dynamic = "force-dynamic";
@@ -18,10 +25,14 @@ const CUSTOM_EMBEDDING_DEFAULTS = {
 };
 
 // GET /api/provider-nodes - List all provider nodes
-export async function GET() {
+export async function GET(request) {
   try {
     const nodes = await getProviderNodes();
-    return NextResponse.json({ nodes });
+    const subUserContext = await resolveSubUserAccessContext(request);
+    const visibleNodes = subUserContext
+      ? nodes.filter((node) => isProviderAllowedForSubUser(subUserContext, node.id))
+      : nodes;
+    return NextResponse.json({ nodes: visibleNodes });
   } catch (error) {
     console.log("Error fetching provider nodes:", error);
     return NextResponse.json({ error: "Failed to fetch provider nodes" }, { status: 500 });
@@ -32,7 +43,7 @@ export async function GET() {
 export async function POST(request) {
   try {
     const body = await request.json();
-    const { name, prefix, apiType, baseUrl, type } = body;
+    const { name, prefix, apiType, baseUrl, type, defaultSize } = body;
 
     if (!name?.trim()) {
       return NextResponse.json({ error: "Name is required" }, { status: 400 });
@@ -50,12 +61,21 @@ export async function POST(request) {
         return NextResponse.json({ error: "Invalid OpenAI compatible API type" }, { status: 400 });
       }
 
+      const rawBaseUrl = String(baseUrl || OPENAI_COMPATIBLE_DEFAULTS.baseUrl).trim().replace(/\/+$/, "");
+      const sanitizedBaseUrl = normalizeCompatibleBaseUrl(
+        baseUrl || OPENAI_COMPATIBLE_DEFAULTS.baseUrl,
+        "openai-compatible",
+      );
+      const resolvedApiType = rawBaseUrl !== sanitizedBaseUrl
+        ? inferOpenAICompatibleApiType({ url: rawBaseUrl })
+        : apiType;
+
       const node = await createProviderNode({
-        id: `${OPENAI_COMPATIBLE_PREFIX}${apiType}-${generateId()}`,
+        id: `${OPENAI_COMPATIBLE_PREFIX}${resolvedApiType}-${generateId()}`,
         type: "openai-compatible",
         prefix: prefix.trim(),
-        apiType,
-        baseUrl: (baseUrl || OPENAI_COMPATIBLE_DEFAULTS.baseUrl).trim(),
+        apiType: resolvedApiType,
+        baseUrl: sanitizedBaseUrl,
         name: name.trim(),
       });
       return NextResponse.json({ node }, { status: 201 });
@@ -79,18 +99,33 @@ export async function POST(request) {
     }
 
     if (nodeType === "anthropic-compatible") {
-      // Sanitize Base URL: remove trailing slash, and remove trailing /messages if user added it
-      // This prevents double-appending /messages at runtime
-      let sanitizedBaseUrl = (baseUrl || ANTHROPIC_COMPATIBLE_DEFAULTS.baseUrl).trim().replace(/\/$/, "");
-      if (sanitizedBaseUrl.endsWith("/messages")) {
-        sanitizedBaseUrl = sanitizedBaseUrl.slice(0, -9); // remove /messages
-      }
+      const sanitizedBaseUrl = normalizeCompatibleBaseUrl(
+        baseUrl || ANTHROPIC_COMPATIBLE_DEFAULTS.baseUrl,
+        "anthropic-compatible",
+      );
 
       const node = await createProviderNode({
         id: `${ANTHROPIC_COMPATIBLE_PREFIX}${generateId()}`,
         type: "anthropic-compatible",
         prefix: prefix.trim(),
         baseUrl: sanitizedBaseUrl,
+        name: name.trim(),
+      });
+      return NextResponse.json({ node }, { status: 201 });
+    }
+
+    if (nodeType === "custom-image") {
+      const sanitizedBaseUrl = normalizeCompatibleBaseUrl(
+        baseUrl || OPENAI_COMPATIBLE_DEFAULTS.baseUrl,
+        "custom-image",
+      );
+
+      const node = await createProviderNode({
+        id: `${CUSTOM_IMAGE_PREFIX}${generateId()}`,
+        type: "custom-image",
+        prefix: prefix.trim(),
+        baseUrl: sanitizedBaseUrl,
+        defaultSize: defaultSize?.trim() || "",
         name: name.trim(),
       });
       return NextResponse.json({ node }, { status: 201 });

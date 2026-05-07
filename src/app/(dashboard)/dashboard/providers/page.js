@@ -26,6 +26,7 @@ import { getErrorCode, getRelativeTime } from "@/shared/utils";
 import { useNotificationStore } from "@/store/notificationStore";
 import { useHeaderSearchStore } from "@/store/headerSearchStore";
 import ModelAvailabilityBadge from "./components/ModelAvailabilityBadge";
+import ImportCompatibleCurlModal from "./components/ImportCompatibleCurlModal";
 
 function getStatusDisplay(connected, error, errorCode) {
   const parts = [];
@@ -101,6 +102,7 @@ export default function ProvidersPage() {
   const [showAddCompatibleModal, setShowAddCompatibleModal] = useState(false);
   const [showAddAnthropicCompatibleModal, setShowAddAnthropicCompatibleModal] =
     useState(false);
+  const [showImportCompatibleCurlModal, setShowImportCompatibleCurlModal] = useState(false);
   const [testingMode, setTestingMode] = useState(null);
   const [testResults, setTestResults] = useState(null);
   const notify = useNotificationStore();
@@ -479,6 +481,15 @@ export default function ProvidersPage() {
             )} */}
             <Button
               size="sm"
+              variant="secondary"
+              icon="upload"
+              onClick={() => setShowImportCompatibleCurlModal(true)}
+              className="w-full sm:w-auto"
+            >
+              Import cURL
+            </Button>
+            <Button
+              size="sm"
               icon="add"
               onClick={() => setShowAddAnthropicCompatibleModal(true)}
               className="w-full sm:w-auto"
@@ -544,6 +555,18 @@ export default function ProvidersPage() {
         onCreated={(node) => {
           setProviderNodes((prev) => [...prev, node]);
           setShowAddAnthropicCompatibleModal(false);
+        }}
+      />
+      <ImportCompatibleCurlModal
+        isOpen={showImportCompatibleCurlModal}
+        onClose={() => setShowImportCompatibleCurlModal(false)}
+        notify={notify}
+        onImported={({ node, connection }) => {
+          setProviderNodes((prev) => [...prev, node]);
+          if (connection) {
+            setConnections((prev) => [...prev, connection]);
+          }
+          setShowImportCompatibleCurlModal(false);
         }}
       />
 
@@ -903,6 +926,13 @@ function AddOpenAICompatibleModal({ isOpen, onClose, onCreated }) {
         }),
       });
       const data = await res.json();
+      if (data.normalizedBaseUrl) {
+        setFormData((prev) => ({
+          ...prev,
+          baseUrl: data.normalizedBaseUrl,
+          apiType: data.inferredApiType || prev.apiType,
+        }));
+      }
       setValidationResult(data);
     } catch {
       setValidationResult({ valid: false, error: "Network error" });
@@ -1093,6 +1123,12 @@ function AddAnthropicCompatibleModal({ isOpen, onClose, onCreated }) {
         }),
       });
       const data = await res.json();
+      if (data.normalizedBaseUrl) {
+        setFormData((prev) => ({
+          ...prev,
+          baseUrl: data.normalizedBaseUrl,
+        }));
+      }
       setValidationResult(data);
     } catch {
       setValidationResult({ valid: false, error: "Network error" });

@@ -91,6 +91,7 @@ export async function POST(request) {
       displayName: subUser.displayName,
       role: subUser.role || "sub_user",
       permissions: subUser.permissions || [],
+      showQuotaTracker: subUser.showQuotaTracker !== false,
       allowedProviders: getEffectiveAllowedProviders(subUser),
     })
       .setProtectedHeader({ alg: "HS256" })

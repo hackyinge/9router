@@ -1,6 +1,6 @@
 import PropTypes from "prop-types";
 
-export default function ModelRow({ model, fullModel, alias, copied, onCopy, testStatus, isCustom, isFree, onDeleteAlias, onTest, isTesting, onDisable }) {
+export default function ModelRow({ model, fullModel, displayModel, alias, copied, onCopy, testStatus, isCustom, isFree, onDeleteAlias, onTest, isTesting, onDisable }) {
   const borderColor = testStatus === "ok"
     ? "border-green-500/40"
     : testStatus === "error"
@@ -23,7 +23,7 @@ export default function ModelRow({ model, fullModel, alias, copied, onCopy, test
           {testStatus === "ok" ? "check_circle" : testStatus === "error" ? "cancel" : "smart_toy"}
         </span>
         <div className="flex min-w-0 flex-1 flex-col gap-1">
-          <code className="max-w-[72vw] truncate rounded bg-sidebar px-1.5 py-0.5 font-mono text-xs text-text-muted sm:max-w-[360px]">{fullModel}</code>
+          <code className="max-w-[72vw] truncate rounded bg-sidebar px-1.5 py-0.5 font-mono text-xs text-text-muted sm:max-w-[360px]">{displayModel || fullModel}</code>
           {model.name && <span className="truncate pl-1 text-[9px] italic text-text-muted/70">{model.name}</span>}
         </div>
         {onTest && (
@@ -82,6 +82,7 @@ ModelRow.propTypes = {
     id: PropTypes.string.isRequired,
   }).isRequired,
   fullModel: PropTypes.string.isRequired,
+  displayModel: PropTypes.string,
   alias: PropTypes.string,
   copied: PropTypes.string,
   onCopy: PropTypes.func.isRequired,

@@ -8,10 +8,11 @@ const net = require("node:net");
 
 const pkg = require("./package.json");
 
-const APP_NAME = pkg.name || "9router";
+const APP_NAME = "openrouterX";
+const APP_DATA_DIR_NAME = "openrouterx";
 const DATA_DIR = process.platform === "win32"
-  ? path.join(process.env.APPDATA || os.homedir(), APP_NAME)
-  : path.join(os.homedir(), `.${APP_NAME}`);
+  ? path.join(process.env.APPDATA || os.homedir(), APP_DATA_DIR_NAME)
+  : path.join(os.homedir(), `.${APP_DATA_DIR_NAME}`);
 const PID_FILE = path.join(DATA_DIR, "server.pid");
 const META_FILE = path.join(DATA_DIR, "server.json");
 const LOG_FILE = path.join(DATA_DIR, "server.log");

@@ -1,15 +1,18 @@
 import { NextResponse } from "next/server";
 import { getProviderConnections } from "@/lib/localDb";
 import { backfillCodexEmails } from "@/lib/oauth/providers";
+import { filterConnectionsForSubUser, resolveSubUserAccessContext } from "@/lib/subUserAccess";
 
 // GET /api/providers/client - List all connections for client (includes sensitive fields for sync)
-export async function GET() {
+export async function GET(request) {
   try {
     await backfillCodexEmails();
     const connections = await getProviderConnections();
+    const subUserContext = await resolveSubUserAccessContext(request);
+    const visibleConnections = filterConnectionsForSubUser(connections, subUserContext);
     
     // Include sensitive fields for sync to cloud (only accessible from same origin)
-    const clientConnections = connections.map(c => ({
+    const clientConnections = visibleConnections.map(c => ({
       ...c,
       // Don't hide sensitive fields here since this is for internal sync
     }));

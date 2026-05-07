@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import { deleteProviderConnectionsByProvider, deleteProviderNode, getProviderConnections, getProviderNodeById, updateProviderConnection, updateProviderNode } from "@/models";
+import { inferOpenAICompatibleApiType, normalizeCompatibleBaseUrl } from "@/shared/utils/compatibleProvider";
 
 // PUT /api/provider-nodes/[id] - Update provider node
 export async function PUT(request, { params }) {
   try {
     const { id } = await params;
     const body = await request.json();
-    const { name, prefix, apiType, baseUrl } = body;
+    const { name, prefix, apiType, baseUrl, defaultSize } = body;
     const node = await getProviderNodeById(id);
 
     if (!node) {
@@ -31,13 +32,22 @@ export async function PUT(request, { params }) {
     }
 
     let sanitizedBaseUrl = baseUrl.trim();
-    
-    // Sanitize Base URL for Anthropic Compatible
-    if (node.type === "anthropic-compatible") {
-      sanitizedBaseUrl = sanitizedBaseUrl.replace(/\/$/, "");
-      if (sanitizedBaseUrl.endsWith("/messages")) {
-        sanitizedBaseUrl = sanitizedBaseUrl.slice(0, -9); // remove /messages
+    let resolvedApiType = apiType;
+
+    if (node.type === "openai-compatible") {
+      const rawBaseUrl = sanitizedBaseUrl.replace(/\/+$/, "");
+      sanitizedBaseUrl = normalizeCompatibleBaseUrl(sanitizedBaseUrl, "openai-compatible");
+      if (rawBaseUrl !== sanitizedBaseUrl) {
+        resolvedApiType = inferOpenAICompatibleApiType({ url: rawBaseUrl });
       }
+    }
+
+    if (node.type === "anthropic-compatible") {
+      sanitizedBaseUrl = normalizeCompatibleBaseUrl(sanitizedBaseUrl, "anthropic-compatible");
+    }
+
+    if (node.type === "custom-image") {
+      sanitizedBaseUrl = normalizeCompatibleBaseUrl(sanitizedBaseUrl, "custom-image");
     }
 
     // Sanitize Base URL for Custom Embedding (strip trailing slash and /embeddings)
@@ -54,8 +64,12 @@ export async function PUT(request, { params }) {
       baseUrl: sanitizedBaseUrl,
     };
 
+    if (node.type === "custom-image") {
+      updates.defaultSize = defaultSize?.trim() || "";
+    }
+
     if (node.type === "openai-compatible") {
-      updates.apiType = apiType;
+      updates.apiType = resolvedApiType;
     }
 
     const updated = await updateProviderNode(id, updates);
@@ -66,8 +80,9 @@ export async function PUT(request, { params }) {
         providerSpecificData: {
           ...(connection.providerSpecificData || {}),
           prefix: prefix.trim(),
-          apiType: node.type === "openai-compatible" ? apiType : undefined,
+          apiType: node.type === "openai-compatible" ? resolvedApiType : undefined,
           baseUrl: sanitizedBaseUrl,
+          defaultSize: node.type === "custom-image" ? (defaultSize?.trim() || "") : undefined,
           nodeName: updated.name,
         }
       })

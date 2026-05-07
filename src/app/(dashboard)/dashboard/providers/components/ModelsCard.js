@@ -8,7 +8,7 @@ import { getProviderAlias } from "@/shared/constants/providers";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 
 // ── ModelRow ───────────────────────────────────────────────────
-export function ModelRow({ model, fullModel, copied, onCopy, testStatus, isCustom, isFree, onDeleteAlias, onTest, isTesting }) {
+export function ModelRow({ model, fullModel, displayModel, copied, onCopy, testStatus, isCustom, isFree, onDeleteAlias, onTest, isTesting }) {
   const borderColor = testStatus === "ok" ? "border-green-500/40" : testStatus === "error" ? "border-red-500/40" : "border-border";
   const iconColor = testStatus === "ok" ? "#22c55e" : testStatus === "error" ? "#ef4444" : undefined;
 
@@ -19,7 +19,7 @@ export function ModelRow({ model, fullModel, copied, onCopy, testStatus, isCusto
           {testStatus === "ok" ? "check_circle" : testStatus === "error" ? "cancel" : "smart_toy"}
         </span>
         <div className="flex flex-col gap-1">
-          <code className="text-xs text-text-muted font-mono bg-sidebar px-1.5 py-0.5 rounded">{fullModel}</code>
+          <code className="text-xs text-text-muted font-mono bg-sidebar px-1.5 py-0.5 rounded">{displayModel || fullModel}</code>
           {model.name && <span className="text-[9px] text-text-muted/70 italic pl-1">{model.name}</span>}
         </div>
         {onTest && (
@@ -56,6 +56,7 @@ export function ModelRow({ model, fullModel, copied, onCopy, testStatus, isCusto
 ModelRow.propTypes = {
   model: PropTypes.shape({ id: PropTypes.string.isRequired }).isRequired,
   fullModel: PropTypes.string.isRequired,
+  displayModel: PropTypes.string,
   copied: PropTypes.string,
   onCopy: PropTypes.func.isRequired,
   testStatus: PropTypes.oneOf(["ok", "error"]),
@@ -119,6 +120,7 @@ export default function ModelsCard({ providerId, kindFilter, providerAliasOverri
   const [connections, setConnections] = useState([]);
 
   const providerAlias = providerAliasOverride || getProviderAlias(providerId);
+  const hideProviderPrefixInModelLabel = providerId === "codex";
   const effectiveType = kindFilter || "llm";
 
   const fetchData = useCallback(async () => {
@@ -225,7 +227,7 @@ export default function ModelsCard({ providerId, kindFilter, providerAliasOverri
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold">Models{kindFilter ? ` — ${kindFilter.toUpperCase()}` : ""}</h2>
         </div>
-        {testError && <p className="text-xs text-red-500 mb-3 break-words">{testError}</p>}
+        {testError && <p className="text-xs text-red-500 mb-3 wrap-break-word">{testError}</p>}
 
         <div className="flex flex-wrap gap-3">
           {displayModels.map((model) => {
@@ -236,6 +238,7 @@ export default function ModelsCard({ providerId, kindFilter, providerAliasOverri
                 key={model.id}
                 model={model}
                 fullModel={`${providerAlias}/${model.id}`}
+                displayModel={hideProviderPrefixInModelLabel ? model.id : `${providerAlias}/${model.id}`}
                 alias={existingAlias}
                 copied={copied}
                 onCopy={copy}
@@ -254,6 +257,7 @@ export default function ModelsCard({ providerId, kindFilter, providerAliasOverri
               key={`${model.id}-${model.type}`}
               model={{ id: model.id, name: model.name }}
               fullModel={`${providerAlias}/${model.id}`}
+              displayModel={hideProviderPrefixInModelLabel ? model.id : `${providerAlias}/${model.id}`}
               copied={copied}
               onCopy={copy}
               onSetAlias={() => {}}

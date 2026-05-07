@@ -5,6 +5,7 @@ import {
   updateProviderConnection,
   deleteProviderConnection,
 } from "@/models";
+import { isProviderAllowedForSubUser, resolveSubUserAccessContext } from "@/lib/subUserAccess";
 
 function normalizeProxyConfig(body = {}) {
   const hasAnyProxyField =
@@ -63,7 +64,15 @@ function shouldMergeProviderSpecificData(existing, incoming, hasLegacyProxy, has
 export async function GET(request, { params }) {
   try {
     const { id } = await params;
+    const subUserContext = await resolveSubUserAccessContext(request);
     const connection = await getProviderConnectionById(id);
+
+    if (!connection) {
+      return NextResponse.json({ error: "Connection not found" }, { status: 404 });
+    }
+    if (subUserContext && !isProviderAllowedForSubUser(subUserContext, connection.provider)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
 
     if (!connection) {
       return NextResponse.json({ error: "Connection not found" }, { status: 404 });
@@ -87,6 +96,10 @@ export async function GET(request, { params }) {
 export async function PUT(request, { params }) {
   try {
     const { id } = await params;
+    const subUserContext = await resolveSubUserAccessContext(request);
+    if (subUserContext) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
     const body = await request.json();
     const {
       name,

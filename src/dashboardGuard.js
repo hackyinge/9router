@@ -145,6 +145,7 @@ export async function proxy(request) {
         "/dashboard/user",
         "/dashboard/usage",
         "/dashboard/cli-tools",
+        "/dashboard/quota",
       ];
       if (subUserAllowed.some(p => pathname === p || pathname.startsWith(p + "/"))) {
         return NextResponse.next();

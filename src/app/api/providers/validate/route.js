@@ -1,6 +1,13 @@
 import { NextResponse } from "next/server";
 import { getProviderNodeById } from "@/models";
-import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider, isCustomEmbeddingProvider, AI_PROVIDERS } from "@/shared/constants/providers";
+import {
+  isOpenAICompatibleProvider,
+  isAnthropicCompatibleProvider,
+  isCustomEmbeddingProvider,
+  isCustomImageProvider,
+  AI_PROVIDERS,
+} from "@/shared/constants/providers";
+import { inferOpenAICompatibleApiType, normalizeCompatibleBaseUrl } from "@/shared/utils/compatibleProvider";
 import { getDefaultModel } from "open-sse/config/providerModels.js";
 import { resolveOllamaLocalHost } from "open-sse/config/providers.js";
 import { PROVIDER_ENDPOINTS } from "@/shared/constants/config";
@@ -100,11 +107,41 @@ export async function POST(request) {
         if (!node) {
           return NextResponse.json({ error: "OpenAI Compatible node not found" }, { status: 404 });
         }
-        const modelsUrl = `${node.baseUrl?.replace(/\/$/, "")}/models`;
+        const rawBaseUrl = node.baseUrl || "";
+        const normalizedBase = normalizeCompatibleBaseUrl(rawBaseUrl, "openai-compatible");
+        const modelsUrl = `${normalizedBase}/models`;
         const res = await fetch(modelsUrl, {
           headers: { "Authorization": `Bearer ${apiKey}` },
         });
-        isValid = res.ok;
+        if (res.ok) {
+          return NextResponse.json({
+            valid: true,
+            error: null,
+          });
+        }
+        if (res.status === 401 || res.status === 403) {
+          return NextResponse.json({
+            valid: false,
+            error: "Invalid API key",
+          });
+        }
+        const inferredApiType = rawBaseUrl.replace(/\/+$/, "") !== normalizedBase
+          ? inferOpenAICompatibleApiType({ url: rawBaseUrl })
+          : null;
+        const resolvedApiType = inferredApiType || node.apiType || "chat";
+        const endpointPath = resolvedApiType === "responses" ? "/responses" : "/chat/completions";
+        const requestBody = resolvedApiType === "responses"
+          ? { model: "test", input: "ping", max_output_tokens: 1 }
+          : { model: "test", messages: [{ role: "user", content: "ping" }], max_tokens: 1 };
+        const fallbackRes = await fetch(`${normalizedBase}${endpointPath}`, {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(requestBody),
+        });
+        isValid = fallbackRes.status !== 401 && fallbackRes.status !== 403 && fallbackRes.status !== 404;
         return NextResponse.json({
           valid: isValid,
           error: isValid ? null : "Invalid API key",
@@ -142,16 +179,42 @@ export async function POST(request) {
         });
       }
 
+      if (isCustomImageProvider(provider)) {
+        const node = await getProviderNodeById(provider);
+        if (!node) {
+          return NextResponse.json({ error: "Custom Image node not found" }, { status: 404 });
+        }
+
+        const normalizedBase = normalizeCompatibleBaseUrl(node.baseUrl, "custom-image");
+        const res = await fetch(`${normalizedBase}/images/generations`, {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "test",
+            prompt: "ping",
+            n: 1,
+            size: node.defaultSize || "1024x1024",
+          }),
+        });
+        // For many image vendors, an unknown placeholder model returns 400/404/422
+        // even when the API key is valid. Only auth failures are definitive here.
+        const isValid = ![401, 403].includes(res.status);
+        return NextResponse.json({
+          valid: isValid,
+          error: isValid ? null : "Invalid API key",
+        });
+      }
+
       if (isAnthropicCompatibleProvider(provider)) {
         const node = await getProviderNodeById(provider);
         if (!node) {
           return NextResponse.json({ error: "Anthropic Compatible node not found" }, { status: 404 });
         }
 
-        let normalizedBase = node.baseUrl?.trim().replace(/\/$/, "") || "";
-        if (normalizedBase.endsWith("/messages")) {
-          normalizedBase = normalizedBase.slice(0, -9); // remove /messages
-        }
+        const normalizedBase = normalizeCompatibleBaseUrl(node.baseUrl, "anthropic-compatible");
 
         const modelsUrl = `${normalizedBase}/models`;
 

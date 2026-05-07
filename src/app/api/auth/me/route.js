@@ -25,6 +25,10 @@ export async function GET(request) {
       username: currentUser?.username || payload.username || null,
       displayName: currentUser?.displayName || payload.displayName || null,
       permissions: currentUser?.permissions || payload.permissions || [],
+      showQuotaTracker:
+        currentUser?.role === "sub_user"
+          ? currentUser?.showQuotaTracker !== false
+          : true,
       allowedProviders:
         currentUser?.role === "sub_user"
           ? getEffectiveAllowedProviders(currentUser)

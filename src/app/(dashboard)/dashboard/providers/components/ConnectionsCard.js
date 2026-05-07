@@ -204,6 +204,20 @@ function AddApiKeyModal({ isOpen, provider, providerName, proxyPools, onSave, on
   const [validating, setValidating] = useState(false);
   const [validationResult, setValidationResult] = useState(null);
   const [saving, setSaving] = useState(false);
+  const resolvedDefaultName = providerName ? `${providerName} Key` : "Production Key";
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setFormData({
+      name: providerName ? `${providerName} Key` : "",
+      apiKey: "",
+      priority: 1,
+      proxyPoolId: NONE,
+    });
+    setValidationResult(null);
+    setValidating(false);
+    setSaving(false);
+  }, [isOpen, providerName]);
 
   const handleValidate = async () => {
     setValidating(true);
@@ -237,7 +251,7 @@ function AddApiKeyModal({ isOpen, provider, providerName, proxyPools, onSave, on
       } catch { setValidationResult("failed"); }
       finally { setValidating(false); }
       await onSave({
-        name: formData.name,
+        name: formData.name.trim() || resolvedDefaultName,
         apiKey: formData.apiKey,
         priority: formData.priority,
         proxyPoolId: formData.proxyPoolId === NONE ? null : formData.proxyPoolId,
@@ -253,7 +267,7 @@ function AddApiKeyModal({ isOpen, provider, providerName, proxyPools, onSave, on
       <div className="flex flex-col gap-4">
         <div>
           <label className="text-xs text-text-muted mb-1 block">Name</label>
-          <input className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} placeholder="Production Key" />
+          <input className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} placeholder={resolvedDefaultName} />
         </div>
         <div className="flex gap-2">
           <div className="flex-1">
@@ -278,7 +292,7 @@ function AddApiKeyModal({ isOpen, provider, providerName, proxyPools, onSave, on
         <Select label="Proxy Pool" value={formData.proxyPoolId} onChange={(e) => setFormData({ ...formData, proxyPoolId: e.target.value })}
           options={[{ value: NONE, label: "None" }, ...(proxyPools || []).map((p) => ({ value: p.id, label: p.name }))]} />
         <div className="flex gap-2">
-          <Button onClick={handleSubmit} fullWidth disabled={!formData.name || !formData.apiKey || saving}>
+          <Button onClick={handleSubmit} fullWidth disabled={!formData.apiKey || saving}>
             {saving ? "Saving..." : "Save"}
           </Button>
           <Button onClick={onClose} variant="ghost" fullWidth>Cancel</Button>
@@ -299,7 +313,7 @@ AddApiKeyModal.propTypes = {
 
 // ── ConnectionsCard ────────────────────────────────────────────
 // Self-contained card: fetches, displays and manages all connections for a provider.
-export default function ConnectionsCard({ providerId, isOAuth }) {
+export default function ConnectionsCard({ providerId, providerName, isOAuth }) {
   const [connections, setConnections] = useState([]);
   const [proxyPools, setProxyPools] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -459,6 +473,7 @@ export default function ConnectionsCard({ providerId, isOAuth }) {
       <AddApiKeyModal
         isOpen={showAddModal}
         provider={providerId}
+        providerName={providerName}
         proxyPools={proxyPools}
         onSave={handleSaveApiKey}
         onClose={() => setShowAddModal(false)}
@@ -476,5 +491,6 @@ export default function ConnectionsCard({ providerId, isOAuth }) {
 
 ConnectionsCard.propTypes = {
   providerId: PropTypes.string.isRequired,
+  providerName: PropTypes.string,
   isOAuth: PropTypes.bool,
 };

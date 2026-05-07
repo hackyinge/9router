@@ -5,8 +5,30 @@ import { Card, Button, ModelSelectModal, ManualConfigModal } from "@/shared/comp
 import Image from "next/image";
 import EndpointPresetControl from "./EndpointPresetControl";
 
+function normalizeCodexModel(model) {
+  if (typeof model !== "string") return model;
+  return model.startsWith("cx/") ? model.slice(3) : model;
+}
+
+function normalizeCodexStatus(status) {
+  if (status && typeof status.installed === "boolean") {
+    return status;
+  }
+
+  if (status && typeof status.error === "string") {
+    return {
+      installed: false,
+      config: null,
+      error: status.error,
+      unavailable: true,
+    };
+  }
+
+  return null;
+}
+
 export default function CodexToolCard({ tool, isExpanded, onToggle, baseUrl, apiKeys, activeProviders, cloudEnabled, initialStatus, manualOnly = false }) {
-  const [codexStatus, setCodexStatus] = useState(null);
+  const [codexStatus, setCodexStatus] = useState(() => normalizeCodexStatus(initialStatus));
   const [checkingCodex, setCheckingCodex] = useState(false);
   const [applying, setApplying] = useState(false);
   const [restoring, setRestoring] = useState(false);
@@ -20,9 +42,14 @@ export default function CodexToolCard({ tool, isExpanded, onToggle, baseUrl, api
   const [modelAliases, setModelAliases] = useState({});
   const [showManualConfigModal, setShowManualConfigModal] = useState(false);
   const [customBaseUrl, setCustomBaseUrl] = useState("");
-  const effectiveStatus = codexStatus || initialStatus || null;
-  const parsedModel = effectiveStatus?.config?.match(/^model\s*=\s*"([^"]+)"/m)?.[1] || "";
-  const parsedSubagentModel = effectiveStatus?.config?.match(/\[agents\.subagent\]\s*\n\s*model\s*=\s*"([^"]+)"/m)?.[1] || "";
+  const effectiveStatus = normalizeCodexStatus(codexStatus) || normalizeCodexStatus(initialStatus);
+  const hasKnownInstallState = typeof effectiveStatus?.installed === "boolean";
+  const parsedModel = normalizeCodexModel(
+    effectiveStatus?.config?.match(/^model\s*=\s*"([^"]+)"/m)?.[1] || ""
+  );
+  const parsedSubagentModel = normalizeCodexModel(
+    effectiveStatus?.config?.match(/\[agents\.subagent\]\s*\n\s*model\s*=\s*"([^"]+)"/m)?.[1] || ""
+  );
   const effectiveSelectedApiKey = selectedApiKey || apiKeys?.[0]?.key || "";
   const effectiveSelectedModel = selectedModel || parsedModel;
   const effectiveSubagentModel = subagentModel || parsedSubagentModel;
@@ -32,9 +59,16 @@ export default function CodexToolCard({ tool, isExpanded, onToggle, baseUrl, api
     try {
       const res = await fetch("/api/cli-tools/codex-settings");
       const data = await res.json();
-      setCodexStatus(data);
+      setCodexStatus(
+        normalizeCodexStatus(data) || {
+          installed: false,
+          config: null,
+          error: "Failed to load Codex CLI status",
+          unavailable: true,
+        }
+      );
     } catch (error) {
-      setCodexStatus({ installed: false, error: error.message });
+      setCodexStatus({ installed: false, config: null, error: error.message, unavailable: true });
     } finally {
       setCheckingCodex(false);
     }
@@ -42,17 +76,28 @@ export default function CodexToolCard({ tool, isExpanded, onToggle, baseUrl, api
 
   useEffect(() => {
     if (!isExpanded) return;
-    if (!effectiveStatus) {
+    if (!hasKnownInstallState) {
       fetch("/api/cli-tools/codex-settings")
         .then((res) => res.json())
-        .then((data) => setCodexStatus(data))
-        .catch((error) => setCodexStatus({ installed: false, error: error.message }));
+        .then((data) =>
+          setCodexStatus(
+            normalizeCodexStatus(data) || {
+              installed: false,
+              config: null,
+              error: "Failed to load Codex CLI status",
+              unavailable: true,
+            }
+          )
+        )
+        .catch((error) =>
+          setCodexStatus({ installed: false, config: null, error: error.message, unavailable: true })
+        );
     }
     fetch("/api/models/alias")
       .then((res) => res.json())
       .then((data) => setModelAliases(data.aliases || {}))
       .catch((error) => console.log("Error fetching model aliases:", error));
-  }, [isExpanded, effectiveStatus]);
+  }, [isExpanded, hasKnownInstallState]);
 
   const getConfigStatus = () => {
     if (!effectiveStatus?.installed) return null;
@@ -127,10 +172,11 @@ export default function CodexToolCard({ tool, isExpanded, onToggle, baseUrl, api
   };
 
   const handleModelSelect = (model) => {
-    setSelectedModel(model.value);
+    const normalizedModel = normalizeCodexModel(model.value);
+    setSelectedModel(normalizedModel);
     // Auto-set subagent model if not set
     if (!subagentModel) {
-      setSubagentModel(model.value);
+      setSubagentModel(normalizedModel);
     }
     setModalOpen(false);
   };
@@ -201,14 +247,22 @@ model = "${effectiveSubagentModel}"
             </div>
           )}
 
-          {!checkingCodex && codexStatus && !codexStatus.installed && (
+          {!checkingCodex && hasKnownInstallState && !effectiveStatus.installed && (
             <div className="flex flex-col gap-4">
               <div className="flex flex-col gap-3 p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
                 <div className="flex items-start gap-3">
                   <span className="material-symbols-outlined text-yellow-500">warning</span>
                   <div className="flex-1">
-                    <p className="font-medium text-yellow-600 dark:text-yellow-400">Codex CLI not detected locally</p>
-                    <p className="text-sm text-text-muted">Manual configuration is still available if OpenRouterX is deployed on a remote server.</p>
+                    <p className="font-medium text-yellow-600 dark:text-yellow-400">
+                      {effectiveStatus.unavailable ? "Codex CLI status unavailable" : "Codex CLI not detected locally"}
+                    </p>
+                    <p className="text-sm text-text-muted">
+                      {effectiveStatus.unavailable
+                        ? (effectiveStatus.error === "Unauthorized"
+                          ? "Please sign in first, then reopen this card to load Codex settings."
+                          : effectiveStatus.error || "Unable to load Codex CLI status right now.")
+                        : "Manual configuration is still available if OpenRouterX is deployed on a remote server."}
+                    </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2 pl-9">
@@ -309,7 +363,13 @@ model = "${effectiveSubagentModel}"
                 <div className="flex items-center gap-2">
                   <span className="w-32 shrink-0 text-sm font-semibold text-text-main text-right">Model</span>
                   <span className="material-symbols-outlined text-text-muted text-[14px]">arrow_forward</span>
-                  <input type="text" value={effectiveSelectedModel} onChange={(e) => setSelectedModel(e.target.value)} placeholder="provider/model-id" className="flex-1 px-2 py-1.5 bg-surface rounded border border-border text-xs focus:outline-none focus:ring-1 focus:ring-primary/50" />
+                  <input
+                    type="text"
+                    value={effectiveSelectedModel}
+                    onChange={(e) => setSelectedModel(normalizeCodexModel(e.target.value))}
+                    placeholder="provider/model-id"
+                    className="flex-1 px-2 py-1.5 bg-surface rounded border border-border text-xs focus:outline-none focus:ring-1 focus:ring-primary/50"
+                  />
                   <button onClick={() => setModalOpen(true)} disabled={!activeProviders?.length} className={`px-2 py-1.5 rounded border text-xs transition-colors shrink-0 whitespace-nowrap ${activeProviders?.length ? "bg-surface border-border text-text-main hover:border-primary cursor-pointer" : "opacity-50 cursor-not-allowed border-border"}`}>Select Model</button>
                   {!manualOnly && effectiveSelectedModel && <button onClick={() => setSelectedModel("")} className="p-1 text-text-muted hover:text-red-500 rounded transition-colors" title="Clear"><span className="material-symbols-outlined text-[14px]">close</span></button>}
                 </div>
@@ -321,7 +381,7 @@ model = "${effectiveSubagentModel}"
                   <input 
                     type="text" 
                     value={effectiveSubagentModel} 
-                    onChange={(e) => setSubagentModel(e.target.value)} 
+                    onChange={(e) => setSubagentModel(normalizeCodexModel(e.target.value))} 
                     placeholder={effectiveSelectedModel || "provider/model-id (defaults to main model)"} 
                     className="flex-1 px-2 py-1.5 bg-surface rounded border border-border text-xs focus:outline-none focus:ring-1 focus:ring-primary/50" 
                   />
@@ -384,7 +444,7 @@ model = "${effectiveSubagentModel}"
       <ModelSelectModal
         isOpen={subagentModalOpen}
         onClose={() => setSubagentModalOpen(false)}
-        onSelect={(model) => { setSubagentModel(model.value); setSubagentModalOpen(false); }}
+        onSelect={(model) => { setSubagentModel(normalizeCodexModel(model.value)); setSubagentModalOpen(false); }}
         selectedModel={subagentModel}
         activeProviders={activeProviders}
         modelAliases={modelAliases}

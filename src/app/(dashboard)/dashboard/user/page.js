@@ -6,7 +6,7 @@ import { Card, Badge } from "@/shared/components";
 import AvailableModelRow from "@/shared/components/AvailableModelRow";
 import OverviewCards from "../usage/components/OverviewCards";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
-import { AI_PROVIDERS } from "@/shared/constants/providers";
+import { AI_PROVIDERS, USAGE_APIKEY_PROVIDERS, USAGE_SUPPORTED_PROVIDERS } from "@/shared/constants/providers";
 import { getModelsByProviderId } from "@/shared/constants/models";
 
 function buildChatRequestBody(model) {
@@ -118,6 +118,12 @@ export default function SubUserPage() {
 
   const assignedKeys = keys.filter(k => k.userId === user?.userId);
   const activeAssignedKey = assignedKeys.find((key) => key.isActive !== false)?.key || "";
+  const hasQuotaTrackerAccess =
+    user?.showQuotaTracker !== false &&
+    providers.some((connection) =>
+      USAGE_SUPPORTED_PROVIDERS.includes(connection.provider) &&
+      (connection.authType === "oauth" || USAGE_APIKEY_PROVIDERS.includes(connection.provider))
+    );
   const groupedModels = allowedProviders.map((providerId) => {
     const providerMeta = AI_PROVIDERS[providerId] || {};
     const alias = providerMeta.alias || providerId;
@@ -280,6 +286,9 @@ export default function SubUserPage() {
         <h2 className="text-sm font-semibold uppercase text-text-muted mb-3">Quick Access</h2>
         <div className="grid grid-cols-1 gap-3">
           <QuickLink href="/dashboard/usage" icon="analytics" label="Usage &amp; Logs" desc="View your request history" />
+          {hasQuotaTrackerAccess && (
+            <QuickLink href="/dashboard/quota" icon="data_usage" label="Quota Tracker" desc="View quota for your allowed providers" />
+          )}
         </div>
       </div>
     </div>

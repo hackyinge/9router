@@ -122,12 +122,19 @@ function comboMatchesKinds(combo, kindFilter) {
 /**
  * Build OpenAI-format models list filtered by service kinds.
  * @param {string[]} kindFilter - List of service kinds to include (e.g. ["llm"], ["webSearch","webFetch"]).
+ * @param {Request|null} request - Optional request object for sub-user access filtering.
  */
-export async function buildModelsList(kindFilter) {
+export async function buildModelsList(kindFilter, request = null) {
+  const subUserContext = request ? await resolveSubUserAccessContext(request) : null;
   let connections = [];
   try {
     connections = await getProviderConnections();
     connections = connections.filter(c => c.isActive !== false);
+    if (subUserContext) {
+      connections = connections.filter((connection) =>
+        isProviderAllowedForSubUser(subUserContext, connection.provider)
+      );
+    }
   } catch (e) {
     console.log("Could not fetch providers, returning all models");
   }
@@ -166,6 +173,17 @@ export async function buildModelsList(kindFilter) {
   // Combos first (filtered by kind). Web combos expose `kind` so AI knows search vs fetch.
   for (const combo of combos) {
     if (!comboMatchesKinds(combo, kindFilter)) continue;
+    if (subUserContext) {
+      let comboAllowed = true;
+      for (const comboModel of combo.models || []) {
+        const comboModelInfo = await getModelInfo(comboModel);
+        if (!comboModelInfo?.provider || !isProviderAllowedForSubUser(subUserContext, comboModelInfo.provider)) {
+          comboAllowed = false;
+          break;
+        }
+      }
+      if (!comboAllowed) continue;
+    }
     const entry = {
       id: combo.name,
       object: "model",
@@ -185,6 +203,7 @@ export async function buildModelsList(kindFilter) {
     );
     for (const [alias, providerModels] of Object.entries(PROVIDER_MODELS)) {
       const providerId = aliasToProviderId[alias] || alias;
+      if (subUserContext && !isProviderAllowedForSubUser(subUserContext, providerId)) continue;
       if (!providerMatchesKinds(providerId, kindFilter)) continue;
       for (const model of providerModels) {
         if (!kindFilter.includes(modelKind(model))) continue;
@@ -206,6 +225,12 @@ export async function buildModelsList(kindFilter) {
 
       const modelId = String(customModel.id).trim();
       if (!modelId) continue;
+      if (subUserContext) {
+        const modelInfo = await getModelInfo(`${providerAlias}/${modelId}`);
+        if (!modelInfo?.provider || !isProviderAllowedForSubUser(subUserContext, modelInfo.provider)) {
+          continue;
+        }
+      }
 
       models.push({
         id: `${providerAlias}/${modelId}`,
@@ -216,6 +241,7 @@ export async function buildModelsList(kindFilter) {
     }
   } else {
     for (const [providerId, conn] of activeConnectionByProvider.entries()) {
+      if (subUserContext && !isProviderAllowedForSubUser(subUserContext, providerId)) continue;
       if (!providerMatchesKinds(providerId, kindFilter)) continue;
 
       const staticAlias = PROVIDER_ID_TO_ALIAS[providerId] || providerId;
