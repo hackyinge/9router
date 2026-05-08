@@ -1,0 +1,632 @@
+{
+  "models": {
+    "gemini-2.5-flash-thinking": {
+      "displayName": "Gemini 3.1 Flash Lite",
+      "maxTokens": 1048576,
+      "maxOutputTokens": 65535,
+      "tokenizerType": "LLAMA_WITH_SPECIAL",
+      "quotaInfo": {
+        "remainingFraction": 1,
+        "resetTime": "2026-05-08T13:04:13Z"
+      },
+      "model": "MODEL_GOOGLE_GEMINI_2_5_FLASH_THINKING",
+      "apiProvider": "API_PROVIDER_GOOGLE_GEMINI",
+      "modelProvider": "MODEL_PROVIDER_GOOGLE",
+      "modelExperiments": {
+        "experiments": {
+          "CASCADE_USE_EXPERIMENT_CHECKPOINTER": {
+            "stringValue": "{\n    \"strategy\": \"CHECKPOINT_STRATEGY_SINGLE_PROMPT\",\n    \"max_token_limit\": \"128000\",\n    \"token_threshold\": \"50000\",\n    \"max_overhead_ratio\": \"0.15\",\n    \"moving_window_size\": \"1\",\n    \"enabled\": true,\n    \"max_output_tokens\": \"16384\",\n    \"checkpoint_model\": \"MODEL_PLACEHOLDER_M50\",\n    \"retry_config\": {\n        \"max_retries\": 0,\n        \"initial_sleep_duration_ms\": 1000,\n        \"exponential_multiplier\": 2,\n        \"include_error_feedback\": false\n    }\n}"
+          }
+        }
+      }
+    },
+    "gemini-2.5-pro": {
+      "displayName": "Gemini 2.5 Pro",
+      "supportsImages": true,
+      "supportsThinking": true,
+      "thinkingBudget": 1024,
+      "minThinkingBudget": 128,
+      "recommended": true,
+      "maxTokens": 1048576,
+      "maxOutputTokens": 65535,
+      "tokenizerType": "LLAMA_WITH_SPECIAL",
+      "quotaInfo": {
+        "remainingFraction": 1,
+        "resetTime": "2026-05-08T13:04:13Z"
+      },
+      "model": "MODEL_GOOGLE_GEMINI_2_5_PRO",
+      "apiProvider": "API_PROVIDER_GOOGLE_GEMINI",
+      "modelProvider": "MODEL_PROVIDER_GOOGLE",
+      "supportedMimeTypes": {
+        "application/x-ipynb+json": true,
+        "image/jpeg": true,
+        "video/jpeg2000": true,
+        "text/css": true,
+        "audio/webm;codecs=opus": true,
+        "image/heic": true,
+        "video/audio/wav": true,
+        "text/csv": true,
+        "image/webp": true,
+        "text/x-python-script": true,
+        "application/json": true,
+        "text/markdown": true,
+        "text/xml": true,
+        "text/plain": true,
+        "video/webm": true,
+        "text/x-python": true,
+        "application/x-typescript": true,
+        "video/videoframe/jpeg2000": true,
+        "image/png": true,
+        "text/html": true,
+        "application/x-javascript": true,
+        "application/x-python-code": true,
+        "video/text/timestamp": true,
+        "video/audio/s16le": true,
+        "image/heif": true,
+        "text/javascript": true,
+        "text/rtf": true,
+        "application/pdf": true,
+        "application/rtf": true,
+        "text/x-typescript": true,
+        "video/mp4": true
+      },
+      "requiresImageOutputOutsideFunctionResponses": true,
+      "modelExperiments": {
+        "experiments": {
+          "CASCADE_USE_EXPERIMENT_CHECKPOINTER": {
+            "stringValue": "{\n    \"strategy\": \"CHECKPOINT_STRATEGY_SINGLE_PROMPT\",\n    \"max_token_limit\": \"128000\",\n    \"token_threshold\": \"50000\",\n    \"max_overhead_ratio\": \"0.15\",\n    \"moving_window_size\": \"1\",\n    \"enabled\": true,\n    \"max_output_tokens\": \"16384\",\n    \"checkpoint_model\": \"MODEL_PLACEHOLDER_M50\",\n    \"retry_config\": {\n        \"max_retries\": 0,\n        \"initial_sleep_duration_ms\": 1000,\n        \"exponential_multiplier\": 2,\n        \"include_error_feedback\": false\n    }\n}"
+          }
+        }
+      }
+    },
+    "gpt-oss-120b-medium": {
+      "displayName": "GPT-OSS 120B (Medium)",
+      "supportsThinking": true,
+      "thinkingBudget": 8192,
+      "recommended": true,
+      "maxTokens": 131072,
+      "maxOutputTokens": 32768,
+      "tokenizerType": "LLAMA_WITH_SPECIAL",
+      "quotaInfo": {
+        "remainingFraction": 1,
+        "resetTime": "2026-05-15T08:04:13Z"
+      },
+      "model": "MODEL_OPENAI_GPT_OSS_120B_MEDIUM",
+      "apiProvider": "API_PROVIDER_OPENAI_VERTEX",
+      "modelProvider": "MODEL_PROVIDER_OPENAI",
+      "modelExperiments": {
+        "experiments": {
+          "CASCADE_USE_EXPERIMENT_CHECKPOINTER": {
+            "stringValue": "{\n    \"strategy\": \"CHECKPOINT_STRATEGY_UNSPECIFIED\",\n    \"max_token_limit\": \"80000\",\n    \"token_threshold\": \"50000\",\n    \"max_overhead_ratio\": \"0.15\",\n    \"moving_window_size\": \"1\",\n    \"enabled\": true,\n    \"max_output_tokens\": \"8192\",\n    \"checkpoint_model\": \"MODEL_PLACEHOLDER_M50\",\n    \"retry_config\": {\n        \"max_retries\": 0,\n        \"initial_sleep_duration_ms\": 1000,\n        \"exponential_multiplier\": 2,\n        \"include_error_feedback\": false\n    }\n}"
+          }
+        }
+      }
+    },
+    "claude-opus-4-6-thinking": {
+      "displayName": "Claude Opus 4.6 (Thinking)",
+      "supportsImages": true,
+      "supportsThinking": true,
+      "thinkingBudget": 1024,
+      "recommended": true,
+      "maxTokens": 250000,
+      "maxOutputTokens": 64000,
+      "tokenizerType": "LLAMA_WITH_SPECIAL",
+      "quotaInfo": {
+        "remainingFraction": 1,
+        "resetTime": "2026-05-15T08:04:13Z"
+      },
+      "model": "MODEL_PLACEHOLDER_M26",
+      "apiProvider": "API_PROVIDER_ANTHROPIC_VERTEX",
+      "modelProvider": "MODEL_PROVIDER_ANTHROPIC",
+      "supportedMimeTypes": {
+        "image/heic": true,
+        "image/heif": true,
+        "image/jpeg": true,
+        "image/png": true,
+        "image/webp": true,
+        "video/jpeg2000": true,
+        "video/videoframe/jpeg2000": true
+      },
+      "modelExperiments": {
+        "experiments": {
+          "CASCADE_USE_EXPERIMENT_CHECKPOINTER": {
+            "stringValue": "{\n    \"strategy\": \"CHECKPOINT_STRATEGY_UNSPECIFIED\",\n    \"max_token_limit\": \"160000\",\n    \"token_threshold\": \"50000\",\n    \"max_overhead_ratio\": \"0.15\",\n    \"moving_window_size\": \"1\",\n    \"enabled\": true,\n    \"max_output_tokens\": \"16384\",\n    \"checkpoint_model\": \"MODEL_PLACEHOLDER_M50\",\n    \"retry_config\": {\n        \"max_retries\": 0,\n        \"initial_sleep_duration_ms\": 1000,\n        \"exponential_multiplier\": 2,\n        \"include_error_feedback\": false\n    }\n}"
+          }
+        }
+      }
+    },
+    "claude-sonnet-4-6": {
+      "displayName": "Claude Sonnet 4.6 (Thinking)",
+      "supportsImages": true,
+      "supportsThinking": true,
+      "thinkingBudget": 1024,
+      "recommended": true,
+      "maxTokens": 250000,
+      "maxOutputTokens": 64000,
+      "tokenizerType": "LLAMA_WITH_SPECIAL",
+      "quotaInfo": {
+        "remainingFraction": 1,
+        "resetTime": "2026-05-15T08:04:13Z"
+      },
+      "model": "MODEL_PLACEHOLDER_M35",
+      "apiProvider": "API_PROVIDER_ANTHROPIC_VERTEX",
+      "modelProvider": "MODEL_PROVIDER_ANTHROPIC",
+      "supportedMimeTypes": {
+        "image/webp": true,
+        "video/jpeg2000": true,
+        "video/videoframe/jpeg2000": true,
+        "image/heic": true,
+        "image/heif": true,
+        "image/jpeg": true,
+        "image/png": true
+      },
+      "modelExperiments": {
+        "experiments": {
+          "CASCADE_USE_EXPERIMENT_CHECKPOINTER": {
+            "stringValue": "{\n    \"strategy\": \"CHECKPOINT_STRATEGY_UNSPECIFIED\",\n    \"max_token_limit\": \"160000\",\n    \"token_threshold\": \"50000\",\n    \"max_overhead_ratio\": \"0.15\",\n    \"moving_window_size\": \"1\",\n    \"enabled\": true,\n    \"max_output_tokens\": \"16384\",\n    \"checkpoint_model\": \"MODEL_PLACEHOLDER_M50\",\n    \"retry_config\": {\n        \"max_retries\": 0,\n        \"initial_sleep_duration_ms\": 1000,\n        \"exponential_multiplier\": 2,\n        \"include_error_feedback\": false\n    }\n}"
+          }
+        }
+      }
+    },
+    "gemini-3-flash-agent": {
+      "displayName": "Gemini 3 Flash",
+      "supportsImages": true,
+      "supportsThinking": true,
+      "thinkingBudget": -1,
+      "minThinkingBudget": 32,
+      "recommended": true,
+      "maxTokens": 1048576,
+      "maxOutputTokens": 65536,
+      "tokenizerType": "LLAMA_WITH_SPECIAL",
+      "quotaInfo": {
+        "remainingFraction": 1,
+        "resetTime": "2026-05-15T08:04:13Z"
+      },
+      "model": "MODEL_PLACEHOLDER_M84",
+      "apiProvider": "API_PROVIDER_GOOGLE_GEMINI",
+      "modelProvider": "MODEL_PROVIDER_GOOGLE",
+      "supportsVideo": true,
+      "supportedMimeTypes": {
+        "text/plain": true,
+        "text/xml": true,
+        "application/rtf": true,
+        "application/x-python-code": true,
+        "image/png": true,
+        "video/webm": true,
+        "audio/webm;codecs=opus": true,
+        "application/pdf": true,
+        "video/audio/wav": true,
+        "image/webp": true,
+        "video/text/timestamp": true,
+        "text/javascript": true,
+        "application/x-javascript": true,
+        "image/jpeg": true,
+        "text/css": true,
+        "video/audio/s16le": true,
+        "text/rtf": true,
+        "video/videoframe/jpeg2000": true,
+        "text/x-typescript": true,
+        "image/heif": true,
+        "text/x-python-script": true,
+        "text/html": true,
+        "image/heic": true,
+        "text/markdown": true,
+        "application/json": true,
+        "text/x-python": true,
+        "video/jpeg2000": true,
+        "application/x-ipynb+json": true,
+        "text/csv": true,
+        "video/mp4": true,
+        "application/x-typescript": true
+      },
+      "modelExperiments": {
+        "experiments": {
+          "CASCADE_USE_EXPERIMENT_CHECKPOINTER": {
+            "stringValue": "{\n    \"strategy\": \"CHECKPOINT_STRATEGY_SINGLE_PROMPT\",\n    \"max_token_limit\": \"128000\",\n    \"token_threshold\": \"50000\",\n    \"max_overhead_ratio\": \"0.15\",\n    \"moving_window_size\": \"1\",\n    \"enabled\": true,\n    \"max_output_tokens\": \"16384\",\n    \"checkpoint_model\": \"MODEL_PLACEHOLDER_M50\",\n    \"retry_config\": {\n        \"max_retries\": 0,\n        \"initial_sleep_duration_ms\": 1000,\n        \"exponential_multiplier\": 2,\n        \"include_error_feedback\": false\n    }\n}"
+          }
+        }
+      }
+    },
+    "gemini-3.1-pro-low": {
+      "displayName": "Gemini 3.1 Pro (Low)",
+      "supportsImages": true,
+      "supportsThinking": true,
+      "thinkingBudget": 1001,
+      "minThinkingBudget": 128,
+      "recommended": true,
+      "maxTokens": 1048576,
+      "maxOutputTokens": 65535,
+      "tokenizerType": "LLAMA_WITH_SPECIAL",
+      "quotaInfo": {
+        "remainingFraction": 1,
+        "resetTime": "2026-05-15T08:04:13Z"
+      },
+      "model": "MODEL_PLACEHOLDER_M36",
+      "apiProvider": "API_PROVIDER_GOOGLE_GEMINI",
+      "modelProvider": "MODEL_PROVIDER_GOOGLE",
+      "supportsVideo": true,
+      "tagTitle": "New",
+      "supportedMimeTypes": {
+        "video/text/timestamp": true,
+        "image/jpeg": true,
+        "text/css": true,
+        "video/videoframe/jpeg2000": true,
+        "video/webm": true,
+        "text/x-python-script": true,
+        "image/heif": true,
+        "text/markdown": true,
+        "text/x-python": true,
+        "text/xml": true,
+        "application/json": true,
+        "image/webp": true,
+        "audio/webm;codecs=opus": true,
+        "video/mp4": true,
+        "text/x-typescript": true,
+        "text/plain": true,
+        "image/heic": true,
+        "video/audio/wav": true,
+        "text/javascript": true,
+        "image/png": true,
+        "text/html": true,
+        "application/x-python-code": true,
+        "application/x-typescript": true,
+        "text/csv": true,
+        "application/rtf": true,
+        "application/x-ipynb+json": true,
+        "text/rtf": true,
+        "video/audio/s16le": true,
+        "video/jpeg2000": true,
+        "application/pdf": true,
+        "application/x-javascript": true
+      },
+      "modelExperiments": {
+        "experiments": {
+          "cascade-include-ephemeral-message": {
+            "stringValue": "{\n    \"enabled\": true,\n    \"disabledHeuristics\": [\"running_tasks_reminder\"]\n}"
+          },
+          "template__system_prompts__communication_style": {
+            "stringValue": "- Keep your responses concise.\n- Provide a summary of your work when you end your turn.\n- Format your responses in github-style markdown.\n- If you're unsure about the user's intent, ask for clarification rather than making assumptions.\n- You MUST create clickable links for all files and code symbols (classes, types, functions, structs). Use github style markdown links with the `file://` scheme (e.g., [filename](file:///path/to/file) or [ClassName](file:///path/to/file#L10-L20)`). For Windows, use forward slashes for paths.\n\nCRITICAL INSTRUCTION 1: You may have access to a variety of tools at your disposal. Some tools may be for a specific task such as 'view_file' (for viewing contents of a file). Others may be very broadly applicable such as the ability to run a command on a terminal. Always prioritize using the most specific tool you can for the task at hand. Here are some rules: (a) NEVER run cat inside a bash command to create a new file or append to an existing file. (b) ALWAYS use grep_search instead of running grep inside a bash command unless absolutely needed. (c) DO NOT use ls for listing, cat for viewing, grep for finding, sed for replacing.\nCRITICAL INSTRUCTION 2: Before making tool calls T, think and explicitly list out any related tools for the task at hand. You can only execute a set of tools T if all other tools in the list are either more generic or cannot be used for the task at hand. ALWAYS START your thought with recalling critical instructions 1 and 2. In particular, the format for the start of your thought block must be '...94>thought\\nCRITICAL INSTRUCTION 1: ...\\nCRITICAL INSTRUCTION 2: ...'."
+          },
+          "CASCADE_USE_EXPERIMENT_CHECKPOINTER": {
+            "stringValue": "{\n    \"strategy\": \"CHECKPOINT_STRATEGY_SINGLE_PROMPT\",\n    \"max_token_limit\": \"128000\",\n    \"token_threshold\": \"50000\",\n    \"max_overhead_ratio\": \"0.15\",\n    \"moving_window_size\": \"1\",\n    \"enabled\": true,\n    \"max_output_tokens\": \"16384\",\n    \"checkpoint_model\": \"MODEL_PLACEHOLDER_M50\",\n    \"retry_config\": {\n        \"max_retries\": 0,\n        \"initial_sleep_duration_ms\": 1000,\n        \"exponential_multiplier\": 2,\n        \"include_error_feedback\": false\n    }\n}"
+          }
+        }
+      }
+    },
+    "tab_flash_lite_preview": {
+      "maxTokens": 16384,
+      "maxOutputTokens": 4096,
+      "tokenizerType": "LLAMA_WITH_SPECIAL",
+      "quotaInfo": {
+        "remainingFraction": 1
+      },
+      "model": "MODEL_PLACEHOLDER_M19",
+      "apiProvider": "API_PROVIDER_GOOGLE_GEMINI",
+      "modelProvider": "MODEL_PROVIDER_GOOGLE",
+      "supportsCumulativeContext": true,
+      "supportsEstimateTokenCounter": true,
+      "toolFormatterType": "TOOL_FORMATTER_TYPE_XML",
+      "requiresLeadInGeneration": true
+    },
+    "gemini-3-flash": {
+      "displayName": "Gemini 3 Flash",
+      "supportsImages": true,
+      "supportsThinking": true,
+      "thinkingBudget": -1,
+      "minThinkingBudget": 32,
+      "recommended": true,
+      "maxTokens": 1048576,
+      "maxOutputTokens": 65536,
+      "tokenizerType": "LLAMA_WITH_SPECIAL",
+      "quotaInfo": {
+        "remainingFraction": 1,
+        "resetTime": "2026-05-15T08:04:13Z"
+      },
+      "model": "MODEL_PLACEHOLDER_M18",
+      "apiProvider": "API_PROVIDER_GOOGLE_GEMINI",
+      "modelProvider": "MODEL_PROVIDER_GOOGLE",
+      "supportsVideo": true,
+      "supportedMimeTypes": {
+        "video/audio/s16le": true,
+        "text/markdown": true,
+        "image/heif": true,
+        "application/json": true,
+        "text/csv": true,
+        "text/html": true,
+        "text/xml": true,
+        "text/x-python-script": true,
+        "image/jpeg": true,
+        "application/x-python-code": true,
+        "video/webm": true,
+        "text/plain": true,
+        "text/x-python": true,
+        "audio/webm;codecs=opus": true,
+        "text/x-typescript": true,
+        "application/pdf": true,
+        "application/rtf": true,
+        "text/javascript": true,
+        "video/videoframe/jpeg2000": true,
+        "application/x-ipynb+json": true,
+        "image/png": true,
+        "application/x-typescript": true,
+        "video/text/timestamp": true,
+        "application/x-javascript": true,
+        "video/mp4": true,
+        "image/heic": true,
+        "text/rtf": true,
+        "text/css": true,
+        "image/webp": true,
+        "video/jpeg2000": true,
+        "video/audio/wav": true
+      },
+      "modelExperiments": {
+        "experiments": {
+          "CASCADE_USE_EXPERIMENT_CHECKPOINTER": {
+            "stringValue": "{\n    \"strategy\": \"CHECKPOINT_STRATEGY_SINGLE_PROMPT\",\n    \"max_token_limit\": \"128000\",\n    \"token_threshold\": \"50000\",\n    \"max_overhead_ratio\": \"0.15\",\n    \"moving_window_size\": \"1\",\n    \"enabled\": true,\n    \"max_output_tokens\": \"16384\",\n    \"checkpoint_model\": \"MODEL_PLACEHOLDER_M50\",\n    \"retry_config\": {\n        \"max_retries\": 0,\n        \"initial_sleep_duration_ms\": 1000,\n        \"exponential_multiplier\": 2,\n        \"include_error_feedback\": false\n    }\n}"
+          }
+        }
+      }
+    },
+    "chat_23310": {
+      "maxTokens": 32768,
+      "tokenizerType": "QWEN2",
+      "quotaInfo": {
+        "remainingFraction": 1
+      },
+      "model": "MODEL_CHAT_23310",
+      "apiProvider": "API_PROVIDER_INTERNAL",
+      "supportsCumulativeContext": true,
+      "supportsEstimateTokenCounter": true,
+      "isInternal": true,
+      "promptTemplaterType": "PROMPT_TEMPLATER_TYPE_CHATML",
+      "toolFormatterType": "TOOL_FORMATTER_TYPE_XML",
+      "requiresLeadInGeneration": true
+    },
+    "chat_20706": {
+      "maxTokens": 16384,
+      "tokenizerType": "QWEN2",
+      "quotaInfo": {
+        "remainingFraction": 1
+      },
+      "model": "MODEL_CHAT_20706",
+      "apiProvider": "API_PROVIDER_INTERNAL",
+      "supportsCumulativeContext": true,
+      "tabJumpPrintLineRange": true,
+      "supportsEstimateTokenCounter": true,
+      "isInternal": true,
+      "addCursorToFindReplaceTarget": true,
+      "promptTemplaterType": "PROMPT_TEMPLATER_TYPE_CHATML",
+      "toolFormatterType": "TOOL_FORMATTER_TYPE_XML",
+      "requiresLeadInGeneration": true
+    },
+    "tab_jump_flash_lite_preview": {
+      "maxTokens": 16384,
+      "maxOutputTokens": 4096,
+      "tokenizerType": "LLAMA_WITH_SPECIAL",
+      "quotaInfo": {
+        "remainingFraction": 1
+      },
+      "model": "MODEL_PLACEHOLDER_M28",
+      "apiProvider": "API_PROVIDER_GOOGLE_GEMINI",
+      "modelProvider": "MODEL_PROVIDER_GOOGLE",
+      "supportsCumulativeContext": true,
+      "tabJumpPrintLineRange": true,
+      "supportsEstimateTokenCounter": true,
+      "addCursorToFindReplaceTarget": true,
+      "toolFormatterType": "TOOL_FORMATTER_TYPE_XML",
+      "requiresLeadInGeneration": true,
+      "requiresNoXmlToolExamples": true
+    },
+    "gemini-3.1-flash-image": {
+      "displayName": "Gemini 3.1 Flash Image",
+      "tokenizerType": "LLAMA_WITH_SPECIAL",
+      "quotaInfo": {
+        "remainingFraction": 1,
+        "resetTime": "2026-05-15T08:04:13Z"
+      },
+      "model": "MODEL_PLACEHOLDER_M21",
+      "apiProvider": "API_PROVIDER_GOOGLE_GEMINI",
+      "modelProvider": "MODEL_PROVIDER_GOOGLE"
+    },
+    "gemini-3.1-pro-high": {
+      "displayName": "Gemini 3.1 Pro (High)",
+      "supportsImages": true,
+      "supportsThinking": true,
+      "thinkingBudget": 10001,
+      "minThinkingBudget": 128,
+      "recommended": true,
+      "maxTokens": 1048576,
+      "maxOutputTokens": 65535,
+      "tokenizerType": "LLAMA_WITH_SPECIAL",
+      "quotaInfo": {
+        "remainingFraction": 1,
+        "resetTime": "2026-05-15T08:04:13Z"
+      },
+      "model": "MODEL_PLACEHOLDER_M37",
+      "apiProvider": "API_PROVIDER_GOOGLE_GEMINI",
+      "modelProvider": "MODEL_PROVIDER_GOOGLE",
+      "supportsVideo": true,
+      "tagTitle": "New",
+      "supportedMimeTypes": {
+        "image/heif": true,
+        "image/webp": true,
+        "video/audio/wav": true,
+        "audio/webm;codecs=opus": true,
+        "video/jpeg2000": true,
+        "text/csv": true,
+        "text/xml": true,
+        "text/css": true,
+        "video/videoframe/jpeg2000": true,
+        "application/x-javascript": true,
+        "image/heic": true,
+        "text/javascript": true,
+        "text/markdown": true,
+        "application/rtf": true,
+        "video/text/timestamp": true,
+        "application/x-ipynb+json": true,
+        "video/audio/s16le": true,
+        "text/html": true,
+        "image/jpeg": true,
+        "video/webm": true,
+        "application/x-python-code": true,
+        "application/pdf": true,
+        "video/mp4": true,
+        "text/x-python-script": true,
+        "application/x-typescript": true,
+        "text/plain": true,
+        "text/rtf": true,
+        "text/x-typescript": true,
+        "text/x-python": true,
+        "application/json": true,
+        "image/png": true
+      },
+      "modelExperiments": {
+        "experiments": {
+          "cascade-include-ephemeral-message": {
+            "stringValue": "{\n    \"enabled\": true,\n    \"disabledHeuristics\": [\"running_tasks_reminder\"]\n}"
+          },
+          "template__system_prompts__communication_style": {
+            "stringValue": "- Keep your responses concise.\n- Provide a summary of your work when you end your turn.\n- Format your responses in github-style markdown.\n- If you're unsure about the user's intent, ask for clarification rather than making assumptions.\n- You MUST create clickable links for all files and code symbols (classes, types, functions, structs). Use github style markdown links with the `file://` scheme (e.g., [filename](file:///path/to/file) or [ClassName](file:///path/to/file#L10-L20)`). For Windows, use forward slashes for paths.\n\nCRITICAL INSTRUCTION 1: You may have access to a variety of tools at your disposal. Some tools may be for a specific task such as 'view_file' (for viewing contents of a file). Others may be very broadly applicable such as the ability to run a command on a terminal. Always prioritize using the most specific tool you can for the task at hand. Here are some rules: (a) NEVER run cat inside a bash command to create a new file or append to an existing file. (b) ALWAYS use grep_search instead of running grep inside a bash command unless absolutely needed. (c) DO NOT use ls for listing, cat for viewing, grep for finding, sed for replacing.\nCRITICAL INSTRUCTION 2: Before making tool calls T, think and explicitly list out any related tools for the task at hand. You can only execute a set of tools T if all other tools in the list are either more generic or cannot be used for the task at hand. ALWAYS START your thought with recalling critical instructions 1 and 2. In particular, the format for the start of your thought block must be '...94>thought\\nCRITICAL INSTRUCTION 1: ...\\nCRITICAL INSTRUCTION 2: ...'."
+          },
+          "CASCADE_USE_EXPERIMENT_CHECKPOINTER": {
+            "stringValue": "{\n    \"strategy\": \"CHECKPOINT_STRATEGY_SINGLE_PROMPT\",\n    \"max_token_limit\": \"128000\",\n    \"token_threshold\": \"50000\",\n    \"max_overhead_ratio\": \"0.15\",\n    \"moving_window_size\": \"1\",\n    \"enabled\": true,\n    \"max_output_tokens\": \"16384\",\n    \"checkpoint_model\": \"MODEL_PLACEHOLDER_M50\",\n    \"retry_config\": {\n        \"max_retries\": 0,\n        \"initial_sleep_duration_ms\": 1000,\n        \"exponential_multiplier\": 2,\n        \"include_error_feedback\": false\n    }\n}"
+          }
+        }
+      }
+    },
+    "gemini-2.5-flash-lite": {
+      "displayName": "Gemini 3.1 Flash Lite",
+      "maxTokens": 1048576,
+      "maxOutputTokens": 65535,
+      "tokenizerType": "LLAMA_WITH_SPECIAL",
+      "quotaInfo": {
+        "remainingFraction": 1,
+        "resetTime": "2026-05-08T13:04:13Z"
+      },
+      "model": "MODEL_GOOGLE_GEMINI_2_5_FLASH_LITE",
+      "apiProvider": "API_PROVIDER_GOOGLE_GEMINI",
+      "modelProvider": "MODEL_PROVIDER_GOOGLE",
+      "modelExperiments": {
+        "experiments": {
+          "CASCADE_USE_EXPERIMENT_CHECKPOINTER": {
+            "stringValue": "{\n    \"strategy\": \"CHECKPOINT_STRATEGY_SINGLE_PROMPT\",\n    \"max_token_limit\": \"128000\",\n    \"token_threshold\": \"50000\",\n    \"max_overhead_ratio\": \"0.15\",\n    \"moving_window_size\": \"1\",\n    \"enabled\": true,\n    \"max_output_tokens\": \"16384\",\n    \"checkpoint_model\": \"MODEL_PLACEHOLDER_M50\",\n    \"retry_config\": {\n        \"max_retries\": 0,\n        \"initial_sleep_duration_ms\": 1000,\n        \"exponential_multiplier\": 2,\n        \"include_error_feedback\": false\n    }\n}"
+          }
+        }
+      }
+    },
+    "gemini-2.5-flash": {
+      "displayName": "Gemini 3.1 Flash Lite",
+      "maxTokens": 1048576,
+      "maxOutputTokens": 65535,
+      "tokenizerType": "LLAMA_WITH_SPECIAL",
+      "quotaInfo": {
+        "remainingFraction": 1,
+        "resetTime": "2026-05-08T13:04:13Z"
+      },
+      "model": "MODEL_GOOGLE_GEMINI_2_5_FLASH",
+      "apiProvider": "API_PROVIDER_GOOGLE_GEMINI",
+      "modelProvider": "MODEL_PROVIDER_GOOGLE",
+      "modelExperiments": {
+        "experiments": {
+          "CASCADE_USE_EXPERIMENT_CHECKPOINTER": {
+            "stringValue": "{\n    \"strategy\": \"CHECKPOINT_STRATEGY_SINGLE_PROMPT\",\n    \"max_token_limit\": \"128000\",\n    \"token_threshold\": \"50000\",\n    \"max_overhead_ratio\": \"0.15\",\n    \"moving_window_size\": \"1\",\n    \"enabled\": true,\n    \"max_output_tokens\": \"16384\",\n    \"checkpoint_model\": \"MODEL_PLACEHOLDER_M50\",\n    \"retry_config\": {\n        \"max_retries\": 0,\n        \"initial_sleep_duration_ms\": 1000,\n        \"exponential_multiplier\": 2,\n        \"include_error_feedback\": false\n    }\n}"
+          }
+        }
+      }
+    },
+    "gemini-3.1-flash-lite": {
+      "displayName": "Gemini 3.1 Flash Lite",
+      "maxTokens": 1048576,
+      "maxOutputTokens": 65535,
+      "tokenizerType": "LLAMA_WITH_SPECIAL",
+      "quotaInfo": {
+        "remainingFraction": 1,
+        "resetTime": "2026-05-08T13:04:13Z"
+      },
+      "model": "MODEL_PLACEHOLDER_M50",
+      "apiProvider": "API_PROVIDER_GOOGLE_GEMINI",
+      "modelProvider": "MODEL_PROVIDER_GOOGLE",
+      "modelExperiments": {
+        "experiments": {
+          "CASCADE_USE_EXPERIMENT_CHECKPOINTER": {
+            "stringValue": "{\n    \"strategy\": \"CHECKPOINT_STRATEGY_SINGLE_PROMPT\",\n    \"max_token_limit\": \"128000\",\n    \"token_threshold\": \"50000\",\n    \"max_overhead_ratio\": \"0.15\",\n    \"moving_window_size\": \"1\",\n    \"enabled\": true,\n    \"max_output_tokens\": \"16384\",\n    \"checkpoint_model\": \"MODEL_PLACEHOLDER_M50\",\n    \"retry_config\": {\n        \"max_retries\": 0,\n        \"initial_sleep_duration_ms\": 1000,\n        \"exponential_multiplier\": 2,\n        \"include_error_feedback\": false\n    }\n}"
+          }
+        }
+      }
+    }
+  },
+  "defaultAgentModelId": "gemini-3.1-pro-high",
+  "agentModelSorts": [
+    {
+      "displayName": "Recommended",
+      "groups": [
+        {
+          "modelIds": [
+            "gemini-3.1-pro-high",
+            "gemini-3.1-pro-low",
+            "gemini-3-flash-agent",
+            "claude-sonnet-4-6",
+            "claude-opus-4-6-thinking",
+            "gpt-oss-120b-medium"
+          ]
+        }
+      ]
+    }
+  ],
+  "commandModelIds": [
+    "gemini-3-flash"
+  ],
+  "tabModelIds": [
+    "chat_20706",
+    "chat_23310"
+  ],
+  "imageGenerationModelIds": [
+    "gemini-3.1-flash-image"
+  ],
+  "mqueryModelIds": [
+    "gemini-3.1-flash-lite"
+  ],
+  "webSearchModelIds": [
+    "gemini-3.1-flash-lite"
+  ],
+  "commitMessageModelIds": [
+    "gemini-3.1-flash-lite"
+  ],
+  "audioTranscriptionModelIds": [
+    "models/proactive-observer"
+  ],
+  "experimentIds": [
+    105789001,
+    105979552,
+    105979574,
+    106015333,
+    105979579,
+    105867471,
+    106123599,
+    106076629,
+    106100625,
+    105930909,
+    106143956,
+    105879567,
+    105856899,
+    106064030,
+    105757908,
+    106106760,
+    106021688,
+    106014288,
+    105887299,
+    106044947,
+    106032303,
+    106228452,
+    105979531,
+    105979553,
+    106015328,
+    105867469,
+    106123597,
+    106100654,
+    106064028,
+    106038164,
+    106032301
+  ],
+  "tieredModelIds": {}
+}

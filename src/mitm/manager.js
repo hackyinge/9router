@@ -528,6 +528,9 @@ async function startServer(apiKey, sudoPassword, forceKillPort443 = false) {
     }
   }
   const mitmRouterBase = await resolveMitmRouterBaseUrl();
+  const mitmServerCwd = MITM_DIR || os.homedir();
+  fs.mkdirSync(mitmServerCwd, { recursive: true });
+  const agMockBootstrap = process.env.OPENROUTERX_AG_MOCK_BOOTSTRAP === "1" ? "1" : "0";
   log(`🚀 Starting server... (router: ${mitmRouterBase})`);
   if (IS_WIN) {
     // Check port 443 — ask user before killing
@@ -549,6 +552,7 @@ async function startServer(apiKey, sudoPassword, forceKillPort443 = false) {
       process.execPath,
       [effectiveServerPath],
       {
+        cwd: mitmServerCwd,
         detached: false,
         windowsHide: true,
         stdio: ["ignore", "pipe", "pipe"],
@@ -557,6 +561,7 @@ async function startServer(apiKey, sudoPassword, forceKillPort443 = false) {
           ROUTER_API_KEY: apiKey,
           NODE_ENV: "production",
           MITM_ROUTER_BASE: mitmRouterBase,
+          OPENROUTERX_AG_MOCK_BOOTSTRAP: agMockBootstrap,
         },
       }
     );
@@ -569,19 +574,21 @@ async function startServer(apiKey, sudoPassword, forceKillPort443 = false) {
       `HOME=${shellQuoteSingle(os.homedir())}`,
       `ROUTER_API_KEY=${shellQuoteSingle(apiKey)}`,
       `MITM_ROUTER_BASE=${shellQuoteSingle(mitmRouterBase)}`,
+      `OPENROUTERX_AG_MOCK_BOOTSTRAP=${shellQuoteSingle(agMockBootstrap)}`,
       "NODE_ENV=production",
       shellQuoteSingle(process.execPath),
       shellQuoteSingle(effectiveServerPath),
     ].join(" ");
     serverProcess = spawn(
       "sudo", ["-S", "-E", "sh", "-c", inlineCmd],
-      { detached: false, windowsHide: true, stdio: ["pipe", "pipe", "pipe"] }
+      { cwd: mitmServerCwd, detached: false, windowsHide: true, stdio: ["pipe", "pipe", "pipe"] }
     );
     serverProcess.stdin.write(`${sudoPassword}\n`);
     serverProcess.stdin.end();
   } else {
     // Docker/minimal images: no sudo — same as Windows-style direct spawn
     serverProcess = spawn(process.execPath, [effectiveServerPath], {
+      cwd: mitmServerCwd,
       detached: false,
       windowsHide: true,
       stdio: ["ignore", "pipe", "pipe"],
@@ -590,6 +597,7 @@ async function startServer(apiKey, sudoPassword, forceKillPort443 = false) {
         ROUTER_API_KEY: apiKey,
         NODE_ENV: "production",
         MITM_ROUTER_BASE: mitmRouterBase,
+        OPENROUTERX_AG_MOCK_BOOTSTRAP: agMockBootstrap,
       },
     });
   }

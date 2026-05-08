@@ -22,6 +22,8 @@ npm install -g @yina-npm/openrouterx
 openrouterX
 ```
 
+开发者在验证本地改动时，必须区分“源码启动”和“npm 包安装测试”。发布、CLI、MITM、安装布局相关改动请先阅读 [Local npm Package Testing](docs/LOCAL_NPM_TESTING.md)。
+
 启动后默认地址：
 
 - Dashboard：`http://localhost:20128/dashboard`

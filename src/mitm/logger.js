@@ -14,7 +14,7 @@ const err = (msg) => console.error(`[${time()}] ❌ [MITM] ${msg}`);
 function ensureDumpDir() {
   const candidates = [
     path.join(DATA_DIR, "logs", "mitm"),
-    path.join(require("os").tmpdir(), "9router", "logs", "mitm"),
+    path.join(require("os").tmpdir(), "openrouterx", "logs", "mitm"),
   ];
   for (const dir of candidates) {
     try {

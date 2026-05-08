@@ -1,15 +1,49 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { Card, Button, Badge, Input, ModelSelectModal } from "@/shared/components";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { Card, Button, Badge, Input, Modal, ModelSelectModal } from "@/shared/components";
 import { TOOL_HOSTS } from "@/shared/constants/mitmToolHosts";
 import Image from "next/image";
+
+const OPENROUTER_TEST_MODEL = "openai/gpt-5.5";
+const OPENROUTER_TEST_PROMPT = "How many r`s are in the word `strawberry?`";
+const ANTIGRAVITY_LOCAL_MODEL = "claude-sonnet-4-6";
+const ANTIGRAVITY_LOCAL_PROMPT = "Reply with exactly: local antigravity mitm ok";
+
+function buildLocalMappedCurl(mappedModel) {
+  const modelValue = OPENROUTER_TEST_MODEL;
+  const mappedValue = mappedModel || "<mapped-model>";
+  return [
+    "curl https://openrouter.ai/api/v1/chat/completions \\",
+    '  -H "Content-Type: application/json" \\',
+    '  -H "Authorization: Bearer sk_openrouterx" \\',
+    "  -d '{",
+    `    "model": "${modelValue}",`,
+    '    "messages": [',
+    "      {",
+    '        "role": "user",',
+    `        "content": "${OPENROUTER_TEST_PROMPT}"`,
+    "      }",
+    "    ],",
+    '    "reasoning": { "enabled": true },',
+    '    "stream": false',
+    "  }'",
+    "",
+    `# Expected MITM mapping target: ${mappedValue}`,
+  ].join("\n");
+}
+
+function buildOpenRouterModelsCurl() {
+  return [
+    "curl https://openrouter.ai/models",
+  ].join("\n");
+}
 
 /**
  * Per-tool MITM card — shows DNS status + model mappings.
  * - Auto-saves model mapping on blur or modal select
  * - Skips sudo modal if password is already cached
- * - Model mappings can only be edited when DNS is active
+ * - Model mappings can be prepared before DNS is active
  */
 export default function MitmToolCard({
   tool,
@@ -36,15 +70,23 @@ export default function MitmToolCard({
   const [modelMappings, setModelMappings] = useState({});
   const [modalOpen, setModalOpen] = useState(false);
   const [currentEditingAlias, setCurrentEditingAlias] = useState(null);
+  const [restarting, setRestarting] = useState(false);
+  const [restartMessage, setRestartMessage] = useState(null);
+  const [showRestartPathModal, setShowRestartPathModal] = useState(false);
+  const [restartPath, setRestartPath] = useState("");
+  const [localPrompt, setLocalPrompt] = useState(ANTIGRAVITY_LOCAL_PROMPT);
+  const [localChatLoading, setLocalChatLoading] = useState(false);
+  const [localChatResult, setLocalChatResult] = useState(null);
+  const [injectingAuth, setInjectingAuth] = useState(false);
+  const [injectAuthMessage, setInjectAuthMessage] = useState(null);
+  const [authJsonInput, setAuthJsonInput] = useState("");
+  const authFileInputRef = useRef(null);
 
   const mitmHosts = TOOL_HOSTS[tool.id] ?? [];
   const canRunWithoutPassword = isWin || hasCachedPassword || needsSudoPassword === false;
+  const canRestartAntigravity = tool.id === "antigravity";
 
-  useEffect(() => {
-    if (isExpanded) loadSavedMappings();
-  }, [isExpanded]);
-
-  const loadSavedMappings = async () => {
+  const loadSavedMappings = useCallback(async () => {
     try {
       const res = await fetch(`/api/cli-tools/antigravity-mitm/alias?tool=${tool.id}`);
       if (res.ok) {
@@ -52,7 +94,14 @@ export default function MitmToolCard({
         if (Object.keys(data.aliases || {}).length > 0) setModelMappings(data.aliases);
       }
     } catch { /* ignore */ }
-  };
+  }, [tool.id]);
+
+  useEffect(() => {
+    if (!isExpanded) return;
+    Promise.resolve().then(() => {
+      loadSavedMappings();
+    });
+  }, [isExpanded, loadSavedMappings]);
 
   const saveMappings = useCallback(async (mappings) => {
     try {
@@ -129,6 +178,124 @@ export default function MitmToolCard({
     doDnsAction(pendingDnsAction, sudoPassword);
   };
 
+  const restartAntigravity = async (path = "") => {
+    setRestarting(true);
+    setRestartMessage(null);
+    try {
+      const res = await fetch("/api/cli-tools/antigravity-mitm/restart", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(path ? { path } : {}),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        if (data.needsManualPath) {
+          setShowRestartPathModal(true);
+          setRestartMessage({ type: "error", text: data.error || "Antigravity was not found" });
+          return;
+        }
+        throw new Error(data.error || "Failed to restart Antigravity");
+      }
+
+      setShowRestartPathModal(false);
+      setRestartPath("");
+      setRestartMessage({ type: "success", text: `Restarted Antigravity${data.path ? `: ${data.path}` : ""}` });
+    } catch (error) {
+      setRestartMessage({ type: "error", text: error.message });
+    } finally {
+      setRestarting(false);
+    }
+  };
+
+  const handleConfirmRestartPath = () => {
+    const path = restartPath.trim();
+    if (!path) {
+      setRestartMessage({ type: "error", text: "Antigravity path is required" });
+      return;
+    }
+    restartAntigravity(path);
+  };
+
+  const injectAuthKey = async () => {
+    setInjectingAuth(true);
+    setInjectAuthMessage(null);
+    try {
+      let credentials;
+      const trimmedJson = authJsonInput.trim();
+      if (trimmedJson) {
+        try {
+          credentials = JSON.parse(trimmedJson);
+        } catch {
+          throw new Error("Account JSON is not valid");
+        }
+      }
+
+      const res = await fetch("/api/cli-tools/antigravity-mitm/inject-auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(credentials ? { credentials } : {}),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to inject auth key");
+
+      setInjectAuthMessage({ type: "success", text: data.message || "Auth key injected. Please restart Antigravity." });
+    } catch (error) {
+      setInjectAuthMessage({ type: "error", text: error.message });
+    } finally {
+      setInjectingAuth(false);
+    }
+  };
+
+  const handleAuthFileChange = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      JSON.parse(text);
+      setAuthJsonInput(text);
+      setInjectAuthMessage({ type: "success", text: `Loaded ${file.name}` });
+    } catch {
+      setInjectAuthMessage({ type: "error", text: "Selected file is not valid JSON" });
+    } finally {
+      event.target.value = "";
+    }
+  };
+
+  const runLocalAntigravityChat = async () => {
+    const prompt = localPrompt.trim();
+    if (!prompt) {
+      setLocalChatResult({ type: "error", text: "Prompt is required" });
+      return;
+    }
+
+    setLocalChatLoading(true);
+    setLocalChatResult(null);
+    try {
+      const res = await fetch("/api/cli-tools/antigravity-mitm/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tool: "antigravity",
+          publicModel: ANTIGRAVITY_LOCAL_MODEL,
+          prompt,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || "Local Antigravity MITM test failed");
+
+      setLocalChatResult({
+        type: "success",
+        text: data.reply || data.preview || "Request completed",
+        meta: `${data.publicModel} -> ${data.mappedModel} · ${data.latencyMs}ms`,
+      });
+    } catch (error) {
+      setLocalChatResult({ type: "error", text: error.message });
+    } finally {
+      setLocalChatLoading(false);
+    }
+  };
+
   return (
     <>
       <Card padding="xs" className="overflow-hidden">
@@ -184,7 +351,7 @@ export default function MitmToolCard({
               <p>Toggle DNS to redirect {tool.name} traffic through OpenRouterX via MITM.</p>
               {!dnsActive && (
                 <p className="text-amber-600 text-[10px] mt-1">
-                  ⚠️ Enable DNS to edit model mappings
+                  ⚠️ DNS off: mappings are saved locally and will apply after DNS is enabled
                 </p>
               )}
             </div>
@@ -203,8 +370,7 @@ export default function MitmToolCard({
                         onChange={(e) => handleModelMappingChange(model.alias, e.target.value)}
                         onBlur={(e) => handleMappingBlur(model.alias, e.target.value)}
                         placeholder="provider/model-id"
-                        disabled={!dnsActive}
-                        className={`w-full min-w-0 pl-2 pr-7 py-2 bg-surface rounded border border-border text-xs focus:outline-none focus:ring-1 focus:ring-primary/50 sm:py-1.5 ${!dnsActive ? "opacity-50 cursor-not-allowed" : ""}`}
+                        className="w-full min-w-0 pl-2 pr-7 py-2 bg-surface rounded border border-border text-xs focus:outline-none focus:ring-1 focus:ring-primary/50 sm:py-1.5"
                       />
                       {modelMappings[model.alias] && (
                         <button
@@ -221,8 +387,8 @@ export default function MitmToolCard({
                     </div>
                     <button
                       onClick={() => openModelSelector(model.alias)}
-                      disabled={!hasActiveProviders || !dnsActive}
-                      className={`rounded border px-2 py-2 text-xs transition-colors sm:py-1.5 ${hasActiveProviders && dnsActive ? "bg-surface border-border hover:border-primary cursor-pointer" : "opacity-50 cursor-not-allowed border-border"}`}
+                      disabled={!hasActiveProviders}
+                      className={`rounded border px-2 py-2 text-xs transition-colors sm:py-1.5 ${hasActiveProviders ? "bg-surface border-border hover:border-primary cursor-pointer" : "opacity-50 cursor-not-allowed border-border"}`}
                     >
                       Select
                     </button>
@@ -237,24 +403,84 @@ export default function MitmToolCard({
 
             {/* Start / Stop DNS button */}
             <div className="flex flex-col gap-2 sm:items-start">
-              {dnsActive ? (
-                <button
-                  onClick={handleDnsToggle}
-                  disabled={!serverRunning || loading}
-                  className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2 text-xs font-medium text-red-500 transition-colors hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:py-1.5"
-                >
-                  <span className="material-symbols-outlined text-[16px]">stop_circle</span>
-                  Stop DNS
-                </button>
-              ) : (
-                <button
-                  onClick={handleDnsToggle}
-                  disabled={!serverRunning || loading}
-                  className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-4 py-2 text-xs font-medium text-primary transition-colors hover:bg-primary/20 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:py-1.5"
-                >
-                  <span className="material-symbols-outlined text-[16px]">play_circle</span>
-                  Start DNS
-                </button>
+              <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
+                {dnsActive ? (
+                  <button
+                    onClick={handleDnsToggle}
+                    disabled={!serverRunning || loading}
+                    className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2 text-xs font-medium text-red-500 transition-colors hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:py-1.5"
+                  >
+                    <span className="material-symbols-outlined text-[16px]">stop_circle</span>
+                    Stop DNS
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleDnsToggle}
+                    disabled={!serverRunning || loading}
+                    className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-4 py-2 text-xs font-medium text-primary transition-colors hover:bg-primary/20 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:py-1.5"
+                  >
+                    <span className="material-symbols-outlined text-[16px]">play_circle</span>
+                    Start DNS
+                  </button>
+                )}
+                {canRestartAntigravity && (
+                  <button
+                    onClick={() => restartAntigravity()}
+                    disabled={restarting}
+                    className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-border bg-surface px-4 py-2 text-xs font-medium text-text-main transition-colors hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:py-1.5"
+                    title="Restart Antigravity"
+                  >
+                    <span className={`material-symbols-outlined text-[16px] ${restarting ? "animate-spin" : ""}`}>
+                      {restarting ? "progress_activity" : "restart_alt"}
+                    </span>
+                    Restart Antigravity
+                  </button>
+                )}
+                {canRestartAntigravity && (
+                  <button
+                    onClick={injectAuthKey}
+                    disabled={injectingAuth}
+                    className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-xs font-medium text-amber-600 transition-colors hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:py-1.5"
+                    title="Inject Antigravity auth from a refresh-token JSON in Downloads or ~/.antigravity_tools"
+                  >
+                    <span className={`material-symbols-outlined text-[16px] ${injectingAuth ? "animate-spin" : ""}`}>
+                      {injectingAuth ? "progress_activity" : "key"}
+                    </span>
+                    Inject Auth Key
+                  </button>
+                )}
+              </div>
+              {canRestartAntigravity && (
+                <div className="grid w-full gap-2 rounded-lg border border-border bg-surface/50 p-3 sm:max-w-2xl">
+                  <input
+                    ref={authFileInputRef}
+                    type="file"
+                    accept="application/json,.json"
+                    className="hidden"
+                    onChange={handleAuthFileChange}
+                  />
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-[11px] font-medium text-text-main">Antigravity account JSON</p>
+                    <button
+                      type="button"
+                      onClick={() => authFileInputRef.current?.click()}
+                      className="inline-flex items-center gap-1 rounded border border-border bg-surface px-2 py-1 text-[11px] text-text-main transition-colors hover:border-primary hover:text-primary"
+                    >
+                      <span className="material-symbols-outlined text-[14px]">upload_file</span>
+                      Load JSON
+                    </button>
+                  </div>
+                  <textarea
+                    value={authJsonInput}
+                    onChange={(event) => setAuthJsonInput(event.target.value)}
+                    placeholder='[{"email":"name@gmail.com","refresh_token":"..."}]'
+                    spellCheck={false}
+                    className="min-h-20 w-full resize-y rounded border border-border bg-background px-2 py-2 font-mono text-[11px] text-text-main outline-none focus:ring-1 focus:ring-primary/50"
+                  />
+                  <p className="text-[10px] text-text-muted">
+                    Paste a new account JSON here or load a local file; this takes priority over the built-in fallback account.
+                  </p>
+                </div>
               )}
 
               {/* Warning below button */}
@@ -264,10 +490,88 @@ export default function MitmToolCard({
                   <span>{warning}</span>
                 </div>
               )}
+              {restartMessage && (
+                <div className={`flex items-center gap-2 px-2 py-1.5 rounded text-xs ${restartMessage.type === "success" ? "text-green-600" : "text-red-600"}`}>
+                  <span className="material-symbols-outlined text-[14px]">{restartMessage.type === "success" ? "check_circle" : "error"}</span>
+                  <span>{restartMessage.text}</span>
+                </div>
+              )}
+              {injectAuthMessage && (
+                <div className={`flex items-center gap-2 px-2 py-1.5 rounded text-xs ${injectAuthMessage.type === "success" ? "text-green-600" : "text-red-600"}`}>
+                  <span className="material-symbols-outlined text-[14px]">{injectAuthMessage.type === "success" ? "check_circle" : "error"}</span>
+                  <span>{injectAuthMessage.text}</span>
+                </div>
+              )}
+              {tool.id === "openrouter" && (
+                <div className="flex flex-col gap-2">
+                  <p className="text-[11px] text-text-muted px-1">
+                    Both tests hit `openrouter.ai` directly. If MITM is inactive, they should fail or return the wrong payload.
+                  </p>
+                  <div className="rounded-lg border border-border bg-surface/50 p-3">
+                    <p className="mb-2 text-[11px] font-medium text-text-main">MITM Chat curl</p>
+                    <pre className="wrap-break-word whitespace-pre-wrap text-[10px] text-text-muted" data-i18n-skip="true">
+                      {buildLocalMappedCurl(String(modelMappings[OPENROUTER_TEST_MODEL] || "").trim())}
+                    </pre>
+                  </div>
+                  <div className="rounded-lg border border-border bg-surface/50 p-3">
+                    <p className="mb-2 text-[11px] font-medium text-text-main">OpenRouter Models curl</p>
+                    <pre className="wrap-break-word whitespace-pre-wrap text-[10px] text-text-muted" data-i18n-skip="true">
+                      {buildOpenRouterModelsCurl()}
+                    </pre>
+                  </div>
+                </div>
+              )}
+
             </div>
           </div>
         )}
       </Card>
+
+      <Modal
+        isOpen={showRestartPathModal}
+        onClose={() => {
+          setShowRestartPathModal(false);
+          setRestartPath("");
+        }}
+        title="Antigravity Path"
+        size="md"
+      >
+        <div className="flex flex-col gap-4">
+          <p className="text-xs text-text-muted">
+            Antigravity was not found in common install locations. Enter the local app path, for example <code className="rounded bg-surface-2 px-1 py-0.5">/Applications/Antigravity.app</code>.
+          </p>
+          <Input
+            value={restartPath}
+            onChange={(e) => setRestartPath(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter" && !restarting) handleConfirmRestartPath(); }}
+            placeholder="/Applications/Antigravity.app"
+          />
+          {restartMessage && (
+            <div className={`flex items-center gap-2 px-2 py-1.5 rounded text-xs ${restartMessage.type === "success" ? "bg-green-500/10 text-green-600" : "bg-red-500/10 text-red-600"}`}>
+              <span className="material-symbols-outlined text-[14px]">{restartMessage.type === "success" ? "check_circle" : "error"}</span>
+              <span>{restartMessage.text}</span>
+            </div>
+          )}
+          <div className="flex items-center justify-end gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => { setShowRestartPathModal(false); setRestartPath(""); }}
+              disabled={restarting}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={handleConfirmRestartPath}
+              loading={restarting}
+            >
+              Restart
+            </Button>
+          </div>
+        </div>
+      </Modal>
 
       {/* Password Modal */}
       {showPasswordModal && (

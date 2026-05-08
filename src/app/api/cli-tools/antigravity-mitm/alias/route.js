@@ -2,14 +2,27 @@
 
 import { NextResponse } from "next/server";
 import { getMitmAlias, setMitmAliasAll } from "@/models";
-import { getMitmStatus } from "@/mitm/manager";
+
+const DEFAULT_ANTIGRAVITY_ALIASES = {
+  "gemini-3.1-pro-high": "gemini-3.1-pro-high",
+  "gemini-3.1-pro-low": "gemini-3.1-pro-low",
+  "gemini-3-flash-agent": "cx/gpt-5.5",
+  "gemini-3-flash": "cx/gpt-5.5",
+  "claude-sonnet-4-6": "claude-sonnet-4-6",
+  "claude-opus-4-6-thinking": "claude-opus-4-6-thinking",
+  "gpt-oss-120b-medium": "gpt-oss-120b-medium",
+};
 
 // GET - Get MITM aliases for a tool
 export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
     const toolName = searchParams.get("tool");
-    const aliases = await getMitmAlias(toolName || undefined);
+    let aliases = await getMitmAlias(toolName || undefined);
+    if (toolName === "antigravity" && Object.keys(aliases || {}).length === 0) {
+      aliases = DEFAULT_ANTIGRAVITY_ALIASES;
+      await setMitmAliasAll(toolName, aliases);
+    }
     return NextResponse.json({ aliases });
   } catch (error) {
     console.log("Error fetching MITM aliases:", error.message);
@@ -26,14 +39,6 @@ export async function PUT(request) {
       return NextResponse.json({ error: "tool and mappings required" }, { status: 400 });
     }
 
-    // Check if DNS is enabled for this tool
-    const status = await getMitmStatus();
-    if (!status.dnsStatus || !status.dnsStatus[tool]) {
-      return NextResponse.json(
-        { error: `DNS must be enabled for ${tool} before editing model mappings` },
-        { status: 403 }
-      );
-    }
 
     const filtered = {};
     for (const [alias, model] of Object.entries(mappings)) {

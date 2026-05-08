@@ -2,10 +2,12 @@ const https = require("https");
 const fs = require("fs");
 const path = require("path");
 const dns = require("dns");
+const zlib = require("zlib");
 const { promisify } = require("util");
 const { execSync } = require("child_process");
 const { log, err, dumpRequest, createResponseDumper } = require("./logger");
 const { TARGET_HOSTS, URL_PATTERNS, MODEL_SYNONYMS, getToolForHost } = require("./config");
+const { buildAntigravityAvailableModelsResponse } = require("./antigravityModels");
 const { DATA_DIR, MITM_DIR } = require("./paths");
 const { getCertForDomain } = require("./cert/generate");
 
@@ -19,6 +21,7 @@ const INTERNAL_REQUEST_HEADER = { name: "x-request-source", value: "local" };
 // daily-cloudcode-pa (dev endpoint) accepts same body+token. Same trick as open-sse.
 const HOST_REWRITE = {
   "cloudcode-pa.googleapis.com": "daily-cloudcode-pa.googleapis.com",
+  "daily-cloudcode-pa.sandbox.googleapis.com": "daily-cloudcode-pa.googleapis.com",
 };
 
 // Load handlers — dev/ overrides handlers/ for private implementations
@@ -73,14 +76,34 @@ try {
 const cachedTargetIPs = {};
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
+function getLocalIPv4Aliases() {
+  if (process.platform !== "darwin") return [];
+  try {
+    const out = execSync("ifconfig lo0", { encoding: "utf8", windowsHide: true });
+    return [...out.matchAll(/^\s+inet\s+(\d+\.\d+\.\d+\.\d+)\s+/gm)].map((m) => m[1]);
+  } catch {
+    return [];
+  }
+}
+
 async function resolveTargetIP(hostname) {
   const cached = cachedTargetIPs[hostname];
-  if (cached && Date.now() - cached.ts < CACHE_TTL_MS) return cached.ip;
+  const localAliases = new Set(getLocalIPv4Aliases());
+  if (cached && Date.now() - cached.ts < CACHE_TTL_MS && !localAliases.has(cached.ip)) return cached.ip;
   const resolver = new dns.Resolver();
   resolver.setServers(["8.8.8.8"]);
   const resolve4 = promisify(resolver.resolve4.bind(resolver));
-  const addresses = await resolve4(hostname);
-  cachedTargetIPs[hostname] = { ip: addresses[0], ts: Date.now() };
+  let addresses;
+  try {
+    addresses = await resolve4(hostname);
+  } catch (primaryError) {
+    const lookup = promisify(dns.lookup);
+    const records = await lookup(hostname, { family: 4, all: true }).catch(() => []);
+    addresses = records.map((record) => record.address).filter((addr) => !localAliases.has(addr));
+    if (addresses.length === 0) throw primaryError;
+  }
+  const ip = addresses.find((addr) => !localAliases.has(addr)) || addresses[0];
+  cachedTargetIPs[hostname] = { ip, ts: Date.now() };
   return cachedTargetIPs[hostname].ip;
 }
 
@@ -111,8 +134,10 @@ function getMappedModel(tool, model) {
   try {
     if (!fs.existsSync(DB_FILE)) return null;
     const db = JSON.parse(fs.readFileSync(DB_FILE, "utf-8"));
-    const aliases = db.mitmAlias?.[tool];
-    if (!aliases) return null;
+    const aliases = {
+      ...(MODEL_SYNONYMS?.[tool]?.__defaults || {}),
+      ...(db.mitmAlias?.[tool] || {}),
+    };
     // Normalize via synonym map (e.g., gemini-default → gemini-3-flash)
     const lookup = MODEL_SYNONYMS?.[tool]?.[model] || model;
     if (aliases[lookup]) return aliases[lookup];
@@ -122,17 +147,166 @@ function getMappedModel(tool, model) {
   } catch { return null; }
 }
 
+function respondJson(res, statusCode, payload) {
+  const body = JSON.stringify(payload);
+  res.writeHead(statusCode, {
+    "Content-Type": "application/json; charset=UTF-8",
+    "Content-Length": Buffer.byteLength(body),
+  });
+  res.end(body);
+}
+
+function shouldDumpRequest(req) {
+  if (process.env.OPENROUTERX_MITM_DUMP_ALL === "1") return true;
+  return !!getToolForHost(req.headers.host);
+}
+
+function handleLocalAntigravityBootstrap(req, res) {
+  if (req.url.includes(":fetchAvailableModels") && process.env.OPENROUTERX_AG_LOCAL_MODELS !== "0") {
+    const payload = buildAntigravityAvailableModelsResponse();
+    respondJson(res, 200, payload);
+    log(`🧩 bootstrap | antigravity | local fetchAvailableModels (${Object.keys(payload.models || {}).length} models)`);
+    return true;
+  }
+
+  // The language server refreshes this cache next to the model list. Upstream
+  // can reject the MITM-shaped request with INVALID_ARGUMENT, which then marks
+  // the whole background cache refresh as failed even when models were local.
+  if (req.url.includes(":fetchAdminControls")) {
+    respondJson(res, 200, { adminControls: [] });
+    log("🧩 bootstrap | antigravity | local fetchAdminControls");
+    return true;
+  }
+
+  const localAuthBootstrap = process.env.OPENROUTERX_AG_LOCAL_AUTH !== "0"
+    || process.env.OPENROUTERX_AG_MOCK_BOOTSTRAP === "1";
+
+  if (!localAuthBootstrap) return false;
+
+  if (req.url.includes(":loadCodeAssist")) {
+    respondJson(res, 200, {
+      cloudaicompanionProject: "local-openrouterx",
+      allowedTiers: [
+        {
+          id: "standard-tier",
+          name: "OpenRouterX Local",
+          description: "Local MITM bootstrap tier",
+          isDefault: true,
+        },
+      ],
+      currentTier: {
+        id: "standard-tier",
+        name: "OpenRouterX Local",
+      },
+      userTier: {
+        id: "standard-tier",
+        name: "OpenRouterX Local",
+      },
+      tosAccepted: true,
+      done: true,
+    });
+    log("🧩 bootstrap | antigravity | local loadCodeAssist");
+    return true;
+  }
+
+  if (req.url.includes(":onboardUser")) {
+    respondJson(res, 200, {
+      done: true,
+      response: {
+        cloudaicompanionProject: "local-openrouterx",
+      },
+    });
+    log("🧩 bootstrap | antigravity | local onboardUser");
+    return true;
+  }
+
+  if (req.url.includes("/cascadeNuxes")) {
+    respondJson(res, 200, {
+      nuxes: [],
+      completedNuxes: [],
+    });
+    log("🧩 bootstrap | antigravity | local cascadeNuxes");
+    return true;
+  }
+
+  return false;
+}
+
+function decodeResponseBody(buf, headers = {}) {
+  if (!buf || buf.length === 0) return buf;
+  const enc = String(headers["content-encoding"] || headers["Content-Encoding"] || "").toLowerCase();
+  try {
+    if (enc.includes("gzip")) return zlib.gunzipSync(buf);
+    if (enc.includes("br")) return zlib.brotliDecompressSync(buf);
+    if (enc.includes("deflate")) return zlib.inflateSync(buf);
+  } catch (e) {
+    err(`loadCodeAssist decode failed: ${e.message}`);
+  }
+  return buf;
+}
+
+function summarizeTier(tier) {
+  if (!tier || typeof tier !== "object") return String(tier || "unknown");
+  const id = tier.id || tier.tierId || tier.name || tier.displayName || "unknown";
+  const name = tier.displayName || tier.name || "";
+  const marker = tier.isDefault ? "*" : "";
+  return name && name !== id ? `${id}${marker}(${name})` : `${id}${marker}`;
+}
+
+function summarizeIneligibleTier(tier) {
+  if (!tier || typeof tier !== "object") return String(tier || "unknown");
+  const id = tier.id || tier.tierId || tier.name || tier.displayName || "unknown";
+  const reason = tier.ineligibilityReason || tier.reason || tier.reasonCode || tier.code || "unknown";
+  const message = tier.message || tier.ineligibilityMessage || tier.description || "";
+  return message ? `${id}:${reason}:${message}` : `${id}:${reason}`;
+}
+
+function inspectAntigravityLoadCodeAssist(rawBuffer, headers) {
+  const text = decodeResponseBody(rawBuffer, headers).toString("utf8");
+  try {
+    const payload = JSON.parse(text);
+    const allowed = Array.isArray(payload.allowedTiers)
+      ? payload.allowedTiers.map(summarizeTier)
+      : [];
+    const ineligible = Array.isArray(payload.ineligibleTiers)
+      ? payload.ineligibleTiers.map(summarizeIneligibleTier)
+      : [];
+    const project = payload.cloudaicompanionProject || payload.cloudaicompanionProjectId || payload.project || "";
+    const validationUrl = /https?:\/\/\S+/i.test(text) ? "present" : "none";
+
+    log(
+      `🧩 loadCodeAssist MITM | status=passthrough | project=${project || "none"} | ` +
+      `allowed=${allowed.length ? allowed.join(", ") : "none"} | ` +
+      `ineligible=${ineligible.length ? ineligible.join(" | ") : "none"} | validationUrl=${validationUrl}`
+    );
+  } catch {
+    log(`🧩 loadCodeAssist MITM | status=passthrough | non-json response bytes=${rawBuffer.length}`);
+  }
+}
+
 /**
  * Forward request to real upstream.
- * Optional onResponse(rawBuffer) callback — if provided, tees the response
+ * Optional onResponse(rawBuffer, headers) callback — if provided, tees the response
  * so it's both forwarded to client AND passed to the callback for inspection.
+ * Optional transformResponse(rawBuffer, headers) callback — if provided, buffers
+ * the full response, passes it to the callback, and sends the returned buffer
+ * to the client instead of the original response.
  * Also tees full stream into a dump file when ENABLE_FILE_LOG is on.
  */
-async function passthrough(req, res, bodyBuffer, onResponse) {
+async function passthrough(req, res, bodyBuffer, onResponse, transformResponse) {
   const originalHost = (req.headers.host || TARGET_HOSTS[0]).split(":")[0];
   const targetHost = HOST_REWRITE[originalHost] || originalHost;
-  const targetIP = await resolveTargetIP(targetHost);
-  const dumper = ENABLE_FILE_LOG ? createResponseDumper(req, "passthrough") : null;
+  const dumper = ENABLE_FILE_LOG && shouldDumpRequest(req) ? createResponseDumper(req, "passthrough") : null;
+  let targetIP;
+  try {
+    targetIP = await resolveTargetIP(targetHost);
+  } catch (e) {
+    err(`Passthrough resolve error for ${targetHost}: ${e.code || e.message}`);
+    if (dumper) { dumper.writeChunk(`\n[ERROR] resolve ${targetHost}: ${e.message}\n`); dumper.end(); }
+    if (!res.headersSent) res.writeHead(502, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: { message: `DNS resolve failed for ${targetHost}`, type: "mitm_dns_error" } }));
+    return;
+  }
 
   const forwardReq = https.request({
     hostname: targetIP,
@@ -143,25 +317,46 @@ async function passthrough(req, res, bodyBuffer, onResponse) {
     servername: targetHost,
     rejectUnauthorized: false
   }, (forwardRes) => {
-    res.writeHead(forwardRes.statusCode, forwardRes.headers);
-    if (dumper) dumper.writeHeader(forwardRes.statusCode, forwardRes.headers);
+    // When transformResponse is provided, buffer the full response so we can
+    // modify it before sending to the client.
+    const shouldBuffer = transformResponse != null;
+    if (!shouldBuffer) res.writeHead(forwardRes.statusCode, forwardRes.headers);
 
-    if (!onResponse && !dumper) {
+    if (!onResponse && !dumper && !shouldBuffer) {
       forwardRes.pipe(res);
       return;
     }
 
-    // Tee: forward to client AND optionally buffer + dump
     const chunks = [];
     forwardRes.on("data", chunk => {
       if (dumper) dumper.writeChunk(chunk);
-      if (onResponse) chunks.push(chunk);
-      res.write(chunk);
+      if (onResponse || shouldBuffer) chunks.push(chunk);
+      if (!shouldBuffer) res.write(chunk);
     });
     forwardRes.on("end", () => {
+      const rawBuffer = Buffer.concat(chunks);
+
+      if (shouldBuffer) {
+        try {
+          const modified = transformResponse(rawBuffer, forwardRes.headers);
+          // Update Content-Length if present to match modified body
+          const headers = { ...forwardRes.headers };
+          if (headers["content-length"] != null) {
+            headers["content-length"] = String(Buffer.byteLength(modified));
+          }
+          res.writeHead(forwardRes.statusCode, headers);
+          res.end(modified);
+        } catch (e) {
+          err(`transformResponse error: ${e.message}`);
+          if (!res.headersSent) res.writeHead(502);
+          res.end("Bad Gateway");
+        }
+      } else {
+        res.end();
+      }
+
       if (dumper) dumper.end();
-      res.end();
-      if (onResponse) try { onResponse(Buffer.concat(chunks), forwardRes.headers); } catch { /* ignore */ }
+      if (onResponse) try { onResponse(rawBuffer, forwardRes.headers); } catch { /* ignore */ }
     });
   });
 
@@ -187,7 +382,7 @@ const server = https.createServer(sslOptions, async (req, res) => {
     }
 
     const bodyBuffer = await collectBodyRaw(req);
-    if (ENABLE_FILE_LOG) dumpRequest(req, bodyBuffer, "raw");
+    if (ENABLE_FILE_LOG && shouldDumpRequest(req)) dumpRequest(req, bodyBuffer, "raw");
 
     // Anti-loop: skip requests from 9Router
     if (req.headers[INTERNAL_REQUEST_HEADER.name] === INTERNAL_REQUEST_HEADER.value) {
@@ -196,6 +391,12 @@ const server = https.createServer(sslOptions, async (req, res) => {
 
     const tool = getToolForHost(req.headers.host);
     if (!tool) return passthrough(req, res, bodyBuffer);
+
+    if (tool === "antigravity" && handleLocalAntigravityBootstrap(req, res)) return;
+    if (tool === "antigravity" && req.url.includes(":loadCodeAssist")) {
+      log("🧩 loadCodeAssist MITM | passthrough inspect");
+      return passthrough(req, res, bodyBuffer, inspectAntigravityLoadCodeAssist);
+    }
 
     const patterns = URL_PATTERNS[tool] || [];
     const isChat = patterns.some(p => req.url.includes(p));

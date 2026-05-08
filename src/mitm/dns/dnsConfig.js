@@ -36,6 +36,18 @@ const IS_MAC = process.platform === "darwin";
 const HOSTS_FILE = IS_WIN
   ? path.join(process.env.SystemRoot || "C:\\Windows", "System32", "drivers", "etc", "hosts")
   : "/etc/hosts";
+const MAC_PF_ANTIGRAVITY_ANCHOR = "com.apple/openrouterx-mitm-antigravity";
+const MAC_ANTIGRAVITY_FALLBACK_IPS = [
+  "216.239.32.223",
+  "216.239.34.223",
+  "216.239.36.223",
+  "216.239.38.223",
+];
+const MAC_ANTIGRAVITY_LEGACY_SHARED_IP_PREFIXES = [
+  "142.250.",
+  "142.251.",
+  "172.217.",
+];
 
 /** True when `sudo` exists (e.g. missing on minimal Docker images like Alpine). */
 function isSudoAvailable() {
@@ -110,6 +122,97 @@ async function flushDNS(sudoPassword) {
   }
 }
 
+function shellQuoteSingle(str) {
+  return `'${String(str).replace(/'/g, "'\\''")}'`;
+}
+
+function getDefaultMacInterface() {
+  if (!IS_MAC) return "";
+  try {
+    const out = execSync("route -n get default 2>/dev/null | awk '/interface:/{print $2; exit}'", {
+      encoding: "utf8",
+      windowsHide: true,
+    }).trim();
+    return out || "en0";
+  } catch {
+    return "en0";
+  }
+}
+
+async function getMacAntigravityRedirectIPs() {
+  return [...MAC_ANTIGRAVITY_FALLBACK_IPS];
+}
+
+function getMacLoopbackIPv4Aliases() {
+  if (!IS_MAC) return [];
+  try {
+    const out = execSync("ifconfig lo0", { encoding: "utf8", windowsHide: true });
+    return [...out.matchAll(/^\s+inet\s+(\d+\.\d+\.\d+\.\d+)\s+/gm)].map((m) => m[1]);
+  } catch {
+    return [];
+  }
+}
+
+function getMacLegacyAntigravityAliases() {
+  return getMacLoopbackIPv4Aliases().filter((ip) =>
+    MAC_ANTIGRAVITY_LEGACY_SHARED_IP_PREFIXES.some((prefix) => ip.startsWith(prefix))
+  );
+}
+
+async function enableMacAntigravityRedirect(sudoPassword) {
+  if (!IS_MAC) return;
+  const ips = await getMacAntigravityRedirectIPs();
+  if (ips.length === 0) return;
+
+  await enableMacAntigravityLoopbackAliases(sudoPassword, ips);
+
+  const iface = getDefaultMacInterface();
+  const rules = [
+    `table <openrouterx_antigravity> persist { ${ips.join(", ")} }`,
+    `rdr pass on ${iface} inet proto tcp from any to <openrouterx_antigravity> port 443 -> 127.0.0.1 port 443`,
+    "",
+  ].join("\n");
+  const command = [
+    "pfctl -E >/dev/null 2>&1 || true",
+    `printf '%s' ${shellQuoteSingle(rules)} | pfctl -a ${shellQuoteSingle(MAC_PF_ANTIGRAVITY_ANCHOR)} -f -`,
+  ].join(" && ");
+
+  await execWithPassword(command, sudoPassword);
+  log(`🌐 PF antigravity: ✅ redirect active on ${iface} (${ips.length} IPs)`);
+}
+
+async function disableMacAntigravityRedirect(sudoPassword) {
+  if (!IS_MAC) return;
+  const ips = [...new Set([
+    ...await getMacAntigravityRedirectIPs(),
+    ...getMacLegacyAntigravityAliases(),
+  ])];
+  await execWithPassword(`pfctl -a ${shellQuoteSingle(MAC_PF_ANTIGRAVITY_ANCHOR)} -F all >/dev/null 2>&1 || true`, sudoPassword);
+  await disableMacAntigravityLoopbackAliases(sudoPassword, ips);
+  log("🌐 PF antigravity: ✅ redirect removed");
+}
+
+async function enableMacAntigravityLoopbackAliases(sudoPassword, ips) {
+  if (!IS_MAC || !ips.length) return;
+  const commands = ips.map((ip) => `ifconfig lo0 alias ${ip}/32 2>/dev/null || true`);
+  await execWithPassword(commands.join("; "), sudoPassword);
+  log(`🌐 lo0 antigravity: ✅ aliases active (${ips.length} IPs)`);
+}
+
+async function disableMacAntigravityLoopbackAliases(sudoPassword, ips) {
+  if (!IS_MAC || !ips.length) return;
+  const commands = ips.map((ip) => `ifconfig lo0 -alias ${ip} 2>/dev/null || true`);
+  await execWithPassword(commands.join("; "), sudoPassword);
+}
+
+async function ensureToolNetworkRedirect(tool, sudoPassword) {
+  if (tool === "antigravity") await enableMacAntigravityRedirect(sudoPassword);
+}
+
+async function removeToolNetworkRedirect(tool, sudoPassword) {
+  if (tool === "antigravity") await disableMacAntigravityRedirect(sudoPassword);
+}
+
 /**
  * Check if DNS entry exists for a specific host
  */
@@ -150,6 +253,7 @@ async function addDNSEntry(tool, sudoPassword) {
   const entriesToAdd = hosts.filter(h => !checkDNSEntry(h));
   if (entriesToAdd.length === 0) {
     log(`🌐 DNS ${tool}: already active`);
+    await ensureToolNetworkRedirect(tool, sudoPassword);
     return;
   }
 
@@ -172,6 +276,7 @@ async function addDNSEntry(tool, sudoPassword) {
       await execWithPassword(`printf '%s' '${escaped}' | tee ${HOSTS_FILE} > /dev/null`, sudoPassword);
       await flushDNS(sudoPassword);
     }
+    await ensureToolNetworkRedirect(tool, sudoPassword);
     log(`🌐 DNS ${tool}: ✅ added ${entriesToAdd.join(", ")}`);
   } catch (error) {
     const msg = error.message?.includes("incorrect password") ? "Wrong sudo password" : `Failed to add DNS entry: ${error.message}`;
@@ -189,6 +294,7 @@ async function removeDNSEntry(tool, sudoPassword) {
   const entriesToRemove = hosts.filter(h => checkDNSEntry(h));
   if (entriesToRemove.length === 0) {
     log(`🌐 DNS ${tool}: already inactive`);
+    await removeToolNetworkRedirect(tool, sudoPassword);
     return;
   }
 
@@ -207,6 +313,7 @@ async function removeDNSEntry(tool, sudoPassword) {
       await execWithPassword(`printf '%s' '${escaped}' | tee ${HOSTS_FILE} > /dev/null`, sudoPassword);
       await flushDNS(sudoPassword);
     }
+    await removeToolNetworkRedirect(tool, sudoPassword);
     log(`🌐 DNS ${tool}: ✅ removed ${entriesToRemove.join(", ")}`);
   } catch (error) {
     const msg = error.message?.includes("incorrect password") ? "Wrong sudo password" : `Failed to remove DNS entry: ${error.message}`;
@@ -233,6 +340,12 @@ async function removeAllDNSEntries(sudoPassword) {
  */
 function removeAllDNSEntriesSync() {
   try {
+    if (IS_MAC) {
+      try { execSync(`pfctl -a ${MAC_PF_ANTIGRAVITY_ANCHOR} -F all >/dev/null 2>&1 || true`, { stdio: "ignore" }); } catch { /* ignore */ }
+      for (const ip of MAC_ANTIGRAVITY_FALLBACK_IPS) {
+        try { execSync(`ifconfig lo0 -alias ${ip} 2>/dev/null || true`, { stdio: "ignore" }); } catch { /* ignore */ }
+      }
+    }
     if (!fs.existsSync(HOSTS_FILE)) return;
     const allHosts = Object.values(TOOL_HOSTS).flat();
     const content = fs.readFileSync(HOSTS_FILE, "utf8");
