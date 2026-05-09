@@ -27,6 +27,8 @@ const ALIAS_TO_PROVIDER_ID = {
   "minimax-cn": "minimax-cn",
   ds: "deepseek",
   deepseek: "deepseek",
+  cmc: "commandcode",
+  commandcode: "commandcode",
   groq: "groq",
   xai: "xai",
   mistral: "mistral",

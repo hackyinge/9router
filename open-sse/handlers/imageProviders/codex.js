@@ -7,6 +7,9 @@ const CODEX_USER_AGENT = "codex-imagen/0.2.6";
 const CODEX_VERSION = "0.122.0";
 const CODEX_ORIGINATOR = "codex_cli_rs";
 const CODEX_MODEL_SUFFIX = "-image";
+const CODEX_MODEL_ALIASES = {
+  "gpt-image-2": "gpt-5.4",
+};
 const CODEX_REF_DETAIL = "high";
 
 function decodeAccountId(idToken) {
@@ -23,7 +26,8 @@ function decodeAccountId(idToken) {
 }
 
 function stripImageSuffix(model) {
-  return model.endsWith(CODEX_MODEL_SUFFIX) ? model.slice(0, -CODEX_MODEL_SUFFIX.length) : model;
+  const normalized = CODEX_MODEL_ALIASES[model] || model;
+  return normalized.endsWith(CODEX_MODEL_SUFFIX) ? normalized.slice(0, -CODEX_MODEL_SUFFIX.length) : normalized;
 }
 
 function toDataUrl(input) {
@@ -163,6 +167,7 @@ export default {
   buildBody: (model, body) => {
     const refs = [];
     if (Array.isArray(body.images)) body.images.forEach((i) => { const u = toDataUrl(i); if (u) refs.push(u); });
+    if (Array.isArray(body.reference_images)) body.reference_images.forEach((i) => { const u = toDataUrl(i); if (u) refs.push(u); });
     const single = toDataUrl(body.image);
     if (single) refs.push(single);
     const detail = body.image_detail || CODEX_REF_DETAIL;

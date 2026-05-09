@@ -5,6 +5,13 @@ import { applyOutboundProxyEnv } from "@/lib/network/outboundProxy";
 import { resetComboRotation } from "open-sse/services/combo.js";
 import bcrypt from "bcryptjs";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
+const SETTINGS_RESPONSE_HEADERS = {
+  "Cache-Control": "no-store"
+};
+
 export async function GET() {
   try {
     const settings = await getSettings();
@@ -20,7 +27,7 @@ export async function GET() {
       dataDir: DATA_DIR,
       databasePath: DB_FILE,
       hasPassword: !!password
-    });
+    }, { headers: SETTINGS_RESPONSE_HEADERS });
   } catch (error) {
     console.log("Error getting settings:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -81,7 +88,7 @@ export async function PATCH(request) {
     }
 
     const { password, ...safeSettings } = settings;
-    return NextResponse.json(safeSettings);
+    return NextResponse.json(safeSettings, { headers: SETTINGS_RESPONSE_HEADERS });
   } catch (error) {
     console.log("Error updating settings:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });

@@ -8,6 +8,7 @@ import {
 } from "@/models";
 import { APIKEY_PROVIDERS } from "@/shared/constants/config";
 import {
+  AI_PROVIDERS,
   FREE_TIER_PROVIDERS,
   WEB_COOKIE_PROVIDERS,
   isOpenAICompatibleProvider,
@@ -15,6 +16,7 @@ import {
   isCustomEmbeddingProvider,
   isCustomImageProvider,
 } from "@/shared/constants/providers";
+import { normalizeProviderId, normalizeProviderSpecificData } from "@/lib/providerNormalization";
 import { resolveSubUserAccessContext, filterConnectionsForSubUser } from "@/lib/subUserAccess";
 
 export const dynamic = "force-dynamic";
@@ -95,7 +97,8 @@ export async function GET(request) {
 export async function POST(request) {
   try {
     const body = await request.json();
-    const { provider, apiKey, name, priority, globalPriority, defaultModel, testStatus } = body;
+    const provider = normalizeProviderId(body.provider);
+    const { apiKey, name, displayName, priority, globalPriority, defaultModel, testStatus } = body;
     const proxyConfig = normalizeProxyConfig(body);
     if (proxyConfig.error) {
       return NextResponse.json({ error: proxyConfig.error }, { status: 400 });
@@ -123,11 +126,12 @@ export async function POST(request) {
     if (!apiKey && provider !== "ollama-local") {
       return NextResponse.json({ error: `${isWebCookieProvider ? "Cookie value" : "API Key"} is required` }, { status: 400 });
     }
-    if (!name) {
+    const connectionName = name || displayName || AI_PROVIDERS[provider]?.name;
+    if (!connectionName) {
       return NextResponse.json({ error: "Name is required" }, { status: 400 });
     }
 
-    let providerSpecificData = body.providerSpecificData || null;
+    let providerSpecificData = normalizeProviderSpecificData(provider, body, body.providerSpecificData);
 
     if (isOpenAICompatibleProvider(provider)) {
       const node = await getProviderNodeById(provider);
@@ -211,7 +215,7 @@ export async function POST(request) {
     const newConnection = await createProviderConnection({
       provider,
       authType: isWebCookieProvider ? "cookie" : "apikey",
-      name,
+      name: connectionName,
       apiKey: apiKey || "",
       priority: priority || 1,
       globalPriority: globalPriority || null,

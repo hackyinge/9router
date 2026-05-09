@@ -9,8 +9,10 @@ import {
 } from "@/shared/constants/providers";
 import { inferOpenAICompatibleApiType, normalizeCompatibleBaseUrl } from "@/shared/utils/compatibleProvider";
 import { getDefaultModel } from "open-sse/config/providerModels.js";
-import { resolveOllamaLocalHost } from "open-sse/config/providers.js";
+import { resolveOllamaLocalHost, PROVIDERS } from "open-sse/config/providers.js";
+import { openaiToCommandCode } from "open-sse/translator/request/openai-to-commandcode.js";
 import { PROVIDER_ENDPOINTS } from "@/shared/constants/config";
+import { normalizeProviderId } from "@/lib/providerNormalization";
 
 // Probe a webSearch/webFetch provider using its searchConfig/fetchConfig.
 // Returns true if API key is accepted (status !== 401 && !== 403).
@@ -90,7 +92,8 @@ async function probeMediaProvider(provider, apiKey) {
 export async function POST(request) {
   try {
     const body = await request.json();
-    const { provider, apiKey, providerSpecificData } = body;
+    const provider = normalizeProviderId(body.provider);
+    const { apiKey, providerSpecificData } = body;
 
     const isNoAuth = AI_PROVIDERS[provider]?.noAuth === true;
     if (!provider || (!apiKey && provider !== "ollama-local" && !isNoAuth)) {
@@ -471,6 +474,28 @@ export async function POST(request) {
               max_tokens: 1,
               stream: false,
             }),
+          });
+          isValid = res.status !== 401 && res.status !== 403;
+          break;
+        }
+
+        case "commandcode": {
+          const cfg = PROVIDERS.commandcode;
+          const model = getDefaultModel("commandcode");
+          const payload = openaiToCommandCode(model, {
+            messages: [{ role: "user", content: "ping" }],
+            max_tokens: 1,
+            stream: false,
+          }, false);
+          const res = await fetch(cfg.baseUrl, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              ...(cfg.headers || {}),
+              "x-session-id": crypto.randomUUID(),
+              "Authorization": `Bearer ${apiKey}`,
+            },
+            body: JSON.stringify(payload),
           });
           isValid = res.status !== 401 && res.status !== 403;
           break;

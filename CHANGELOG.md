@@ -1,3 +1,8 @@
+# v0.4.20 (2026-05-07)
+
+## Features
+- Add CommandCode provider support
+
 # v0.4.19 (2026-05-07)
 
 ## Features
