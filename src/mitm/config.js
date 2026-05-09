@@ -16,7 +16,18 @@ const URL_PATTERNS = {
   copilot: ["/chat/completions", "/v1/messages", "/responses"],
   kiro: ["/generateAssistantResponse"],
   cursor: ["/BidiAppend", "/RunSSE", "/RunPoll", "/Run"],
-  openrouter: ["/models", "/api/v1/models", "/chat/completions", "/v1/chat/completions", "/v1/messages", "/responses"],
+  openrouter: [
+    "/models",
+    "/api/v1/models",
+    "/api/v1/key",
+    "/api/v1/auth/key",
+    "/chat/completions",
+    "/v1/chat/completions",
+    "/api/v1/chat/completions",
+    "/v1/messages",
+    "/responses",
+    "/api/v1/responses",
+  ],
 };
 
 // Synonym map: rawModel from request → canonical alias key in mitmAlias DB

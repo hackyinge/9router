@@ -10,8 +10,8 @@ const DEFAULT_CONFIG = {
   protocol: "http:",
 };
 
-const CLI_TOKEN_HEADER = "x-9r-cli-token";
-const CLI_TOKEN_SALT = "9r-cli-auth";
+const CLI_TOKEN_HEADER = "x-openrouterx-cli-token";
+const CLI_TOKEN_SALT = "openrouterx-cli-auth";
 
 let config = { ...DEFAULT_CONFIG };
 let cachedCliToken = null;

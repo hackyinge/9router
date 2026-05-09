@@ -57,11 +57,11 @@ async function startTerminalUI(port) {
   // Configure API client
   api.configure({ port });
   
-  const basePath = ["9Router"];
+  const basePath = ["openrouterX"];
   
   // Main menu
   await showMenuWithBack({
-    title: "📡 9Router Terminal UI",
+    title: "📡 openrouterX Terminal UI",
     breadcrumb: basePath,
     headerContent: async () => await buildHeaderContent(port),
     refresh: async () => ({}), // Refresh header on each loop

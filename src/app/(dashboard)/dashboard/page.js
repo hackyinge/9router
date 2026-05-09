@@ -5,7 +5,7 @@ import { getMachineId } from "@/shared/utils/machine";
 import EndpointPageClient from "./endpoint/EndpointPageClient";
 
 const SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || "9router-default-secret-change-me"
+  process.env.JWT_SECRET || "openrouterx-default-secret-change-me"
 );
 
 async function getAuthFromCookie() {

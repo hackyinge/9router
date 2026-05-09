@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSettings, updateSettings } from "@/lib/localDb";
+import { DB_FILE, DATA_DIR } from "@/lib/dataDir";
 import { applyOutboundProxyEnv } from "@/lib/network/outboundProxy";
 import { resetComboRotation } from "open-sse/services/combo.js";
 import bcrypt from "bcryptjs";
@@ -16,6 +17,8 @@ export async function GET() {
       ...safeSettings, 
       enableRequestLogs,
       enableTranslator,
+      dataDir: DATA_DIR,
+      databasePath: DB_FILE,
       hasPassword: !!password
     });
   } catch (error) {
@@ -62,7 +65,8 @@ export async function PATCH(request) {
     if (
       Object.prototype.hasOwnProperty.call(body, "outboundProxyEnabled") ||
       Object.prototype.hasOwnProperty.call(body, "outboundProxyUrl") ||
-      Object.prototype.hasOwnProperty.call(body, "outboundNoProxy")
+      Object.prototype.hasOwnProperty.call(body, "outboundNoProxy") ||
+      Object.prototype.hasOwnProperty.call(body, "outboundProxyTargets")
     ) {
       applyOutboundProxyEnv(settings);
     }

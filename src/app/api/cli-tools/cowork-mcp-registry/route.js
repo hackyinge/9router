@@ -9,7 +9,7 @@ const GH_API = "https://api.github.com";
 const GH_RAW = "https://raw.githubusercontent.com";
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1h
 
-const G_KEY = "__9routerCoworkMcpRegistryCache";
+const G_KEY = "__openrouterxCoworkMcpRegistryCache";
 function gcache() {
   if (!globalThis[G_KEY]) globalThis[G_KEY] = { ts: 0, data: null };
   return globalThis[G_KEY];

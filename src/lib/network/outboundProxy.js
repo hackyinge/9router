@@ -4,12 +4,15 @@ function normalizeString(value) {
 }
 
 export function applyOutboundProxyEnv(
-  { outboundProxyEnabled, outboundProxyUrl, outboundNoProxy } = {}
+  { outboundProxyEnabled, outboundProxyUrl, outboundNoProxy, outboundProxyTargets } = {}
 ) {
   if (typeof process === "undefined" || !process.env) return;
   const enabled = Boolean(outboundProxyEnabled);
   const proxyUrl = normalizeString(outboundProxyUrl);
   const noProxy = normalizeString(outboundNoProxy);
+  const proxyTargets = Array.isArray(outboundProxyTargets)
+    ? outboundProxyTargets.map(normalizeString).filter(Boolean).join(",")
+    : normalizeString(outboundProxyTargets);
 
   // If disabled, only clear env vars we previously managed.
   if (!enabled) {
@@ -21,6 +24,7 @@ export function applyOutboundProxyEnv(
       delete process.env.NINE_ROUTER_PROXY_MANAGED;
       delete process.env.NINE_ROUTER_PROXY_URL;
       delete process.env.NINE_ROUTER_NO_PROXY;
+      delete process.env.NINE_ROUTER_PROXY_TARGETS;
     }
     return;
   }
@@ -33,23 +37,18 @@ export function applyOutboundProxyEnv(
   let managed = false;
 
   if (wasManaged) {
-    if (!proxyUrl) {
-      delete process.env.HTTP_PROXY;
-      delete process.env.HTTPS_PROXY;
-      delete process.env.ALL_PROXY;
-      delete process.env.NINE_ROUTER_PROXY_URL;
-    }
-    if (!noProxy) {
-      delete process.env.NO_PROXY;
-      delete process.env.NINE_ROUTER_NO_PROXY;
-    }
+    delete process.env.HTTP_PROXY;
+    delete process.env.HTTPS_PROXY;
+    delete process.env.ALL_PROXY;
+    delete process.env.NO_PROXY;
+    delete process.env.NINE_ROUTER_NO_PROXY;
+    delete process.env.NINE_ROUTER_PROXY_TARGETS;
+    if (!proxyUrl) delete process.env.NINE_ROUTER_PROXY_URL;
   }
 
   if (proxyUrl) {
-    process.env.HTTP_PROXY = proxyUrl;
-    process.env.HTTPS_PROXY = proxyUrl;
-    process.env.ALL_PROXY = proxyUrl;
     process.env.NINE_ROUTER_PROXY_URL = proxyUrl;
+    process.env.NINE_ROUTER_PROXY_TARGETS = proxyTargets;
     managed = true;
   }
 

@@ -4,21 +4,35 @@ const { err } = require("../logger");
 const { fetchRouter, pipeSSE } = require("./base");
 
 const URL_MAP = {
+  "/api/v1/chat/completions": "/v1/chat/completions",
   "/v1/chat/completions": "/v1/chat/completions",
   "/chat/completions": "/v1/chat/completions",
   "/v1/messages": "/v1/messages",
+  "/api/v1/responses": "/v1/responses",
+  "/v1/responses": "/v1/responses",
   "/responses": "/v1/responses",
+  "/api/v1/models": "/v1/models",
+  "/v1/models": "/v1/models",
 };
 
 function resolveRouterPath(reqUrl) {
+  const [pathname, query = ""] = String(reqUrl || "").split("?");
   for (const [pattern, routerPath] of Object.entries(URL_MAP)) {
-    if (reqUrl.includes(pattern)) return routerPath;
+    if (pathname === pattern || pathname.endsWith(pattern)) {
+      return query ? `${routerPath}?${query}` : routerPath;
+    }
   }
   return "/v1/chat/completions";
 }
 
 function isModelsRequest(reqUrl) {
-  return reqUrl.includes("/models") || reqUrl.includes("/api/v1/models");
+  const pathname = String(reqUrl || "").split("?")[0];
+  return pathname === "/models" || pathname === "/v1/models" || pathname === "/api/v1/models" || pathname.endsWith("/models");
+}
+
+function isKeyInfoRequest(reqUrl) {
+  const pathname = String(reqUrl || "").split("?")[0];
+  return pathname === "/api/v1/key" || pathname === "/api/v1/auth/key";
 }
 
 function getLocalModelsPayload() {
@@ -31,6 +45,52 @@ function sendJsonPayload(res, payload) {
   res.writeHead(200, {
     "Content-Type": "application/json; charset=utf-8",
     "Cache-Control": "public, max-age=300",
+    "Content-Length": Buffer.byteLength(payload),
+  });
+  res.end(payload);
+}
+
+function sendOptions(res) {
+  if (res.writableEnded) return;
+  res.writeHead(204, {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Headers": "*",
+  });
+  res.end();
+}
+
+function buildKeyInfoPayload() {
+  return {
+    data: {
+      label: "openrouterX MITM API Key",
+      limit: null,
+      usage: 0,
+      usage_daily: 0,
+      usage_weekly: 0,
+      usage_monthly: 0,
+      byok_usage: 0,
+      byok_usage_daily: 0,
+      byok_usage_weekly: 0,
+      byok_usage_monthly: 0,
+      is_free_tier: false,
+      limit_remaining: null,
+      limit_reset: null,
+      include_byok_in_limit: false,
+      is_provisioning_key: false,
+      is_management_key: false,
+      rate_limit: { interval: "1h", requests: 100000 },
+    },
+  };
+}
+
+function sendKeyInfo(res) {
+  if (res.writableEnded) return;
+  const payload = JSON.stringify(buildKeyInfoPayload());
+  res.writeHead(200, {
+    "Content-Type": "application/json; charset=utf-8",
+    "Access-Control-Allow-Origin": "*",
+    "Cache-Control": "no-store",
     "Content-Length": Buffer.byteLength(payload),
   });
   res.end(payload);
@@ -102,6 +162,16 @@ async function handleModelsRequest(req, res, bodyBuffer, passthrough, aliasMappi
  */
 async function intercept(req, res, bodyBuffer, mappedModel, passthrough, aliasMappings = {}) {
   try {
+    if (req.method === "OPTIONS") {
+      sendOptions(res);
+      return;
+    }
+
+    if (req.method === "GET" && isKeyInfoRequest(req.url)) {
+      sendKeyInfo(res);
+      return;
+    }
+
     if (isModelsRequest(req.url)) {
       return handleModelsRequest(req, res, bodyBuffer, passthrough, aliasMappings);
     }
@@ -119,4 +189,13 @@ async function intercept(req, res, bodyBuffer, mappedModel, passthrough, aliasMa
   }
 }
 
-module.exports = { intercept, resolveRouterPath, isModelsRequest, injectPublicModels, buildInjectedModel };
+module.exports = {
+  intercept,
+  resolveRouterPath,
+  isModelsRequest,
+  isKeyInfoRequest,
+  sendKeyInfo,
+  buildKeyInfoPayload,
+  injectPublicModels,
+  buildInjectedModel,
+};

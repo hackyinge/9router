@@ -5,6 +5,8 @@ const { MITM_DIR } = require("../paths");
 
 const ROOT_CA_KEY_PATH = path.join(MITM_DIR, "rootCA.key");
 const ROOT_CA_CERT_PATH = path.join(MITM_DIR, "rootCA.crt");
+const ROOT_CA_CN = "OpenRouterX MITM Root CA";
+const ROOT_CA_ORG = "OpenRouterX";
 
 /**
  * Check if cert file is expired or expiring within 30 days
@@ -19,18 +21,29 @@ function isCertExpired(certPath) {
   }
 }
 
+function isOpenRouterXRootCA(certPath) {
+  try {
+    const cert = forge.pki.certificateFromPem(fs.readFileSync(certPath, "utf8"));
+    const cn = cert.subject.getField("CN")?.value;
+    const org = cert.subject.getField("O")?.value;
+    return cn === ROOT_CA_CN && org === ROOT_CA_ORG;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Generate Root CA certificate (only once, auto-regenerate if expired)
  * This Root CA will sign all dynamic leaf certificates
  */
 async function generateRootCA() {
   const exists = fs.existsSync(ROOT_CA_KEY_PATH) && fs.existsSync(ROOT_CA_CERT_PATH);
-  if (exists && !isCertExpired(ROOT_CA_CERT_PATH)) {
+  if (exists && !isCertExpired(ROOT_CA_CERT_PATH) && isOpenRouterXRootCA(ROOT_CA_CERT_PATH)) {
     console.log("✅ Root CA already exists");
     return { key: ROOT_CA_KEY_PATH, cert: ROOT_CA_CERT_PATH };
   }
   if (exists) {
-    console.log("🔐 Root CA expired or expiring soon — regenerating...");
+    console.log("🔐 Root CA expired, stale, or branded for legacy 9Router — regenerating...");
     try { fs.unlinkSync(ROOT_CA_KEY_PATH); } catch { /* ignore */ }
     try { fs.unlinkSync(ROOT_CA_CERT_PATH); } catch { /* ignore */ }
   }
@@ -53,8 +66,8 @@ async function generateRootCA() {
   cert.validity.notAfter.setFullYear(cert.validity.notBefore.getFullYear() + 10);
 
   const attrs = [
-    { name: "commonName", value: "9Router MITM Root CA" },
-    { name: "organizationName", value: "9Router" },
+    { name: "commonName", value: ROOT_CA_CN },
+    { name: "organizationName", value: ROOT_CA_ORG },
     { name: "countryName", value: "US" }
   ];
 
@@ -169,5 +182,7 @@ module.exports = {
   generateLeafCert,
   isCertExpired,
   ROOT_CA_CERT_PATH,
-  ROOT_CA_KEY_PATH
+  ROOT_CA_KEY_PATH,
+  ROOT_CA_CN,
+  ROOT_CA_ORG
 };

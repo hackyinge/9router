@@ -3,7 +3,7 @@ import { jwtVerify } from "jose";
 import { getUsageHistory } from "@/lib/usageDb";
 
 const SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || "9router-default-secret-change-me"
+  process.env.JWT_SECRET || "openrouterx-default-secret-change-me"
 );
 
 /** Extract sub-user userId from JWT (null for super_admin) */

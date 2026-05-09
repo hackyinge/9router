@@ -11,7 +11,7 @@ import { getApiKeys } from "@/lib/localDb";
  * Note: this endpoint intentionally does NOT return the raw key string.
  */
 const SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || "9router-default-secret-change-me"
+  process.env.JWT_SECRET || "openrouterx-default-secret-change-me"
 );
 
 async function getAuthPayload(request) {

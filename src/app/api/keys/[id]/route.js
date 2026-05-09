@@ -3,7 +3,7 @@ import { deleteApiKey, getApiKeyById, updateApiKey, assignApiKeyToUser, unassign
 import { jwtVerify } from "jose";
 
 const SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || "9router-default-secret-change-me"
+  process.env.JWT_SECRET || "openrouterx-default-secret-change-me"
 );
 
 async function getRouteKeyId(request, params) {

@@ -6,6 +6,74 @@ import { useTheme } from "@/shared/hooks/useTheme";
 import { cn } from "@/shared/utils/cn";
 import { APP_CONFIG } from "@/shared/constants/config";
 
+const PROXY_TARGET_OPTIONS = [
+  { id: "openai", label: "OpenAI / Codex", targets: ["api.openai.com", "chatgpt.com"] },
+  { id: "anthropic", label: "Anthropic", targets: ["api.anthropic.com"] },
+  { id: "google", label: "Google / Gemini", targets: ["generativelanguage.googleapis.com", "aiplatform.googleapis.com"] },
+  { id: "antigravity", label: "Antigravity", targets: ["cloudcode-pa.googleapis.com", "daily-cloudcode-pa.googleapis.com", "daily-cloudcode-pa.sandbox.googleapis.com"] },
+  { id: "copilot", label: "GitHub Copilot", targets: ["api.individual.githubcopilot.com"] },
+  { id: "openrouter", label: "OpenRouter", targets: ["openrouter.ai", "api.openrouter.ai"] },
+  { id: "cursor", label: "Cursor", targets: ["api2.cursor.sh"] },
+  { id: "kiro", label: "Kiro / AWS", targets: ["q.us-east-1.amazonaws.com", "codewhisperer.us-east-1.amazonaws.com"] },
+];
+const PRESET_PROXY_TARGETS = new Set(PROXY_TARGET_OPTIONS.flatMap((option) => option.targets));
+
+function uniqueList(values) {
+  return Array.from(new Set(values.map((value) => String(value || "").trim()).filter(Boolean)));
+}
+
+function splitTargets(value) {
+  return uniqueList(String(value || "").split(","));
+}
+
+function buildProxyUrlWithCredentials(proxyUrl, username, password) {
+  const rawUrl = String(proxyUrl || "").trim();
+  if (!rawUrl || (!username && !password)) return rawUrl;
+
+  try {
+    const hasProtocol = /^[a-z][a-z0-9+.-]*:\/\//i.test(rawUrl);
+    const parsed = new URL(hasProtocol ? rawUrl : `http://${rawUrl}`);
+    parsed.username = username || "";
+    parsed.password = password || "";
+    return parsed.toString();
+  } catch {
+    return rawUrl;
+  }
+}
+
+function decodeUrlCredential(value) {
+  try {
+    return decodeURIComponent(value || "");
+  } catch {
+    return value || "";
+  }
+}
+
+function splitProxyUrlCredentials(proxyUrl) {
+  const rawUrl = String(proxyUrl || "").trim();
+  if (!rawUrl) {
+    return { proxyUrl: "", username: "", password: "" };
+  }
+
+  try {
+    const hasProtocol = /^[a-z][a-z0-9+.-]*:\/\//i.test(rawUrl);
+    const parsed = new URL(hasProtocol ? rawUrl : `http://${rawUrl}`);
+    const username = decodeUrlCredential(parsed.username);
+    const password = decodeUrlCredential(parsed.password);
+    parsed.username = "";
+    parsed.password = "";
+    let cleanUrl = hasProtocol
+      ? parsed.toString()
+      : parsed.toString().replace(/^http:\/\//i, "");
+    if (parsed.pathname === "/" && !parsed.search && !parsed.hash) {
+      cleanUrl = cleanUrl.replace(/\/$/, "");
+    }
+    return { proxyUrl: cleanUrl, username, password };
+  } catch {
+    return { proxyUrl: rawUrl, username: "", password: "" };
+  }
+}
+
 export default function ProfilePage() {
   const { theme, setTheme, isDark } = useTheme();
   const [settings, setSettings] = useState({ fallbackStrategy: "fill-first" });
@@ -20,6 +88,12 @@ export default function ProfilePage() {
     outboundProxyEnabled: false,
     outboundProxyUrl: "",
     outboundNoProxy: "",
+    outboundProxyTargets: [],
+    outboundProxyCustomTargets: "",
+    outboundProxyUsername: "",
+    outboundProxyPassword: "",
+    outboundProxySavedUsername: "",
+    outboundProxySavedPassword: "",
   });
   const [proxyStatus, setProxyStatus] = useState({ type: "", message: "" });
   const [proxyLoading, setProxyLoading] = useState(false);
@@ -37,11 +111,20 @@ export default function ProfilePage() {
     fetch("/api/settings")
       .then((res) => res.json())
       .then((data) => {
+        const proxyParts = splitProxyUrlCredentials(data?.outboundProxyUrl);
         setSettings(data);
         setProxyForm({
           outboundProxyEnabled: data?.outboundProxyEnabled === true,
-          outboundProxyUrl: data?.outboundProxyUrl || "",
+          outboundProxyUrl: proxyParts.proxyUrl,
           outboundNoProxy: data?.outboundNoProxy || "",
+          outboundProxyTargets: Array.isArray(data?.outboundProxyTargets) ? data.outboundProxyTargets : [],
+          outboundProxyCustomTargets: Array.isArray(data?.outboundProxyTargets)
+            ? data.outboundProxyTargets.filter((target) => !PRESET_PROXY_TARGETS.has(target)).join(",")
+            : "",
+          outboundProxyUsername: proxyParts.username,
+          outboundProxyPassword: "",
+          outboundProxySavedUsername: proxyParts.username,
+          outboundProxySavedPassword: proxyParts.password,
         });
         setLoading(false);
       })
@@ -57,19 +140,40 @@ export default function ProfilePage() {
     setProxyLoading(true);
     setProxyStatus({ type: "", message: "" });
 
+    const outboundProxyTargets = buildOutboundProxyTargets();
+    const effectiveProxyPassword = proxyForm.outboundProxyPassword ||
+      (proxyForm.outboundProxyUsername === proxyForm.outboundProxySavedUsername
+        ? proxyForm.outboundProxySavedPassword
+        : "");
+    const outboundProxyUrl = buildProxyUrlWithCredentials(
+      proxyForm.outboundProxyUrl,
+      proxyForm.outboundProxyUsername,
+      effectiveProxyPassword,
+    );
+
     try {
       const res = await fetch("/api/settings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          outboundProxyUrl: proxyForm.outboundProxyUrl,
-          outboundNoProxy: proxyForm.outboundNoProxy,
+          outboundProxyUrl,
+          outboundProxyTargets,
         }),
       });
 
       const data = await res.json();
       if (res.ok) {
+        const proxyParts = splitProxyUrlCredentials(data?.outboundProxyUrl || outboundProxyUrl);
         setSettings((prev) => ({ ...prev, ...data }));
+        setProxyForm((prev) => ({
+          ...prev,
+          outboundProxyUrl: proxyParts.proxyUrl,
+          outboundProxyTargets: Array.isArray(data?.outboundProxyTargets) ? data.outboundProxyTargets : outboundProxyTargets,
+          outboundProxyUsername: proxyParts.username,
+          outboundProxyPassword: "",
+          outboundProxySavedUsername: proxyParts.username,
+          outboundProxySavedPassword: proxyParts.password,
+        }));
         setProxyStatus({ type: "success", message: "Proxy settings applied" });
       } else {
         setProxyStatus({ type: "error", message: data.error || "Failed to update proxy settings" });
@@ -84,7 +188,15 @@ export default function ProfilePage() {
   const testOutboundProxy = async () => {
     if (settings.outboundProxyEnabled !== true) return;
 
-    const proxyUrl = (proxyForm.outboundProxyUrl || "").trim();
+    const effectiveProxyPassword = proxyForm.outboundProxyPassword ||
+      (proxyForm.outboundProxyUsername === proxyForm.outboundProxySavedUsername
+        ? proxyForm.outboundProxySavedPassword
+        : "");
+    const proxyUrl = buildProxyUrlWithCredentials(
+      proxyForm.outboundProxyUrl,
+      proxyForm.outboundProxyUsername,
+      effectiveProxyPassword,
+    );
     if (!proxyUrl) {
       setProxyStatus({ type: "error", message: "Please enter a Proxy URL to test" });
       return;
@@ -146,6 +258,23 @@ export default function ProfilePage() {
     } finally {
       setProxyLoading(false);
     }
+  };
+
+  const buildOutboundProxyTargets = () => uniqueList([
+    ...(Array.isArray(proxyForm.outboundProxyTargets) ? proxyForm.outboundProxyTargets : []),
+    ...splitTargets(proxyForm.outboundProxyCustomTargets),
+  ]);
+
+  const toggleProxyTargetOption = (option) => {
+    setProxyForm((prev) => {
+      const selected = new Set(prev.outboundProxyTargets || []);
+      const checked = option.targets.every((target) => selected.has(target));
+      for (const target of option.targets) {
+        if (checked) selected.delete(target);
+        else selected.add(target);
+      }
+      return { ...prev, outboundProxyTargets: Array.from(selected) };
+    });
   };
 
   const handlePasswordChange = async (e) => {
@@ -307,7 +436,7 @@ export default function ProfilePage() {
       const anchor = document.createElement("a");
       const stamp = new Date().toISOString().replace(/[.:]/g, "-");
       anchor.href = url;
-      anchor.download = `9router-backup-${stamp}.json`;
+      anchor.download = `openrouterx-backup-${stamp}.json`;
       document.body.appendChild(anchor);
       anchor.click();
       document.body.removeChild(anchor);
@@ -397,7 +526,9 @@ export default function ProfilePage() {
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-3 rounded-lg bg-bg border border-border gap-2">
               <div>
                 <p className="font-medium text-sm sm:text-base">Database Location</p>
-                <p className="text-xs sm:text-sm text-text-muted font-mono break-all">~/.9router/db.json</p>
+                <p className="text-xs sm:text-sm text-text-muted font-mono break-all">
+                  {settings.databasePath || "~/.openrouterx/db.json"}
+                </p>
               </div>
             </div>
             <div className="flex flex-col sm:flex-row gap-2">
@@ -635,23 +766,72 @@ export default function ProfilePage() {
                 <div className="flex flex-col gap-2">
                   <label className="font-medium text-sm sm:text-base">Proxy URL</label>
                   <Input
-                    placeholder="http://127.0.0.1:7897"
+                    placeholder="socks5://127.0.0.1:1080"
                     value={proxyForm.outboundProxyUrl}
                     onChange={(e) => setProxyForm((prev) => ({ ...prev, outboundProxyUrl: e.target.value }))}
                     disabled={loading || proxyLoading}
                   />
-                  <p className="text-xs sm:text-sm text-text-muted">Leave empty to inherit existing env proxy (if any).</p>
+                  <p className="text-xs sm:text-sm text-text-muted">Supports http, https, socks4, socks4a, socks5, and socks5h.</p>
                 </div>
 
-                <div className="flex flex-col gap-2 pt-2 border-t border-border/50">
-                  <label className="font-medium text-sm sm:text-base">No Proxy</label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="flex flex-col gap-2">
+                    <label className="font-medium text-sm sm:text-base">Proxy Username</label>
+                    <Input
+                      placeholder="optional"
+                      value={proxyForm.outboundProxyUsername}
+                      onChange={(e) => setProxyForm((prev) => ({ ...prev, outboundProxyUsername: e.target.value }))}
+                      disabled={loading || proxyLoading}
+                    />
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <label className="font-medium text-sm sm:text-base">Proxy Password</label>
+                    <Input
+                      type="password"
+                      placeholder={proxyForm.outboundProxySavedPassword ? "saved (hidden)" : "optional"}
+                      value={proxyForm.outboundProxyPassword}
+                      onChange={(e) => setProxyForm((prev) => ({ ...prev, outboundProxyPassword: e.target.value }))}
+                      disabled={loading || proxyLoading}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-3 pt-2 border-t border-border/50">
+                  <div>
+                    <label className="font-medium text-sm sm:text-base">Use Proxy For</label>
+                    <p className="text-xs sm:text-sm text-text-muted">Default is direct. Checked targets use the proxy.</p>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                    {PROXY_TARGET_OPTIONS.map((option) => {
+                      const selected = new Set(proxyForm.outboundProxyTargets || []);
+                      const checked = option.targets.every((target) => selected.has(target));
+                      return (
+                        <label
+                          key={option.id}
+                          className={cn(
+                            "flex items-center gap-2 rounded-lg border px-3 py-2 text-sm cursor-pointer transition-colors",
+                            checked ? "border-primary bg-primary/5 text-text-main" : "border-border bg-surface text-text-muted hover:border-primary/50"
+                          )}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleProxyTargetOption(option)}
+                            disabled={loading || proxyLoading}
+                            className="h-4 w-4 accent-primary"
+                          />
+                          <span className="truncate">{option.label}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                  <label className="font-medium text-sm sm:text-base">Custom Proxy Hosts</label>
                   <Input
-                    placeholder="localhost,127.0.0.1"
-                    value={proxyForm.outboundNoProxy}
-                    onChange={(e) => setProxyForm((prev) => ({ ...prev, outboundNoProxy: e.target.value }))}
+                    placeholder="api.example.com,.example.org"
+                    value={proxyForm.outboundProxyCustomTargets}
+                    onChange={(e) => setProxyForm((prev) => ({ ...prev, outboundProxyCustomTargets: e.target.value }))}
                     disabled={loading || proxyLoading}
                   />
-                  <p className="text-xs sm:text-sm text-text-muted">Comma-separated hostnames/domains to bypass the proxy.</p>
                 </div>
 
                 <div className="pt-2 border-t border-border/50 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">

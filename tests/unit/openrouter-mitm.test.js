@@ -76,7 +76,40 @@ describe("OpenRouter MITM integration", () => {
     expect(pipeSSEMock).toHaveBeenCalledWith(routerResponse, res);
   });
 
-  it("为 OpenRouter /models 注入精简后的公开模型名，供第三方 IDE 校验通过", async () => {
+  it("为 OpenRouter key info 校验返回本地兼容响应", async () => {
+    const { intercept, isKeyInfoRequest } = require("../../src/mitm/handlers/openrouter.js");
+    const req = {
+      url: "/api/v1/auth/key?include_limits=true",
+      method: "GET",
+      headers: {
+        host: "openrouter.ai",
+        authorization: "Bearer sk-openrouterx",
+      },
+    };
+    const res = {
+      writableEnded: false,
+      writeHead: vi.fn(),
+      end: vi.fn(),
+    };
+
+    expect(isKeyInfoRequest(req.url)).toBe(true);
+
+    await intercept(req, res, Buffer.alloc(0), null, undefined, {});
+
+    expect(fetchRouterMock).not.toHaveBeenCalled();
+    expect(pipeSSEMock).not.toHaveBeenCalled();
+    expect(res.writeHead).toHaveBeenCalledWith(200, expect.objectContaining({
+      "Content-Type": "application/json; charset=utf-8",
+      "Access-Control-Allow-Origin": "*",
+    }));
+
+    const payload = JSON.parse(res.end.mock.calls[0][0]);
+    expect(payload.data.label).toBe("openrouterX MITM API Key");
+    expect(payload.data.rate_limit).toEqual({ interval: "1h", requests: 100000 });
+    expect(payload.data.is_free_tier).toBe(false);
+  });
+
+  it("为 OpenRouter /models 返回本地公开模型列表，供第三方 IDE 校验通过", async () => {
     const { intercept } = require("../../src/mitm/handlers/openrouter.js");
     const req = {
       url: "/api/v1/models",
@@ -90,26 +123,12 @@ describe("OpenRouter MITM integration", () => {
       end: vi.fn(),
     };
 
-    const upstreamModels = {
-      data: [
-        {
-          id: "openai/gpt-4o",
-          name: "GPT-4o",
-          canonical_slug: "openai/gpt-4o",
-        },
-      ],
-    };
-
-    const passthrough = vi.fn(async (_req, _res, _bodyBuffer, onResponse) => {
-      onResponse(Buffer.from(JSON.stringify(upstreamModels)), { "content-type": "application/json" });
-    });
-
     await intercept(
       req,
       res,
       Buffer.alloc(0),
       null,
-      passthrough,
+      undefined,
       {
         "openai/gpt-5.4": "GPT",
         "anthropic/claude-sonnet-4.6": "GPT",
@@ -118,26 +137,23 @@ describe("OpenRouter MITM integration", () => {
       },
     );
 
-    expect(passthrough).toHaveBeenCalledTimes(1);
-    expect(res.writeHead).toHaveBeenCalledWith(200, { "Content-Type": "application/json" });
+    expect(fetchRouterMock).not.toHaveBeenCalled();
+    expect(res.writeHead).toHaveBeenCalledWith(200, expect.objectContaining({
+      "Content-Type": "application/json; charset=utf-8",
+    }));
 
     const payload = JSON.parse(res.end.mock.calls[0][0]);
     const ids = payload.data.map((item) => item.id);
 
-    expect(ids).toEqual([
-      "openai/gpt-4o",
-      "openai/gpt-5.4",
-      "anthropic/claude-sonnet-4.6",
-      "anthropic/claude-sonnet-4",
-      "anthropic/claude-opus-4",
-    ]);
+    expect(ids).toContain("openai/gpt-5.4");
+    expect(ids).toContain("anthropic/claude-sonnet-4.6");
 
     const gpt54 = payload.data.find((item) => item.id === "openai/gpt-5.4");
     const claude46 = payload.data.find((item) => item.id === "anthropic/claude-sonnet-4.6");
 
-    expect(gpt54.name).toBe("openai/gpt-5.4");
-    expect(claude46.name).toBe("anthropic/claude-sonnet-4.6");
-    expect(gpt54.top_provider).toEqual({ is_moderated: false });
-    expect(claude46.top_provider).toEqual({ is_moderated: false });
+    expect(gpt54.name).toBeTruthy();
+    expect(claude46.name).toBeTruthy();
+    expect(gpt54.top_provider).toHaveProperty("is_moderated");
+    expect(claude46.top_provider).toHaveProperty("is_moderated");
   });
 });

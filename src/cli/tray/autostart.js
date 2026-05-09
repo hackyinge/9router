@@ -3,17 +3,18 @@ const path = require("path");
 const os = require("os");
 const { execSync } = require("child_process");
 
-const APP_NAME = "9router";
-const APP_LABEL = "com.9router.autostart";
+const APP_NAME = "openrouterX";
+const APP_FILE_BASENAME = "openrouterx";
+const APP_LABEL = "com.openrouterx.autostart";
 
 /**
- * Get the command to run 9router in tray mode
+ * Get the command to run openrouterX in tray mode
  */
 function getStartCommand() {
-  // Find the global npm bin path for 9router
+  // Find the global npm bin path for openrouterX
   try {
     const npmBin = execSync("npm bin -g", { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
-    const routerPath = path.join(npmBin, "9router");
+    const routerPath = path.join(npmBin, APP_NAME);
     if (fs.existsSync(routerPath)) {
       return `"${routerPath}" --tray --skip-update`;
     }
@@ -22,7 +23,7 @@ function getStartCommand() {
   }
   
   // Fallback: use npx
-  return "npx 9router --tray --skip-update";
+  return "npx @yina-npm/openrouterx --tray --skip-update";
 }
 
 /**
@@ -92,10 +93,10 @@ function isAutoStartEnabled() {
       const plistPath = path.join(os.homedir(), "Library", "LaunchAgents", `${APP_LABEL}.plist`);
       return fs.existsSync(plistPath);
     } else if (platform === "win32") {
-      const startupPath = path.join(process.env.APPDATA, "Microsoft", "Windows", "Start Menu", "Programs", "Startup", `${APP_NAME}.vbs`);
+      const startupPath = path.join(process.env.APPDATA, "Microsoft", "Windows", "Start Menu", "Programs", "Startup", `${APP_FILE_BASENAME}.vbs`);
       return fs.existsSync(startupPath);
     } else if (platform === "linux") {
-      const desktopPath = path.join(os.homedir(), ".config", "autostart", `${APP_NAME}.desktop`);
+      const desktopPath = path.join(os.homedir(), ".config", "autostart", `${APP_FILE_BASENAME}.desktop`);
       return fs.existsSync(desktopPath);
     }
   } catch (e) {}
@@ -114,7 +115,7 @@ function enableMacOS(cliPath) {
     fs.mkdirSync(launchAgentsDir, { recursive: true });
   }
   
-  // Get absolute paths for node and 9router script
+  // Get absolute paths for node and openrouterX script
   const nodePath = process.execPath;
   let routerScript;
   
@@ -125,11 +126,11 @@ function enableMacOS(cliPath) {
     // Fallback: try to resolve from npm bin
     try {
       const npmBin = execSync("npm bin -g", { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
-      const routerLink = path.join(npmBin, "9router");
+      const routerLink = path.join(npmBin, APP_NAME);
       routerScript = fs.realpathSync(routerLink);
     } catch (e) {
       // Last resort fallback
-      routerScript = "/usr/local/lib/node_modules/9router/cli.js";
+      routerScript = "/usr/local/lib/node_modules/@yina-npm/openrouterx/cli.js";
     }
   }
   
@@ -154,9 +155,9 @@ function enableMacOS(cliPath) {
     <key>KeepAlive</key>
     <false/>
     <key>StandardOutPath</key>
-    <string>/tmp/9router.log</string>
+    <string>/tmp/openrouterx.log</string>
     <key>StandardErrorPath</key>
-    <string>/tmp/9router.error.log</string>
+    <string>/tmp/openrouterx.error.log</string>
 </dict>
 </plist>`;
   
@@ -188,7 +189,7 @@ function disableMacOS() {
 
 function enableWindows(cliPath) {
   const startupDir = path.join(process.env.APPDATA, "Microsoft", "Windows", "Start Menu", "Programs", "Startup");
-  const vbsPath = path.join(startupDir, `${APP_NAME}.vbs`);
+  const vbsPath = path.join(startupDir, `${APP_FILE_BASENAME}.vbs`);
   
   // Ensure startup directory exists
   if (!fs.existsSync(startupDir)) {
@@ -206,12 +207,12 @@ function enableWindows(cliPath) {
     // Fallback: try to resolve from npm bin
     try {
       const npmBin = execSync("npm bin -g", { encoding: "utf8", shell: true, stdio: ["ignore", "pipe", "ignore"] }).trim();
-      const routerLink = path.join(npmBin, "9router.cmd");
+      const routerLink = path.join(npmBin, `${APP_NAME}.cmd`);
       if (fs.existsSync(routerLink)) {
         routerScript = routerLink;
       } else {
         // Try to resolve actual script
-        const routerJs = path.join(npmBin, "../lib/node_modules/9router/cli.js");
+        const routerJs = path.join(npmBin, "../lib/node_modules/@yina-npm/openrouterx/cli.js");
         if (fs.existsSync(routerJs)) {
           routerScript = routerJs;
         }
@@ -236,7 +237,7 @@ WshShell.Run """${routerScript}"" --tray --skip-update", 0, False
   } else {
     // Fallback to npx
     vbsContent = `Set WshShell = CreateObject("WScript.Shell")
-WshShell.Run "npx 9router --tray --skip-update", 0, False
+WshShell.Run "npx @yina-npm/openrouterx --tray --skip-update", 0, False
 `;
   }
   
@@ -245,7 +246,7 @@ WshShell.Run "npx 9router --tray --skip-update", 0, False
 }
 
 function disableWindows() {
-  const vbsPath = path.join(process.env.APPDATA, "Microsoft", "Windows", "Start Menu", "Programs", "Startup", `${APP_NAME}.vbs`);
+  const vbsPath = path.join(process.env.APPDATA, "Microsoft", "Windows", "Start Menu", "Programs", "Startup", `${APP_FILE_BASENAME}.vbs`);
   
   if (fs.existsSync(vbsPath)) {
     fs.unlinkSync(vbsPath);
@@ -258,7 +259,7 @@ function disableWindows() {
 
 function enableLinux(cliPath) {
   const autostartDir = path.join(os.homedir(), ".config", "autostart");
-  const desktopPath = path.join(autostartDir, `${APP_NAME}.desktop`);
+  const desktopPath = path.join(autostartDir, `${APP_FILE_BASENAME}.desktop`);
   
   // Ensure directory exists
   if (!fs.existsSync(autostartDir)) {
@@ -280,20 +281,20 @@ function enableLinux(cliPath) {
     // Fallback: try to resolve from npm bin
     try {
       const npmBin = execSync("npm bin -g", { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
-      const routerLink = path.join(npmBin, "9router");
+      const routerLink = path.join(npmBin, APP_NAME);
       if (fs.existsSync(routerLink)) {
         routerScript = fs.realpathSync(routerLink);
       }
     } catch (e) {
       // Last resort fallback
-      routerScript = "/usr/local/lib/node_modules/9router/cli.js";
+      routerScript = "/usr/local/lib/node_modules/@yina-npm/openrouterx/cli.js";
     }
   }
   
   const desktopContent = `[Desktop Entry]
 Type=Application
-Name=9Router
-Comment=9Router API Proxy
+Name=openrouterX
+Comment=openrouterX API Proxy
 Exec=${nodePath} ${routerScript} --tray --skip-update
 Hidden=false
 NoDisplay=false
@@ -305,7 +306,7 @@ X-GNOME-Autostart-enabled=true
 }
 
 function disableLinux() {
-  const desktopPath = path.join(os.homedir(), ".config", "autostart", `${APP_NAME}.desktop`);
+  const desktopPath = path.join(os.homedir(), ".config", "autostart", `${APP_FILE_BASENAME}.desktop`);
   
   if (fs.existsSync(desktopPath)) {
     fs.unlinkSync(desktopPath);

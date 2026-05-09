@@ -4,7 +4,7 @@ import { getUserById } from "@/lib/localDb";
 import { getEffectiveAllowedProviders } from "@/shared/utils/subUserAccess";
 
 const SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || "9router-default-secret-change-me"
+  process.env.JWT_SECRET || "openrouterx-default-secret-change-me"
 );
 
 // GET /api/auth/me — return current user info from JWT (no auth check, returns null if not logged in)

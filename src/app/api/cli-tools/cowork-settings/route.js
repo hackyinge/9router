@@ -39,7 +39,7 @@ async function pickPluginsRoot() {
     try {
       await fs.mkdir(dir, { recursive: true });
       // Probe write
-      const probe = path.join(dir, ".__9router_probe");
+      const probe = path.join(dir, ".__openrouterx_probe");
       await fs.writeFile(probe, "ok");
       await fs.unlink(probe);
       return dir;

@@ -64,11 +64,11 @@ function initTray(options) {
     const menu = {
       icon: getIconBase64(),
       // macOS requires empty title; Windows uses title as the tray icon tooltip
-      title: isWin ? `9Router - Port ${port}` : "",
-      tooltip: `9Router - Port ${port}`,
+      title: isWin ? `openrouterX - Port ${port}` : "",
+      tooltip: `openrouterX - Port ${port}`,
       items: [
         {
-          title: `9Router (Port ${port})`,
+          title: `openrouterX (Port ${port})`,
           tooltip: "Server is running",
           enabled: false
         },

@@ -71,10 +71,52 @@ function shouldBypassByNoProxy(targetUrl, noProxyValue) {
   });
 }
 
+function matchesHostPattern(hostname, pattern) {
+  const normalizedHost = normalizeString(hostname).toLowerCase();
+  let normalizedPattern = normalizeString(pattern).toLowerCase();
+  if (!normalizedHost || !normalizedPattern) return false;
+  try {
+    if (/^[a-z][a-z0-9+.-]*:\/\//i.test(normalizedPattern)) {
+      normalizedPattern = new URL(normalizedPattern).hostname.toLowerCase();
+    } else if (normalizedPattern.includes(":") && !normalizedPattern.startsWith(".")) {
+      normalizedPattern = normalizedPattern.split(":")[0];
+    }
+  } catch {
+    // Keep the raw pattern when it is not URL-shaped.
+  }
+  if (normalizedPattern === "*") return true;
+  if (normalizedPattern.startsWith(".")) {
+    return normalizedHost.endsWith(normalizedPattern) || normalizedHost === normalizedPattern.slice(1);
+  }
+  return normalizedHost === normalizedPattern || normalizedHost.endsWith(`.${normalizedPattern}`);
+}
+
+export function shouldProxyByTargets(targetUrl, targetsValue) {
+  const targets = normalizeString(targetsValue);
+  if (!targets) return false;
+
+  let hostname;
+  try { hostname = new URL(targetUrl).hostname; } catch { return false; }
+
+  return targets
+    .split(",")
+    .map((p) => p.trim())
+    .filter(Boolean)
+    .some((pattern) => matchesHostPattern(hostname, pattern));
+}
+
 /**
  * Get proxy URL from environment
  */
 function getEnvProxyUrl(targetUrl) {
+  if (process.env.NINE_ROUTER_PROXY_MANAGED === "1") {
+    const managedProxyUrl = normalizeString(process.env.NINE_ROUTER_PROXY_URL);
+    if (!managedProxyUrl) return null;
+    return shouldProxyByTargets(targetUrl, process.env.NINE_ROUTER_PROXY_TARGETS)
+      ? managedProxyUrl
+      : null;
+  }
+
   const noProxy = process.env.NO_PROXY || process.env.no_proxy;
   if (shouldBypassByNoProxy(targetUrl, noProxy)) return null;
 
@@ -104,6 +146,14 @@ function normalizeProxyUrl(proxyUrl) {
   } catch {
     // Allow "127.0.0.1:7890" style values
     return `http://${normalizedInput}`;
+  }
+}
+
+function isSocksProxyUrl(proxyUrl) {
+  try {
+    return new URL(normalizeProxyUrl(proxyUrl)).protocol.startsWith("socks");
+  } catch {
+    return false;
   }
 }
 
@@ -137,6 +187,87 @@ async function getDispatcher(proxyUrl) {
   }
 
   return proxyDispatchers.get(normalized);
+}
+
+function normalizeHeaders(headers) {
+  if (!headers) return {};
+  if (headers instanceof Headers) return Object.fromEntries(headers.entries());
+  if (Array.isArray(headers)) return Object.fromEntries(headers);
+  return { ...headers };
+}
+
+async function writeRequestBody(req, body) {
+  if (body === undefined || body === null) {
+    req.end();
+    return;
+  }
+
+  if (typeof body === "string" || Buffer.isBuffer(body) || body instanceof Uint8Array) {
+    req.end(body);
+    return;
+  }
+
+  if (typeof body?.getReader === "function") {
+    const reader = body.getReader();
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      req.write(value);
+    }
+    req.end();
+    return;
+  }
+
+  req.end(JSON.stringify(body));
+}
+
+async function fetchWithSocksProxy(url, options, proxyUrl) {
+  const targetUrl = typeof url === "string" ? url : url.toString();
+  const parsedUrl = new URL(targetUrl);
+  const transport = parsedUrl.protocol === "http:" ? await import("http") : await import("https");
+  const httpModule = transport.default ?? transport;
+  const { SocksProxyAgent } = await import("socks-proxy-agent");
+  const agent = new SocksProxyAgent(proxyUrl);
+
+  return new Promise((resolve, reject) => {
+    const req = httpModule.request({
+      protocol: parsedUrl.protocol,
+      hostname: parsedUrl.hostname,
+      port: parsedUrl.port || (parsedUrl.protocol === "http:" ? 80 : 443),
+      path: `${parsedUrl.pathname}${parsedUrl.search}`,
+      method: options.method || "GET",
+      headers: normalizeHeaders(options.headers),
+      agent,
+    }, (res) => {
+      resolve(new Response(Readable.toWeb(res), {
+        status: res.statusCode || 0,
+        statusText: res.statusMessage || "",
+        headers: res.headers,
+      }));
+    });
+
+    req.on("error", reject);
+
+    if (options.signal) {
+      if (options.signal.aborted) {
+        req.destroy(new DOMException("This operation was aborted", "AbortError"));
+        return;
+      }
+      options.signal.addEventListener("abort", () => {
+        req.destroy(new DOMException("This operation was aborted", "AbortError"));
+      }, { once: true });
+    }
+
+    writeRequestBody(req, options.body).catch((err) => req.destroy(err));
+  });
+}
+
+async function fetchWithProxy(url, options, proxyUrl) {
+  if (isSocksProxyUrl(proxyUrl)) {
+    return fetchWithSocksProxy(url, options, proxyUrl);
+  }
+  const dispatcher = await getDispatcher(proxyUrl);
+  return originalFetch(url, { ...options, dispatcher });
 }
 
 /**
@@ -217,8 +348,7 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
     if (proxyUrl) {
       // Proxy resolves DNS externally (not affected by /etc/hosts) — use proxy directly
       try {
-        const dispatcher = await getDispatcher(proxyUrl);
-        return await originalFetch(url, { ...options, dispatcher });
+        return await fetchWithProxy(url, options, proxyUrl);
       } catch (proxyError) {
         if (proxyOptions?.strictProxy === true) {
           throw new Error(`[ProxyFetch] Proxy required but failed (strictProxy=true): ${proxyError.message}`);
@@ -238,8 +368,7 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
 
   if (proxyUrl) {
     try {
-      const dispatcher = await getDispatcher(proxyUrl);
-      return await originalFetch(url, { ...options, dispatcher });
+      return await fetchWithProxy(url, options, proxyUrl);
     } catch (proxyError) {
       // If strictProxy is enabled, fail hard instead of falling back to direct
       if (proxyOptions?.strictProxy === true) {

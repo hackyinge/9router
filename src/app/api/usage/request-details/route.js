@@ -7,7 +7,7 @@ import { getRequestDetails } from "@/lib/usageDb";
  * Query parameters: page, pageSize (1-100), apiKeyId, apiKeyName, provider, model, connectionId, status, startDate, endDate
  */
 const SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || "9router-default-secret-change-me"
+  process.env.JWT_SECRET || "openrouterx-default-secret-change-me"
 );
 
 async function getSubUserId(request) {

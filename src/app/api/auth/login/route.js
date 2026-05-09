@@ -6,7 +6,7 @@ import { cookies } from "next/headers";
 import { getEffectiveAllowedProviders } from "@/shared/utils/subUserAccess";
 
 const SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || "9router-default-secret-change-me"
+  process.env.JWT_SECRET || "openrouterx-default-secret-change-me"
 );
 
 function isTunnelRequest(request, settings) {

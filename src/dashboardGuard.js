@@ -4,11 +4,11 @@ import { getSettings } from "@/lib/localDb";
 import { getConsistentMachineId } from "@/shared/utils/machineId";
 
 const SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || "9router-default-secret-change-me"
+  process.env.JWT_SECRET || "openrouterx-default-secret-change-me"
 );
 
-const CLI_TOKEN_HEADER = "x-9r-cli-token";
-const CLI_TOKEN_SALT = "9r-cli-auth";
+const CLI_TOKEN_HEADER = "x-openrouterx-cli-token";
+const CLI_TOKEN_SALT = "openrouterx-cli-auth";
 
 let cachedCliToken = null;
 async function getCliToken() {

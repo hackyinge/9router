@@ -1,6 +1,7 @@
 import { ProxyAgent, fetch as undiciFetch } from "undici";
+import { SocksProxyAgent } from "socks-proxy-agent";
 
-const DEFAULT_TEST_URL = "https://google.com/";
+const DEFAULT_TEST_URL = "https://www.gstatic.com/generate_204";
 const DEFAULT_TIMEOUT_MS = 8000;
 
 function getErrorMessage(err) {
@@ -25,6 +26,14 @@ function normalizeString(value) {
   return String(value).trim();
 }
 
+function isSocksProxyUrl(proxyUrl) {
+  try {
+    return new URL(proxyUrl).protocol.startsWith("socks");
+  } catch {
+    return false;
+  }
+}
+
 export async function testProxyUrl({ proxyUrl, testUrl, timeoutMs } = {}) {
   const normalizedProxyUrl = normalizeString(proxyUrl);
   if (!normalizedProxyUrl) {
@@ -39,10 +48,15 @@ export async function testProxyUrl({ proxyUrl, testUrl, timeoutMs } = {}) {
       : DEFAULT_TIMEOUT_MS;
 
   let dispatcher;
+  let socksAgent;
 
   try {
     try {
-      dispatcher = new ProxyAgent({ uri: normalizedProxyUrl });
+      if (isSocksProxyUrl(normalizedProxyUrl)) {
+        socksAgent = new SocksProxyAgent(normalizedProxyUrl);
+      } else {
+        dispatcher = new ProxyAgent({ uri: normalizedProxyUrl });
+      }
     } catch (err) {
       return {
         ok: false,
@@ -56,19 +70,22 @@ export async function testProxyUrl({ proxyUrl, testUrl, timeoutMs } = {}) {
     const timer = setTimeout(() => controller.abort(), normalizedTimeoutMs);
 
     try {
-      const res = await undiciFetch(normalizedTestUrl, {
-        method: "HEAD",
-        dispatcher,
-        signal: controller.signal,
-        headers: {
-          "User-Agent": "9Router",
-        },
-      });
+      const res = socksAgent
+        ? await fetchWithSocksAgent(normalizedTestUrl, { method: "HEAD", agent: socksAgent, signal: controller.signal })
+        : await undiciFetch(normalizedTestUrl, {
+            method: "HEAD",
+            dispatcher,
+            signal: controller.signal,
+            headers: {
+              "User-Agent": "OpenRouterX",
+            },
+          });
 
       return {
-        ok: res.ok,
+        ok: true,
         status: res.status,
         statusText: res.statusText,
+        responseOk: res.responseOk ?? res.ok,
         url: normalizedTestUrl,
         elapsedMs: Date.now() - startedAt,
       };
@@ -84,8 +101,50 @@ export async function testProxyUrl({ proxyUrl, testUrl, timeoutMs } = {}) {
   } finally {
     try {
       await dispatcher?.close?.();
+      await socksAgent?.destroy?.();
     } catch {
       // ignore
     }
   }
+}
+
+async function fetchWithSocksAgent(targetUrl, { method, agent, signal }) {
+  const url = new URL(targetUrl);
+  const transport = url.protocol === "http:" ? await import("node:http") : await import("node:https");
+  const httpModule = transport.default ?? transport;
+
+  return new Promise((resolve, reject) => {
+    const req = httpModule.request({
+      protocol: url.protocol,
+      hostname: url.hostname,
+      port: url.port || (url.protocol === "http:" ? 80 : 443),
+      path: `${url.pathname}${url.search}`,
+      method,
+      headers: { "User-Agent": "OpenRouterX" },
+      agent,
+    }, (res) => {
+      res.resume();
+      res.on("end", () => {
+        const statusCode = res.statusCode;
+        resolve({
+          ok: true,
+          status: statusCode,
+          statusText: res.statusMessage,
+          responseOk: statusCode >= 200 && statusCode < 300,
+        });
+      });
+    });
+
+    req.on("error", reject);
+    if (signal) {
+      if (signal.aborted) {
+        req.destroy(new DOMException("This operation was aborted", "AbortError"));
+        return;
+      }
+      signal.addEventListener("abort", () => {
+        req.destroy(new DOMException("This operation was aborted", "AbortError"));
+      }, { once: true });
+    }
+    req.end();
+  });
 }

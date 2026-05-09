@@ -4,11 +4,10 @@ import { v4 as uuidv4 } from "uuid";
 import path from "node:path";
 import fs from "node:fs";
 import lockfile from "proper-lockfile";
-import { DATA_DIR } from "@/lib/dataDir.js";
+import { DATA_DIR, DB_FILE } from "@/lib/dataDir.js";
 
 const DEFAULT_MITM_ROUTER_BASE = "http://localhost:20128";
 const isCloud = typeof caches !== 'undefined' || typeof caches === 'object';
-const DB_FILE = isCloud ? null : path.join(DATA_DIR, "db.json");
 const MITM_MODELS_FILE = isCloud ? null : path.join(process.cwd(), "src", "mitm", "models.json");
 
 if (!fs.existsSync(DATA_DIR)) {
@@ -37,6 +36,7 @@ const DEFAULT_SETTINGS = {
   outboundProxyEnabled: false,
   outboundProxyUrl: "",
   outboundNoProxy: "",
+  outboundProxyTargets: [],
   mitmRouterBaseUrl: DEFAULT_MITM_ROUTER_BASE,
   dnsToolEnabled: {},
   rtkEnabled: true,
@@ -60,7 +60,7 @@ function cloneDefaultData() {
   };
 }
 
-if (!fs.existsSync(DB_FILE)) {
+if (!isCloud && !fs.existsSync(DB_FILE)) {
   fs.writeFileSync(DB_FILE, JSON.stringify(cloneDefaultData(), null, 2));
 }
 

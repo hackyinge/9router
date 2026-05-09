@@ -4,7 +4,7 @@ import { getChartData } from "@/lib/usageDb";
 
 const VALID_PERIODS = new Set(["24h", "7d", "30d", "60d"]);
 const SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || "9router-default-secret-change-me"
+  process.env.JWT_SECRET || "openrouterx-default-secret-change-me"
 );
 
 async function getSubUserId(request) {

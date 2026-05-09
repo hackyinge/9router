@@ -9,7 +9,7 @@ import { AI_PROVIDERS, getProviderByAlias } from "@/shared/constants/providers";
  * Returns list of unique providers from request details
  */
 const SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || "9router-default-secret-change-me"
+  process.env.JWT_SECRET || "openrouterx-default-secret-change-me"
 );
 
 async function getSubUserId(request) {
