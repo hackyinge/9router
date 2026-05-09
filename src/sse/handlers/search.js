@@ -13,6 +13,11 @@ import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { handleComboChat, getComboModelsFromData } from "open-sse/services/combo.js";
+import {
+  getAllowedProviderConnectionIdsForSubUser,
+  isProviderAllowedForSubUser,
+  resolveSubUserAccessContext,
+} from "@/lib/subUserAccess";
 
 /**
  * Handle web search request for the SSE/Next.js server.
@@ -46,6 +51,7 @@ export async function handleSearch(request) {
 
   // Enforce API key if enabled in settings
   const settings = await getSettings();
+  const subUserContext = await resolveSubUserAccessContext(request, apiKey);
   if (settings.requireApiKey) {
     if (!apiKey) {
       log.warn("AUTH", "Missing API key (requireApiKey=true)");
@@ -79,7 +85,7 @@ export async function handleSearch(request) {
     return handleComboChat({
       body,
       models: comboModels,
-      handleSingleModel: (b, m) => handleSingleProviderSearch(b, m, request, apiKey, settings),
+      handleSingleModel: (b, m) => handleSingleProviderSearch(b, m, request, apiKey, settings, subUserContext),
       log,
       comboName: providerInput,
       comboStrategy,
@@ -87,10 +93,10 @@ export async function handleSearch(request) {
     });
   }
 
-  return handleSingleProviderSearch(body, providerInput, request, apiKey, settings);
+  return handleSingleProviderSearch(body, providerInput, request, apiKey, settings, subUserContext);
 }
 
-async function handleSingleProviderSearch(body, providerInput, request, apiKey, settings) {
+async function handleSingleProviderSearch(body, providerInput, request, apiKey, settings, subUserContext) {
   const query = body.query;
   const providerId = resolveProviderId(providerInput);
   const resolvedProvider = AI_PROVIDERS[providerId];
@@ -98,6 +104,10 @@ async function handleSingleProviderSearch(body, providerInput, request, apiKey, 
   if (!resolvedProvider) {
     log.warn("SEARCH", "Unknown provider", { provider: providerInput });
     return errorResponse(HTTP_STATUS.BAD_REQUEST, `Unknown provider: ${providerInput}`);
+  }
+
+  if (!isProviderAllowedForSubUser(subUserContext, providerId)) {
+    return errorResponse(HTTP_STATUS.FORBIDDEN, "This provider is not enabled for the current sub-user");
   }
 
   const providerConfig = resolvedProvider.searchConfig;
@@ -149,7 +159,9 @@ async function handleSingleProviderSearch(body, providerInput, request, apiKey, 
   let lastStatus = null;
 
   while (true) {
-    const credentials = await getProviderCredentials(providerId, excludeConnectionIds);
+    const credentials = await getProviderCredentials(providerId, excludeConnectionIds, null, {
+      allowedConnectionIds: getAllowedProviderConnectionIdsForSubUser(subUserContext),
+    });
 
     if (!credentials || credentials.allRateLimited) {
       if (credentials?.allRateLimited) {

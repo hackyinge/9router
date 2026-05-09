@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { jwtVerify } from "jose";
 import { getUserById } from "@/lib/localDb";
-import { getEffectiveAllowedProviders } from "@/shared/utils/subUserAccess";
+import {
+  getEffectiveAllowedProviderConnectionIds,
+  getEffectiveAllowedProviders,
+} from "@/shared/utils/subUserAccess";
 
 const SECRET = new TextEncoder().encode(
   process.env.JWT_SECRET || "openrouterx-default-secret-change-me"
@@ -33,6 +36,10 @@ export async function GET(request) {
         currentUser?.role === "sub_user"
           ? getEffectiveAllowedProviders(currentUser)
           : payload.allowedProviders || [],
+      allowedProviderConnectionIds:
+        currentUser?.role === "sub_user"
+          ? getEffectiveAllowedProviderConnectionIds(currentUser)
+          : payload.allowedProviderConnectionIds || null,
     });
   } catch {
     return NextResponse.json({ role: null, userId: null });

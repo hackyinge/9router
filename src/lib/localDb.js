@@ -686,6 +686,7 @@ export async function createUser({
   permissions = [],
   displayName = "",
   allowedProviders,
+  allowedProviderConnectionIds,
   showQuotaTracker = true,
 }) {
   const db = await getDb();
@@ -707,6 +708,9 @@ export async function createUser({
   };
   if (allowedProviders !== undefined) {
     user.allowedProviders = allowedProviders;
+  }
+  if (allowedProviderConnectionIds !== undefined) {
+    user.allowedProviderConnectionIds = allowedProviderConnectionIds;
   }
   db.data.users.push(user);
   await safeWrite(db);

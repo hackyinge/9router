@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { jwtVerify } from "jose";
 import { getUsers, createUser, updateUser, deleteUser } from "@/lib/localDb";
-import { normalizeProviderIds } from "@/shared/utils/subUserAccess";
+import {
+  normalizeProviderConnectionIds,
+  normalizeProviderIds,
+} from "@/shared/utils/subUserAccess";
 
 const SECRET = new TextEncoder().encode(
   process.env.JWT_SECRET || "openrouterx-default-secret-change-me"
@@ -45,6 +48,7 @@ export async function POST(request) {
       permissions,
       displayName,
       allowedProviders,
+      allowedProviderConnectionIds,
       showQuotaTracker,
     } = await request.json();
     if (!username || !password) {
@@ -59,6 +63,7 @@ export async function POST(request) {
       permissions: permissions || [],
       displayName: displayName || username,
       allowedProviders: normalizeProviderIds(allowedProviders),
+      allowedProviderConnectionIds: normalizeProviderConnectionIds(allowedProviderConnectionIds),
       showQuotaTracker: showQuotaTracker !== false,
     });
     return NextResponse.json({ user }, { status: 201 });

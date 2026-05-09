@@ -71,8 +71,10 @@ function requestOpenRouter({ path, method = "GET", headers = {}, body = null }) 
         const chunks = [];
         res.on("data", (chunk) => chunks.push(chunk));
         res.on("end", () => {
+          const status = res.statusCode || 0;
           resolve({
-            status: res.statusCode || 0,
+            ok: status >= 200 && status < 300,
+            status,
             headers: res.headers || {},
             text: Buffer.concat(chunks).toString("utf8"),
           });
@@ -88,6 +90,15 @@ function requestOpenRouter({ path, method = "GET", headers = {}, body = null }) 
     if (body) req.write(body);
     req.end();
   });
+}
+
+function sanitizeRequestHeaders(headers = {}) {
+  return Object.fromEntries(
+    Object.entries(headers).map(([key, value]) => [
+      key,
+      key.toLowerCase() === "authorization" ? "Bearer sk_openrouterx" : value,
+    ])
+  );
 }
 
 function requestMitmAntigravity({ publicModel, prompt }) {
@@ -147,12 +158,17 @@ function requestMitmAntigravity({ publicModel, prompt }) {
 
 async function listOpenRouterModels() {
   const start = Date.now();
-  const response = await requestOpenRouter({
-    path: "/models",
+  const requestInfo = {
     method: "GET",
+    url: "https://openrouter.ai/models",
     headers: {
       Accept: "application/json, text/plain;q=0.9, */*;q=0.8",
     },
+  };
+  const response = await requestOpenRouter({
+    path: "/models",
+    method: requestInfo.method,
+    headers: requestInfo.headers,
   });
 
   const latencyMs = Date.now() - start;
@@ -165,6 +181,7 @@ async function listOpenRouterModels() {
         ok: false,
         status: response.status,
         latencyMs,
+        request: requestInfo,
         error: `MITM inactive or misconfigured: expected JSON from https://openrouter.ai/models, got ${contentType || "unknown content-type"}`,
         preview: rawText.slice(0, 200),
       },
@@ -181,6 +198,7 @@ async function listOpenRouterModels() {
         ok: false,
         status: response.status,
         latencyMs,
+        request: requestInfo,
         error: "MITM returned non-JSON payload for https://openrouter.ai/models",
         preview: rawText.slice(0, 200),
       },
@@ -200,7 +218,9 @@ async function listOpenRouterModels() {
         ok: false,
         status: response.status,
         latencyMs,
+        request: requestInfo,
         error: `HTTP ${response.status}${detail ? `: ${String(detail).slice(0, 500)}` : ""}`,
+        response: parsed,
       },
       { status: response.status }
     );
@@ -212,8 +232,91 @@ async function listOpenRouterModels() {
     status: response.status,
     latencyMs,
     provider: "openrouter",
+    request: requestInfo,
     count: models.length,
     models,
+    response: parsed,
+  });
+}
+
+async function getOpenRouterKeyInfo() {
+  const start = Date.now();
+  const requestInfo = {
+    method: "GET",
+    url: "https://openrouter.ai/api/v1/auth/key?include_limits=true",
+    headers: sanitizeRequestHeaders({
+      Accept: "application/json, text/plain;q=0.9, */*;q=0.8",
+      Authorization: "Bearer sk_openrouterx",
+    }),
+  };
+  const response = await requestOpenRouter({
+    path: "/api/v1/auth/key?include_limits=true",
+    method: requestInfo.method,
+    headers: requestInfo.headers,
+  });
+
+  const latencyMs = Date.now() - start;
+  const rawText = response.text || "";
+  const contentType = String(response.headers["content-type"] || "");
+
+  if (!contentType.includes("application/json")) {
+    return NextResponse.json(
+      {
+        ok: false,
+        status: response.status,
+        latencyMs,
+        request: requestInfo,
+        error: `MITM inactive or misconfigured: expected JSON from https://openrouter.ai/api/v1/auth/key, got ${contentType || "unknown content-type"}`,
+        preview: rawText.slice(0, 200),
+      },
+      { status: 502 }
+    );
+  }
+
+  let parsed = null;
+  try {
+    parsed = rawText ? JSON.parse(rawText) : null;
+  } catch {
+    return NextResponse.json(
+      {
+        ok: false,
+        status: response.status,
+        latencyMs,
+        request: requestInfo,
+        error: "MITM returned non-JSON payload for OpenRouter key validation",
+        preview: rawText.slice(0, 200),
+      },
+      { status: 502 }
+    );
+  }
+
+  if (!response.ok) {
+    const detail =
+      parsed?.error?.message ||
+      parsed?.msg ||
+      parsed?.message ||
+      parsed?.error ||
+      rawText;
+    return NextResponse.json(
+      {
+        ok: false,
+        status: response.status,
+        latencyMs,
+        request: requestInfo,
+        error: `HTTP ${response.status}${detail ? `: ${String(detail).slice(0, 500)}` : ""}`,
+        response: parsed,
+      },
+      { status: response.status }
+    );
+  }
+
+  return NextResponse.json({
+    ok: true,
+    status: response.status,
+    latencyMs,
+    provider: "openrouter",
+    request: requestInfo,
+    response: parsed,
   });
 }
 
@@ -224,7 +327,7 @@ export async function POST(request) {
     const mode = String(body.mode || "").trim();
     const publicModel = String(body.publicModel || (tool === "antigravity" ? "claude-sonnet-4-6" : "openai/gpt-5.5")).trim();
     const mappedModelInput = String(body.mappedModel || "").trim();
-    const prompt = String(body.prompt || "Reply with exactly: local antigravity mitm ok").trim();
+    const prompt = String(body.prompt || (tool === "openrouter" ? "How many r`s are in the word `strawberry?`" : "Reply with exactly: local antigravity mitm ok")).trim();
 
     if (tool !== "openrouter" && tool !== "antigravity") {
       return NextResponse.json({ ok: false, error: "Only openrouter and antigravity MITM tests are supported" }, { status: 400 });
@@ -232,6 +335,10 @@ export async function POST(request) {
 
     if (tool === "openrouter" && mode === "models") {
       return await listOpenRouterModels();
+    }
+
+    if (tool === "openrouter" && mode === "key") {
+      return await getOpenRouterKeyInfo();
     }
 
     if (!publicModel) {
@@ -294,25 +401,32 @@ export async function POST(request) {
       });
     }
 
+    const requestBody = {
+      model: publicModel,
+      stream: false,
+      reasoning: { enabled: true },
+      messages: [
+        {
+          role: "user",
+          content: prompt || "How many r`s are in the word `strawberry?`",
+        },
+      ],
+    };
+    const requestInfo = {
+      method: "POST",
+      url: "https://openrouter.ai/api/v1/chat/completions",
+      headers: sanitizeRequestHeaders({
+        "Content-Type": "application/json",
+        Authorization: "Bearer sk_openrouterx",
+      }),
+      body: requestBody,
+    };
     const start = Date.now();
     const response = await requestOpenRouter({
       path: "/api/v1/chat/completions",
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: "Bearer sk_openrouterx",
-      },
-      body: JSON.stringify({
-        model: publicModel,
-        stream: false,
-        reasoning: { enabled: true },
-        messages: [
-          {
-            role: "user",
-            content: "How many r`s are in the word `strawberry?`",
-          },
-        ],
-      }),
+      method: requestInfo.method,
+      headers: requestInfo.headers,
+      body: JSON.stringify(requestBody),
     });
 
     const latencyMs = Date.now() - start;
@@ -337,7 +451,9 @@ export async function POST(request) {
         latencyMs,
         publicModel,
         mappedModel,
+        request: requestInfo,
         error: `HTTP ${response.status}${detail ? `: ${String(detail).slice(0, 500)}` : ""}`,
+        response: parsed,
       }, { status: response.status });
     }
 
@@ -348,6 +464,7 @@ export async function POST(request) {
       latencyMs,
       publicModel,
       mappedModel,
+      request: requestInfo,
       reply,
       response: parsed,
     });

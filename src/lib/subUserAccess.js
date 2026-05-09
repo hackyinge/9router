@@ -1,6 +1,9 @@
 import { getAuthPayload } from "@/dashboardGuard";
 import { getApiKeyByValue, getUserById } from "@/lib/localDb";
-import { getEffectiveAllowedProviders } from "@/shared/utils/subUserAccess";
+import {
+  getEffectiveAllowedProviderConnectionIds,
+  getEffectiveAllowedProviders,
+} from "@/shared/utils/subUserAccess";
 
 export function extractRequestApiKey(request) {
   const authHeader = request?.headers?.get("Authorization");
@@ -23,6 +26,7 @@ function buildSubUserAccessContext(user, source) {
     username: user.username || null,
     permissions: Array.isArray(user.permissions) ? user.permissions : [],
     allowedProviders: getEffectiveAllowedProviders(user),
+    allowedProviderConnectionIds: getEffectiveAllowedProviderConnectionIds(user),
     source,
   };
 }
@@ -55,6 +59,7 @@ export async function resolveSubUserAccessContext(request, explicitApiKey = null
       role: payload.role,
       permissions: payload.permissions || [],
       allowedProviders: payload.allowedProviders,
+      allowedProviderConnectionIds: payload.allowedProviderConnectionIds,
     },
     "cookie"
   );
@@ -65,9 +70,22 @@ export function isProviderAllowedForSubUser(context, providerId) {
   return context.allowedProviders.includes(providerId);
 }
 
+export function getAllowedProviderConnectionIdsForSubUser(context) {
+  if (!context || context.role !== "sub_user") return null;
+  if (!Array.isArray(context.allowedProviderConnectionIds)) return null;
+  return context.allowedProviderConnectionIds;
+}
+
+export function isConnectionAllowedForSubUser(context, connection) {
+  if (!context || context.role !== "sub_user") return true;
+  if (!connection || !isProviderAllowedForSubUser(context, connection.provider)) return false;
+
+  const allowedConnectionIds = getAllowedProviderConnectionIdsForSubUser(context);
+  if (!allowedConnectionIds) return true;
+  return allowedConnectionIds.includes(connection.id);
+}
+
 export function filterConnectionsForSubUser(connections, context) {
   if (!context || context.role !== "sub_user") return connections;
-  return connections.filter((connection) =>
-    isProviderAllowedForSubUser(context, connection.provider)
-  );
+  return connections.filter((connection) => isConnectionAllowedForSubUser(context, connection));
 }

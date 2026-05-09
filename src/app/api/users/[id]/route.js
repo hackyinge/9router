@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { jwtVerify } from "jose";
 import { getUserById, updateUser, deleteUser } from "@/lib/localDb";
-import { normalizeProviderIds } from "@/shared/utils/subUserAccess";
+import {
+  normalizeProviderConnectionIds,
+  normalizeProviderIds,
+} from "@/shared/utils/subUserAccess";
 
 const SECRET = new TextEncoder().encode(
   process.env.JWT_SECRET || "openrouterx-default-secret-change-me"
@@ -42,6 +45,7 @@ export async function PATCH(request, { params }) {
       permissions: body.permissions,
       displayName: body.displayName,
       allowedProviders: normalizeProviderIds(body.allowedProviders),
+      allowedProviderConnectionIds: normalizeProviderConnectionIds(body.allowedProviderConnectionIds),
       showQuotaTracker: body.showQuotaTracker !== false,
     };
     if (body.password) {

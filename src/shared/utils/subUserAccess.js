@@ -14,11 +14,33 @@ export function normalizeProviderIds(providerIds) {
   );
 }
 
+export function normalizeProviderConnectionIds(connectionIds) {
+  if (!Array.isArray(connectionIds)) return [];
+
+  return Array.from(
+    new Set(
+      connectionIds
+        .map((connectionId) =>
+          typeof connectionId === "string" ? connectionId.trim() : ""
+        )
+        .filter(Boolean)
+    )
+  );
+}
+
 export function hasConfiguredAllowedProviders(user) {
   return !!(
     user &&
     typeof user === "object" &&
     Object.prototype.hasOwnProperty.call(user, "allowedProviders")
+  );
+}
+
+export function hasConfiguredAllowedProviderConnections(user) {
+  return !!(
+    user &&
+    typeof user === "object" &&
+    Array.isArray(user.allowedProviderConnectionIds)
   );
 }
 
@@ -31,4 +53,9 @@ export function getEffectiveAllowedProviders(
   }
 
   return normalizeProviderIds(fallbackProviders);
+}
+
+export function getEffectiveAllowedProviderConnectionIds(user) {
+  if (!hasConfiguredAllowedProviderConnections(user)) return null;
+  return normalizeProviderConnectionIds(user.allowedProviderConnectionIds);
 }

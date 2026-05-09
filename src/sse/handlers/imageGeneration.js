@@ -12,6 +12,11 @@ import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { handleComboChat } from "open-sse/services/combo.js";
+import {
+  getAllowedProviderConnectionIdsForSubUser,
+  isProviderAllowedForSubUser,
+  resolveSubUserAccessContext,
+} from "@/lib/subUserAccess";
 import * as log from "../utils/logger.js";
 
 // Providers that don't require credentials (noAuth)
@@ -37,6 +42,7 @@ export async function handleImageGeneration(request) {
 
   const apiKey = extractApiKey(request);
   const settings = await getSettings();
+  const subUserContext = await resolveSubUserAccessContext(request, apiKey);
   if (settings.requireApiKey) {
     if (!apiKey) return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Missing API key");
     const valid = await isValidApiKey(apiKey);
@@ -56,7 +62,7 @@ export async function handleImageGeneration(request) {
     return handleComboChat({
       body,
       models: comboModels,
-      handleSingleModel: (b, m) => handleSingleModelImage(b, m, { wantsStream, binaryOutput, preferredConnectionId }),
+      handleSingleModel: (b, m) => handleSingleModelImage(b, m, { wantsStream, binaryOutput, preferredConnectionId, subUserContext }),
       log,
       comboName: modelStr,
       comboStrategy,
@@ -64,10 +70,10 @@ export async function handleImageGeneration(request) {
     });
   }
 
-  return handleSingleModelImage(body, modelStr, { wantsStream, binaryOutput, preferredConnectionId });
+  return handleSingleModelImage(body, modelStr, { wantsStream, binaryOutput, preferredConnectionId, subUserContext });
 }
 
-async function handleSingleModelImage(body, modelStr, { wantsStream, binaryOutput, preferredConnectionId } = {}) {
+async function handleSingleModelImage(body, modelStr, { wantsStream, binaryOutput, preferredConnectionId, subUserContext } = {}) {
   const modelInfo = await getModelInfo(modelStr);
   if (!modelInfo.provider) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid model format");
 
@@ -75,6 +81,10 @@ async function handleSingleModelImage(body, modelStr, { wantsStream, binaryOutpu
   if ((provider === "openai" || provider === "codex") && model === "gpt-image-2") {
     provider = "codex";
     model = "gpt-image-2";
+  }
+
+  if (!isProviderAllowedForSubUser(subUserContext, provider)) {
+    return errorResponse(HTTP_STATUS.FORBIDDEN, "This provider is not enabled for the current sub-user");
   }
 
   // noAuth providers — no credential needed
@@ -95,7 +105,10 @@ async function handleSingleModelImage(body, modelStr, { wantsStream, binaryOutpu
   let lastStatus = null;
 
   while (true) {
-    const credentials = await getProviderCredentials(provider, excludeConnectionIds, model, { preferredConnectionId });
+    const credentials = await getProviderCredentials(provider, excludeConnectionIds, model, {
+      preferredConnectionId,
+      allowedConnectionIds: getAllowedProviderConnectionIdsForSubUser(subUserContext),
+    });
 
     if (!credentials || credentials.allRateLimited) {
       if (credentials?.allRateLimited) {

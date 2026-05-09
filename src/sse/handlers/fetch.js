@@ -13,6 +13,11 @@ import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { handleComboChat, getComboModelsFromData } from "open-sse/services/combo.js";
+import {
+  getAllowedProviderConnectionIdsForSubUser,
+  isProviderAllowedForSubUser,
+  resolveSubUserAccessContext,
+} from "@/lib/subUserAccess";
 
 /**
  * Handle web fetch (URL extraction) request for the SSE/Next.js server.
@@ -48,6 +53,7 @@ export async function handleFetch(request) {
 
   // Enforce API key if enabled in settings
   const settings = await getSettings();
+  const subUserContext = await resolveSubUserAccessContext(request, apiKey);
   if (settings.requireApiKey) {
     if (!apiKey) {
       log.warn("AUTH", "Missing API key (requireApiKey=true)");
@@ -89,7 +95,7 @@ export async function handleFetch(request) {
     return handleComboChat({
       body,
       models: comboModels,
-      handleSingleModel: (b, m) => handleSingleProviderFetch(b, m, request, apiKey, settings),
+      handleSingleModel: (b, m) => handleSingleProviderFetch(b, m, request, apiKey, settings, subUserContext),
       log,
       comboName: providerInput,
       comboStrategy,
@@ -97,10 +103,10 @@ export async function handleFetch(request) {
     });
   }
 
-  return handleSingleProviderFetch(body, providerInput, request, apiKey, settings);
+  return handleSingleProviderFetch(body, providerInput, request, apiKey, settings, subUserContext);
 }
 
-async function handleSingleProviderFetch(body, providerInput, request, apiKey, settings) {
+async function handleSingleProviderFetch(body, providerInput, request, apiKey, settings, subUserContext) {
   const targetUrl = body.url;
   const format = body.format;
   const maxCharacters = body.max_characters;
@@ -110,6 +116,10 @@ async function handleSingleProviderFetch(body, providerInput, request, apiKey, s
   if (!resolvedProvider) {
     log.warn("FETCH", "Unknown provider", { provider: providerInput });
     return errorResponse(HTTP_STATUS.BAD_REQUEST, `Unknown provider: ${providerInput}`);
+  }
+
+  if (!isProviderAllowedForSubUser(subUserContext, providerId)) {
+    return errorResponse(HTTP_STATUS.FORBIDDEN, "This provider is not enabled for the current sub-user");
   }
 
   const providerConfig = resolvedProvider.fetchConfig;
@@ -150,7 +160,9 @@ async function handleSingleProviderFetch(body, providerInput, request, apiKey, s
   let lastStatus = null;
 
   while (true) {
-    const credentials = await getProviderCredentials(providerId, excludeConnectionIds);
+    const credentials = await getProviderCredentials(providerId, excludeConnectionIds, null, {
+      allowedConnectionIds: getAllowedProviderConnectionIdsForSubUser(subUserContext),
+    });
 
     if (!credentials || credentials.allRateLimited) {
       if (credentials?.allRateLimited) {

@@ -12,7 +12,11 @@ import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
-import { resolveSubUserAccessContext, isProviderAllowedForSubUser } from "@/lib/subUserAccess";
+import {
+  getAllowedProviderConnectionIdsForSubUser,
+  isProviderAllowedForSubUser,
+  resolveSubUserAccessContext,
+} from "@/lib/subUserAccess";
 
 /**
  * Handle embeddings request for the SSE/Next.js server.
@@ -92,7 +96,9 @@ export async function handleEmbeddings(request) {
   let lastStatus = null;
 
   while (true) {
-    const credentials = await getProviderCredentials(provider, excludeConnectionIds, model);
+    const credentials = await getProviderCredentials(provider, excludeConnectionIds, model, {
+      allowedConnectionIds: getAllowedProviderConnectionIdsForSubUser(subUserContext),
+    });
 
     // All accounts unavailable
     if (!credentials || credentials.allRateLimited) {

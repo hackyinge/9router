@@ -9,6 +9,11 @@ import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { AI_PROVIDERS } from "@/shared/constants/providers";
 import { handleComboChat } from "open-sse/services/combo.js";
+import {
+  getAllowedProviderConnectionIdsForSubUser,
+  isProviderAllowedForSubUser,
+  resolveSubUserAccessContext,
+} from "@/lib/subUserAccess";
 import * as log from "../utils/logger.js";
 
 // Derived from providers.js: any TTS provider not noAuth requires stored credentials
@@ -33,8 +38,9 @@ export async function handleTts(request) {
   log.request("POST", `${url.pathname} | ${modelStr} | format=${responseFormat}${language ? ` | lang=${language}` : ""}`);
 
   const settings = await getSettings();
+  const apiKey = extractApiKey(request);
+  const subUserContext = await resolveSubUserAccessContext(request, apiKey);
   if (settings.requireApiKey) {
-    const apiKey = extractApiKey(request);
     if (!apiKey) return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Missing API key");
     const valid = await isValidApiKey(apiKey);
     if (!valid) return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
@@ -53,7 +59,7 @@ export async function handleTts(request) {
     return handleComboChat({
       body,
       models: comboModels,
-      handleSingleModel: (b, m) => handleSingleModelTts(b, m, responseFormat, language),
+      handleSingleModel: (b, m) => handleSingleModelTts(b, m, responseFormat, language, subUserContext),
       log,
       comboName: modelStr,
       comboStrategy,
@@ -61,14 +67,17 @@ export async function handleTts(request) {
     });
   }
 
-  return handleSingleModelTts(body, modelStr, responseFormat, language);
+  return handleSingleModelTts(body, modelStr, responseFormat, language, subUserContext);
 }
 
-async function handleSingleModelTts(body, modelStr, responseFormat, language) {
+async function handleSingleModelTts(body, modelStr, responseFormat, language, subUserContext) {
   const modelInfo = await getModelInfo(modelStr);
   if (!modelInfo.provider) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid model format");
 
   const { provider, model } = modelInfo;
+  if (!isProviderAllowedForSubUser(subUserContext, provider)) {
+    return errorResponse(HTTP_STATUS.FORBIDDEN, "This provider is not enabled for the current sub-user");
+  }
   log.info("ROUTING", `Provider: ${provider}, Voice: ${model}`);
 
   // noAuth providers — no credential needed
@@ -84,7 +93,9 @@ async function handleSingleModelTts(body, modelStr, responseFormat, language) {
   let lastStatus = null;
 
   while (true) {
-    const credentials = await getProviderCredentials(provider, excludeConnectionIds, model);
+    const credentials = await getProviderCredentials(provider, excludeConnectionIds, model, {
+      allowedConnectionIds: getAllowedProviderConnectionIdsForSubUser(subUserContext),
+    });
 
     if (!credentials || credentials.allRateLimited) {
       if (credentials?.allRateLimited) {

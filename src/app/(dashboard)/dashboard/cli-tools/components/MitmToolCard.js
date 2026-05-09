@@ -10,24 +10,36 @@ const OPENROUTER_TEST_PROMPT = "How many r`s are in the word `strawberry?`";
 const ANTIGRAVITY_LOCAL_MODEL = "claude-sonnet-4-6";
 const ANTIGRAVITY_LOCAL_PROMPT = "Reply with exactly: local antigravity mitm ok";
 
+function prettyJson(value) {
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value || "");
+  }
+}
+
+function buildOpenRouterChatRequestBody() {
+  return {
+    model: OPENROUTER_TEST_MODEL,
+    stream: false,
+    reasoning: { enabled: true },
+    messages: [
+      {
+        role: "user",
+        content: OPENROUTER_TEST_PROMPT,
+      },
+    ],
+  };
+}
+
 function buildLocalMappedCurl(mappedModel) {
-  const modelValue = OPENROUTER_TEST_MODEL;
+  const requestBody = buildOpenRouterChatRequestBody();
   const mappedValue = mappedModel || "<mapped-model>";
   return [
-    "curl https://openrouter.ai/api/v1/chat/completions \\",
+    "curl -X POST https://openrouter.ai/api/v1/chat/completions \\",
     '  -H "Content-Type: application/json" \\',
     '  -H "Authorization: Bearer sk_openrouterx" \\',
-    "  -d '{",
-    `    "model": "${modelValue}",`,
-    '    "messages": [',
-    "      {",
-    '        "role": "user",',
-    `        "content": "${OPENROUTER_TEST_PROMPT}"`,
-    "      }",
-    "    ],",
-    '    "reasoning": { "enabled": true },',
-    '    "stream": false',
-    "  }'",
+    `  -d '${JSON.stringify(requestBody)}'`,
     "",
     `# Expected MITM mapping target: ${mappedValue}`,
   ].join("\n");
@@ -37,6 +49,50 @@ function buildOpenRouterModelsCurl() {
   return [
     "curl https://openrouter.ai/models",
   ].join("\n");
+}
+
+function buildOpenRouterKeyCurl() {
+  return [
+    "curl https://openrouter.ai/api/v1/auth/key?include_limits=true \\",
+    '  -H "Accept: application/json, text/plain;q=0.9, */*;q=0.8" \\',
+    '  -H "Authorization: Bearer sk_openrouterx"',
+  ].join("\n");
+}
+
+function formatOpenRouterTestResponse(data) {
+  if (!data) return "";
+  if (data.mode === "key") {
+    return prettyJson({
+      ok: data.ok,
+      status: data.status,
+      latencyMs: data.latencyMs,
+      response: data.response || null,
+      error: data.error || null,
+    });
+  }
+
+  if (data.mode === "models" || Array.isArray(data.models)) {
+    return prettyJson({
+      ok: data.ok,
+      status: data.status,
+      latencyMs: data.latencyMs,
+      count: data.count,
+      sample: Array.isArray(data.models) ? data.models.slice(0, 5) : [],
+      response: data.response || null,
+      error: data.error || null,
+    });
+  }
+
+  return prettyJson({
+    ok: data.ok,
+    status: data.status,
+    latencyMs: data.latencyMs,
+    publicModel: data.publicModel,
+    mappedModel: data.mappedModel,
+    reply: data.reply || "",
+    response: data.response || null,
+    error: data.error || null,
+  });
 }
 
 /**
@@ -77,6 +133,8 @@ export default function MitmToolCard({
   const [localPrompt, setLocalPrompt] = useState(ANTIGRAVITY_LOCAL_PROMPT);
   const [localChatLoading, setLocalChatLoading] = useState(false);
   const [localChatResult, setLocalChatResult] = useState(null);
+  const [openRouterTestLoading, setOpenRouterTestLoading] = useState(null);
+  const [openRouterTestResults, setOpenRouterTestResults] = useState({});
   const [injectingAuth, setInjectingAuth] = useState(false);
   const [injectAuthMessage, setInjectAuthMessage] = useState(null);
   const [authJsonInput, setAuthJsonInput] = useState("");
@@ -296,6 +354,56 @@ export default function MitmToolCard({
     }
   };
 
+  const runOpenRouterTest = async (mode) => {
+    if (openRouterTestLoading) return;
+
+    setOpenRouterTestLoading(mode);
+    setOpenRouterTestResults((prev) => {
+      const next = { ...prev };
+      delete next[mode];
+      return next;
+    });
+    try {
+      const payload = mode === "models" || mode === "key"
+        ? { tool: "openrouter", mode }
+        : {
+            tool: "openrouter",
+            publicModel: OPENROUTER_TEST_MODEL,
+            mappedModel: String(modelMappings[OPENROUTER_TEST_MODEL] || "").trim(),
+            prompt: OPENROUTER_TEST_PROMPT,
+          };
+      const res = await fetch("/api/cli-tools/antigravity-mitm/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      setOpenRouterTestResults((prev) => ({
+        ...prev,
+        [mode]: {
+          mode,
+          ok: res.ok && data.ok,
+          request: data.request || null,
+          responseText: formatOpenRouterTestResponse({ ...data, mode }),
+          error: data.error || null,
+        },
+      }));
+    } catch (error) {
+      setOpenRouterTestResults((prev) => ({
+        ...prev,
+        [mode]: {
+          mode,
+          ok: false,
+          request: null,
+          responseText: prettyJson({ error: error.message || "OpenRouter MITM test failed" }),
+          error: error.message || "OpenRouter MITM test failed",
+        },
+      }));
+    } finally {
+      setOpenRouterTestLoading(null);
+    }
+  };
+
   return (
     <>
       <Card padding="xs" className="overflow-hidden">
@@ -505,20 +613,29 @@ export default function MitmToolCard({
               {tool.id === "openrouter" && (
                 <div className="flex flex-col gap-2">
                   <p className="text-[11px] text-text-muted px-1">
-                    Both tests hit `openrouter.ai` directly. If MITM is inactive, they should fail or return the wrong payload.
+                    These tests hit `openrouter.ai` directly. If MITM is inactive, they should fail or return the wrong payload.
                   </p>
-                  <div className="rounded-lg border border-border bg-surface/50 p-3">
-                    <p className="mb-2 text-[11px] font-medium text-text-main">MITM Chat curl</p>
-                    <pre className="wrap-break-word whitespace-pre-wrap text-[10px] text-text-muted" data-i18n-skip="true">
-                      {buildLocalMappedCurl(String(modelMappings[OPENROUTER_TEST_MODEL] || "").trim())}
-                    </pre>
-                  </div>
-                  <div className="rounded-lg border border-border bg-surface/50 p-3">
-                    <p className="mb-2 text-[11px] font-medium text-text-main">OpenRouter Models curl</p>
-                    <pre className="wrap-break-word whitespace-pre-wrap text-[10px] text-text-muted" data-i18n-skip="true">
-                      {buildOpenRouterModelsCurl()}
-                    </pre>
-                  </div>
+                  <OpenRouterMitmTestBox
+                    title="MITM Chat Test"
+                    curl={buildLocalMappedCurl(String(modelMappings[OPENROUTER_TEST_MODEL] || "").trim())}
+                    loading={openRouterTestLoading === "chat"}
+                    result={openRouterTestResults.chat}
+                    onRun={() => runOpenRouterTest("chat")}
+                  />
+                  <OpenRouterMitmTestBox
+                    title="Key Validation Test"
+                    curl={buildOpenRouterKeyCurl()}
+                    loading={openRouterTestLoading === "key"}
+                    result={openRouterTestResults.key}
+                    onRun={() => runOpenRouterTest("key")}
+                  />
+                  <OpenRouterMitmTestBox
+                    title="OpenRouter Models Test"
+                    curl={buildOpenRouterModelsCurl()}
+                    loading={openRouterTestLoading === "models"}
+                    result={openRouterTestResults.models}
+                    onRun={() => runOpenRouterTest("models")}
+                  />
                 </div>
               )}
 
@@ -618,5 +735,73 @@ export default function MitmToolCard({
         title={`Select model for ${currentEditingAlias}`}
       />
     </>
+  );
+}
+
+function OpenRouterMitmTestBox({ title, curl, loading, result, onRun }) {
+  const [expanded, setExpanded] = useState(false);
+  const resultTone = result?.ok ? "text-green-600" : "text-red-600";
+
+  return (
+    <div className={`rounded-lg border bg-surface/50 ${result ? (result.ok ? "border-green-500/30" : "border-red-500/30") : "border-border"}`}>
+      <div className="flex items-center justify-between gap-2 px-3 py-2">
+        <button
+          type="button"
+          onClick={() => setExpanded((value) => !value)}
+          className="flex min-w-0 flex-1 items-center gap-2 text-left"
+          aria-expanded={expanded}
+        >
+          <span className={`material-symbols-outlined text-[16px] text-text-muted transition-transform ${expanded ? "rotate-90" : ""}`}>
+            chevron_right
+          </span>
+          <span className="min-w-0 truncate text-[11px] font-medium text-text-main">{title}</span>
+          {result && (
+            <span className={`shrink-0 text-[10px] font-semibold ${resultTone}`}>
+              {result.ok ? "OK" : "ERROR"}
+            </span>
+          )}
+        </button>
+        <button
+          type="button"
+          onClick={onRun}
+          disabled={loading}
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-primary px-3 py-1 text-[10px] font-medium text-white transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <span
+            className="material-symbols-outlined text-[14px]"
+            style={loading ? { animation: "spin 1s linear infinite" } : undefined}
+          >
+            {loading ? "progress_activity" : "play_arrow"}
+          </span>
+          {loading ? "Running..." : "Run"}
+        </button>
+      </div>
+      {expanded && (
+        <div className="border-t border-border px-3 py-3">
+          <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-text-muted">curl</p>
+          <pre className="mb-3 max-h-48 overflow-auto rounded-lg bg-sidebar px-3 py-2.5 font-mono text-[10px] text-text-main whitespace-pre-wrap wrap-break-word" data-i18n-skip="true">
+            {curl}
+          </pre>
+          {result ? (
+            <div className="grid gap-3 lg:grid-cols-2">
+              <div>
+                <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-text-muted">Request</p>
+                <pre className="max-h-80 overflow-auto rounded-lg bg-sidebar px-3 py-2.5 font-mono text-[10px] text-text-main whitespace-pre-wrap wrap-break-word" data-i18n-skip="true">
+                  {prettyJson(result.request || { error: "No request captured" })}
+                </pre>
+              </div>
+              <div>
+                <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-text-muted">Response</p>
+                <pre className={`max-h-80 overflow-auto rounded-lg bg-sidebar px-3 py-2.5 font-mono text-[10px] whitespace-pre-wrap wrap-break-word ${result.ok ? "text-text-main" : "text-red-400"}`} data-i18n-skip="true">
+                  {result.responseText || prettyJson({ message: "Response will appear here after running." })}
+                </pre>
+              </div>
+            </div>
+          ) : (
+            <p className="text-[10px] text-text-muted">Run this test to capture request and response details.</p>
+          )}
+        </div>
+      )}
+    </div>
   );
 }

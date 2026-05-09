@@ -6,7 +6,11 @@ import {
   isOpenAICompatibleProvider,
 } from "@/shared/constants/providers";
 import { getProviderConnections, getCombos, getCustomModels, getModelAliases } from "@/lib/localDb";
-import { isProviderAllowedForSubUser, resolveSubUserAccessContext } from "@/lib/subUserAccess";
+import {
+  filterConnectionsForSubUser,
+  isProviderAllowedForSubUser,
+  resolveSubUserAccessContext,
+} from "@/lib/subUserAccess";
 import { getModelInfo } from "@/sse/services/model";
 
 const parseOpenAIStyleModels = (data) => {
@@ -131,9 +135,7 @@ export async function buildModelsList(kindFilter, request = null) {
     connections = await getProviderConnections();
     connections = connections.filter(c => c.isActive !== false);
     if (subUserContext) {
-      connections = connections.filter((connection) =>
-        isProviderAllowedForSubUser(subUserContext, connection.provider)
-      );
+      connections = filterConnectionsForSubUser(connections, subUserContext);
     }
   } catch (e) {
     console.log("Could not fetch providers, returning all models");
@@ -420,9 +422,7 @@ export async function GET(request) {
       // Filter to only active connections
       connections = connections.filter(c => c.isActive !== false);
       if (subUserContext) {
-        connections = connections.filter((connection) =>
-          isProviderAllowedForSubUser(subUserContext, connection.provider)
-        );
+        connections = filterConnectionsForSubUser(connections, subUserContext);
       }
     } catch (e) {
       // If database not available, return all models

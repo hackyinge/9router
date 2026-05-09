@@ -3,7 +3,10 @@ import { getSettings, getUserByUsername } from "@/lib/localDb";
 import bcrypt from "bcryptjs";
 import { SignJWT } from "jose";
 import { cookies } from "next/headers";
-import { getEffectiveAllowedProviders } from "@/shared/utils/subUserAccess";
+import {
+  getEffectiveAllowedProviderConnectionIds,
+  getEffectiveAllowedProviders,
+} from "@/shared/utils/subUserAccess";
 
 const SECRET = new TextEncoder().encode(
   process.env.JWT_SECRET || "openrouterx-default-secret-change-me"
@@ -93,6 +96,7 @@ export async function POST(request) {
       permissions: subUser.permissions || [],
       showQuotaTracker: subUser.showQuotaTracker !== false,
       allowedProviders: getEffectiveAllowedProviders(subUser),
+      allowedProviderConnectionIds: getEffectiveAllowedProviderConnectionIds(subUser),
     })
       .setProtectedHeader({ alg: "HS256" })
       .setExpirationTime("24h")

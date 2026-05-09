@@ -3,18 +3,22 @@
 import { useState, useEffect } from "react";
 import { Card, Button, Modal, Input } from "@/shared/components";
 import { AI_PROVIDERS } from "@/shared/constants/providers";
-import { getEffectiveAllowedProviders, LEGACY_SUB_USER_VISIBLE_PROVIDERS } from "@/shared/utils/subUserAccess";
+import {
+  getEffectiveAllowedProviderConnectionIds,
+  getEffectiveAllowedProviders,
+  LEGACY_SUB_USER_VISIBLE_PROVIDERS,
+} from "@/shared/utils/subUserAccess";
 
 export default function AdminUsersPage() {
   const [users, setUsers] = useState([]);
   const [providerOptions, setProviderOptions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
-  const [form, setForm] = useState({ username: "", password: "", displayName: "", role: "sub_user", permissions: [], allowedProviders: [], showQuotaTracker: true });
+  const [form, setForm] = useState({ username: "", password: "", displayName: "", role: "sub_user", permissions: [], allowedProviders: [], allowedProviderConnectionIds: [], showQuotaTracker: true });
   const [formLoading, setFormLoading] = useState(false);
   const [formError, setFormError] = useState("");
   const [editingUser, setEditingUser] = useState(null);
-  const [editForm, setEditForm] = useState({ displayName: "", role: "", permissions: [], allowedProviders: [], showQuotaTracker: true, password: "" });
+  const [editForm, setEditForm] = useState({ displayName: "", role: "", permissions: [], allowedProviders: [], allowedProviderConnectionIds: [], showQuotaTracker: true, password: "" });
   const [deleteConfirm, setDeleteConfirm] = useState(null);
 
   useEffect(() => {
@@ -62,7 +66,16 @@ export default function AdminUsersPage() {
       const data = await res.json();
       if (!res.ok) { setFormError(data.error || "Failed"); return; }
       setShowCreate(false);
-      setForm({ username: "", password: "", displayName: "", role: "sub_user", permissions: [], allowedProviders: getDefaultAllowedProviders(providerOptions), showQuotaTracker: true });
+      setForm({
+        username: "",
+        password: "",
+        displayName: "",
+        role: "sub_user",
+        permissions: [],
+        allowedProviders: getDefaultAllowedProviders(providerOptions),
+        allowedProviderConnectionIds: getDefaultAllowedProviderConnectionIds(providerOptions),
+        showQuotaTracker: true,
+      });
       fetchUsers();
     } catch {
       setFormError("Network error");
@@ -78,6 +91,7 @@ export default function AdminUsersPage() {
       role: user.role,
       permissions: user.permissions || [],
       allowedProviders: getEffectiveAllowedProviders(user, getDefaultAllowedProviders(providerOptions)),
+      allowedProviderConnectionIds: getEffectiveAllowedProviderConnectionIds(user) ?? getDefaultAllowedProviderConnectionIdsForUser(user, providerOptions),
       showQuotaTracker: user.showQuotaTracker !== false,
       password: "",
     });
@@ -92,6 +106,7 @@ export default function AdminUsersPage() {
         role: editForm.role,
         permissions: editForm.permissions,
         allowedProviders: editForm.allowedProviders,
+        allowedProviderConnectionIds: editForm.allowedProviderConnectionIds,
         showQuotaTracker: editForm.showQuotaTracker,
       };
       if (editForm.password) body.password = editForm.password;
@@ -123,6 +138,7 @@ export default function AdminUsersPage() {
       role: "sub_user",
       permissions: [],
       allowedProviders: getDefaultAllowedProviders(providerOptions),
+      allowedProviderConnectionIds: getDefaultAllowedProviderConnectionIds(providerOptions),
       showQuotaTracker: true,
     });
     setFormError("");
@@ -132,11 +148,33 @@ export default function AdminUsersPage() {
   const toggleAllowedProvider = (providerId, setState) => {
     setState((current) => {
       const exists = current.allowedProviders.includes(providerId);
+      const providerAccountIds = getProviderAccountIds(providerOptions, providerId);
       return {
         ...current,
         allowedProviders: exists
           ? current.allowedProviders.filter((id) => id !== providerId)
           : [...current.allowedProviders, providerId],
+        allowedProviderConnectionIds: exists
+          ? current.allowedProviderConnectionIds.filter((id) => !providerAccountIds.includes(id))
+          : Array.from(new Set([...current.allowedProviderConnectionIds, ...providerAccountIds])),
+      };
+    });
+  };
+
+  const toggleAllowedConnection = (providerId, connectionId, setState) => {
+    setState((current) => {
+      const exists = current.allowedProviderConnectionIds.includes(connectionId);
+      const nextConnectionIds = exists
+        ? current.allowedProviderConnectionIds.filter((id) => id !== connectionId)
+        : [...current.allowedProviderConnectionIds, connectionId];
+      const nextProviders = current.allowedProviders.includes(providerId)
+        ? current.allowedProviders
+        : [...current.allowedProviders, providerId];
+
+      return {
+        ...current,
+        allowedProviders: nextProviders,
+        allowedProviderConnectionIds: nextConnectionIds,
       };
     });
   };
@@ -177,6 +215,9 @@ export default function AdminUsersPage() {
                 <span className="text-xs px-2 py-1 rounded-full bg-primary/10 text-primary">
                   {formatAllowedProviders(user, providerOptions)}
                 </span>
+                <span className="text-xs px-2 py-1 rounded-full bg-surface-alt text-text-muted">
+                  {formatAllowedAccounts(user, providerOptions)}
+                </span>
                 <span className={`text-xs px-2 py-1 rounded-full ${user.showQuotaTracker !== false ? "bg-emerald-500/10 text-emerald-600" : "bg-surface-alt text-text-muted"}`}>
                   {user.showQuotaTracker !== false ? "Quota On" : "Quota Off"}
                 </span>
@@ -213,7 +254,9 @@ export default function AdminUsersPage() {
             <ProviderSelector
               providerOptions={providerOptions}
               selectedProviders={form.allowedProviders}
+              selectedConnectionIds={form.allowedProviderConnectionIds}
               onToggle={(providerId) => toggleAllowedProvider(providerId, setForm)}
+              onToggleConnection={(providerId, connectionId) => toggleAllowedConnection(providerId, connectionId, setForm)}
             />
             <label className="flex items-center gap-2 text-sm cursor-pointer">
               <input
@@ -256,7 +299,9 @@ export default function AdminUsersPage() {
             <ProviderSelector
               providerOptions={providerOptions}
               selectedProviders={editForm.allowedProviders}
+              selectedConnectionIds={editForm.allowedProviderConnectionIds}
               onToggle={(providerId) => toggleAllowedProvider(providerId, setEditForm)}
+              onToggleConnection={(providerId, connectionId) => toggleAllowedConnection(providerId, connectionId, setEditForm)}
             />
             <label className="flex items-center gap-2 text-sm cursor-pointer">
               <input
@@ -296,7 +341,7 @@ function buildProviderOptions(connections, nodes) {
 
   for (const connection of connections || []) {
     const providerId = connection?.provider;
-    if (!providerId || options.has(providerId)) continue;
+    if (!providerId) continue;
 
     const providerMeta = AI_PROVIDERS[providerId];
     const providerNode = nodeMap.get(providerId);
@@ -307,16 +352,30 @@ function buildProviderOptions(connections, nodes) {
       "custom-image": "Custom Image",
     }[providerNode.type] || "Custom Provider") : null;
 
-    options.set(providerId, {
-      id: providerId,
-      label: providerNode
-        ? `${providerNode.name || providerNode.prefix || providerId} (${typeLabel})`
-        : (providerMeta?.name || connection.name || providerId),
-      defaultEnabled: true,
+    if (!options.has(providerId)) {
+      options.set(providerId, {
+        id: providerId,
+        label: providerNode
+          ? `${providerNode.name || providerNode.prefix || providerId} (${typeLabel})`
+          : (providerMeta?.name || connection.name || providerId),
+        defaultEnabled: true,
+        accounts: [],
+      });
+    }
+
+    options.get(providerId).accounts.push({
+      id: connection.id,
+      label: connection.displayName || connection.name || connection.email || connection.id,
+      isActive: connection.isActive !== false,
     });
   }
 
-  return Array.from(options.values()).sort((a, b) => a.label.localeCompare(b.label, "en"));
+  return Array.from(options.values())
+    .map((option) => ({
+      ...option,
+      accounts: option.accounts.sort((a, b) => a.label.localeCompare(b.label, "en")),
+    }))
+    .sort((a, b) => a.label.localeCompare(b.label, "en"));
 }
 
 function getDefaultAllowedProviders(providerOptions) {
@@ -333,6 +392,25 @@ function getDefaultAllowedProviders(providerOptions) {
   return providerIds;
 }
 
+function getProviderAccountIds(providerOptions, providerId) {
+  return providerOptions
+    .find((option) => option.id === providerId)
+    ?.accounts
+    ?.map((account) => account.id) || [];
+}
+
+function getDefaultAllowedProviderConnectionIds(providerOptions) {
+  return providerOptions.flatMap((option) => option.accounts.map((account) => account.id));
+}
+
+function getDefaultAllowedProviderConnectionIdsForUser(user, providerOptions) {
+  const allowedProviders = getEffectiveAllowedProviders(user, getDefaultAllowedProviders(providerOptions));
+  const allowedSet = new Set(allowedProviders);
+  return providerOptions
+    .filter((option) => allowedSet.has(option.id))
+    .flatMap((option) => option.accounts.map((account) => account.id));
+}
+
 function formatAllowedProviders(user, providerOptions) {
   const optionMap = new Map(providerOptions.map((option) => [option.id, option.label]));
   const allowedProviders = getEffectiveAllowedProviders(user, getDefaultAllowedProviders(providerOptions));
@@ -344,27 +422,66 @@ function formatAllowedProviders(user, providerOptions) {
   return `${labels.slice(0, 2).join(", ")} +${labels.length - 2}`;
 }
 
-function ProviderSelector({ providerOptions, selectedProviders, onToggle }) {
+function formatAllowedAccounts(user, providerOptions) {
+  const allowedProviders = getEffectiveAllowedProviders(user, getDefaultAllowedProviders(providerOptions));
+  const allowedProviderSet = new Set(allowedProviders);
+  const effectiveConnectionIds =
+    getEffectiveAllowedProviderConnectionIds(user) ??
+    getDefaultAllowedProviderConnectionIdsForUser(user, providerOptions);
+  const allowedConnectionSet = new Set(effectiveConnectionIds);
+  const totalAccounts = providerOptions
+    .filter((option) => allowedProviderSet.has(option.id))
+    .reduce((count, option) => count + option.accounts.length, 0);
+
+  if (totalAccounts === 0) return "No accounts";
+  return `${allowedConnectionSet.size}/${totalAccounts} accounts`;
+}
+
+function ProviderSelector({ providerOptions, selectedProviders, selectedConnectionIds, onToggle, onToggleConnection }) {
+  const selectedProviderSet = new Set(selectedProviders);
+  const selectedConnectionSet = new Set(selectedConnectionIds);
+
   return (
     <div>
-      <p className="text-sm font-medium mb-2">Allowed Providers</p>
+      <p className="text-sm font-medium mb-2">Allowed Providers & Accounts</p>
       {providerOptions.length === 0 ? (
         <p className="text-xs text-text-muted">Connect providers first, then assign them to this sub-user.</p>
       ) : (
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-col gap-3">
           {providerOptions.map((provider) => (
-            <label key={provider.id} className="flex items-center gap-1.5 text-sm cursor-pointer">
-              <input
-                type="checkbox"
-                checked={selectedProviders.includes(provider.id)}
-                onChange={() => onToggle(provider.id)}
-              />
-              {provider.label}
-            </label>
+            <div key={provider.id} className="rounded-lg border border-border bg-background p-3">
+              <label className="flex items-center gap-2 text-sm font-medium cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={selectedProviderSet.has(provider.id)}
+                  onChange={() => onToggle(provider.id)}
+                />
+                {provider.label}
+              </label>
+              {provider.accounts.length > 0 && (
+                <div className="mt-2 grid gap-1.5 pl-6 sm:grid-cols-2">
+                  {provider.accounts.map((account) => (
+                    <label
+                      key={account.id}
+                      className="flex min-w-0 items-center gap-1.5 text-xs text-text-muted cursor-pointer"
+                    >
+                      <input
+                        type="checkbox"
+                        disabled={!selectedProviderSet.has(provider.id)}
+                        checked={selectedProviderSet.has(provider.id) && selectedConnectionSet.has(account.id)}
+                        onChange={() => onToggleConnection(provider.id, account.id)}
+                      />
+                      <span className="truncate">{account.label}</span>
+                      {!account.isActive && <span className="shrink-0 text-[10px] text-amber-600">inactive</span>}
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
           ))}
         </div>
       )}
-      <p className="text-xs text-text-muted mt-2">Only the selected providers will be visible and usable for this sub-user.</p>
+      <p className="text-xs text-text-muted mt-2">Only selected providers and selected provider accounts will be visible and usable for this sub-user.</p>
     </div>
   );
 }
