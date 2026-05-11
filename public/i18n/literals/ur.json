@@ -199,5 +199,9 @@
   "Warning": "انتباہ",
   "When ON, dashboard requires password. When OFF, access without login.": "جب آن ہو، ڈیش بورڈ کے لیے پاس ورڈ درکار ہے۔ جب آف ہو، بغیر لاگ ان کے رسائی حاصل کریں۔",
   "Yes": "جی",
-  "关注UI": "Focus UI"
+  "关注UI": "Focus UI",
+  "Open New Antigravity": "Open New Antigravity",
+  "Open a new Antigravity window with MITM enabled": "Open a new Antigravity window with MITM enabled",
+  "Opened new Antigravity": "Opened new Antigravity",
+  "Open New": "Open New"
 }

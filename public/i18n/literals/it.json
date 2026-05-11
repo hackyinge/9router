@@ -199,5 +199,9 @@
   "Warning": "Avvertenza",
   "When ON, dashboard requires password. When OFF, access without login.": "Quando ATTIVO, il pannello di controllo richiede la password. Quando SPENTO, accedi senza login.",
   "Yes": "Sì",
-  "关注UI": "Focus UI"
+  "关注UI": "Focus UI",
+  "Open New Antigravity": "Open New Antigravity",
+  "Open a new Antigravity window with MITM enabled": "Open a new Antigravity window with MITM enabled",
+  "Opened new Antigravity": "Opened new Antigravity",
+  "Open New": "Open New"
 }

@@ -199,5 +199,9 @@
   "Warning": "Varoitus",
   "When ON, dashboard requires password. When OFF, access without login.": "Kun ON, kojelauta vaatii salasanaa. Kun OFF, pääsy ilman kirjautumista.",
   "Yes": "Kyllä",
-  "关注UI": "Focus UI"
+  "关注UI": "Focus UI",
+  "Open New Antigravity": "Open New Antigravity",
+  "Open a new Antigravity window with MITM enabled": "Open a new Antigravity window with MITM enabled",
+  "Opened new Antigravity": "Opened new Antigravity",
+  "Open New": "Open New"
 }

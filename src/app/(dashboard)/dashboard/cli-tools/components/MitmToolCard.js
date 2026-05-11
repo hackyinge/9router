@@ -127,8 +127,10 @@ export default function MitmToolCard({
   const [modalOpen, setModalOpen] = useState(false);
   const [currentEditingAlias, setCurrentEditingAlias] = useState(null);
   const [restarting, setRestarting] = useState(false);
+  const [launchingNew, setLaunchingNew] = useState(false);
   const [restartMessage, setRestartMessage] = useState(null);
   const [showRestartPathModal, setShowRestartPathModal] = useState(false);
+  const [restartPathAction, setRestartPathAction] = useState("restart");
   const [restartPath, setRestartPath] = useState("");
   const [localPrompt, setLocalPrompt] = useState(ANTIGRAVITY_LOCAL_PROMPT);
   const [localChatLoading, setLocalChatLoading] = useState(false);
@@ -236,19 +238,22 @@ export default function MitmToolCard({
     doDnsAction(pendingDnsAction, sudoPassword);
   };
 
-  const restartAntigravity = async (path = "") => {
-    setRestarting(true);
+  const launchAntigravity = async ({ path = "", mode = "restart" } = {}) => {
+    const isNewInstance = mode === "new";
+    if (isNewInstance) setLaunchingNew(true);
+    else setRestarting(true);
     setRestartMessage(null);
     try {
       const res = await fetch("/api/cli-tools/antigravity-mitm/restart", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(path ? { path } : {}),
+        body: JSON.stringify({ ...(path ? { path } : {}), mode }),
       });
       const data = await res.json();
 
       if (!res.ok) {
         if (data.needsManualPath) {
+          setRestartPathAction(mode);
           setShowRestartPathModal(true);
           setRestartMessage({ type: "error", text: data.error || "Antigravity was not found" });
           return;
@@ -258,11 +263,17 @@ export default function MitmToolCard({
 
       setShowRestartPathModal(false);
       setRestartPath("");
-      setRestartMessage({ type: "success", text: `Restarted Antigravity${data.path ? `: ${data.path}` : ""}` });
+      setRestartMessage({
+        type: "success",
+        text: isNewInstance
+          ? "Opened new Antigravity"
+          : `Restarted Antigravity${data.path ? `: ${data.path}` : ""}`,
+      });
     } catch (error) {
       setRestartMessage({ type: "error", text: error.message });
     } finally {
-      setRestarting(false);
+      if (isNewInstance) setLaunchingNew(false);
+      else setRestarting(false);
     }
   };
 
@@ -272,7 +283,7 @@ export default function MitmToolCard({
       setRestartMessage({ type: "error", text: "Antigravity path is required" });
       return;
     }
-    restartAntigravity(path);
+    launchAntigravity({ path, mode: restartPathAction });
   };
 
   const injectAuthKey = async () => {
@@ -533,8 +544,8 @@ export default function MitmToolCard({
                 )}
                 {canRestartAntigravity && (
                   <button
-                    onClick={() => restartAntigravity()}
-                    disabled={restarting}
+                    onClick={() => launchAntigravity({ mode: "restart" })}
+                    disabled={restarting || launchingNew}
                     className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-border bg-surface px-4 py-2 text-xs font-medium text-text-main transition-colors hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:py-1.5"
                     title="Restart Antigravity"
                   >
@@ -542,6 +553,19 @@ export default function MitmToolCard({
                       {restarting ? "progress_activity" : "restart_alt"}
                     </span>
                     Restart Antigravity
+                  </button>
+                )}
+                {canRestartAntigravity && (
+                  <button
+                    onClick={() => launchAntigravity({ mode: "new" })}
+                    disabled={restarting || launchingNew}
+                    className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-4 py-2 text-xs font-medium text-primary transition-colors hover:bg-primary/20 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:py-1.5"
+                    title="Open a new Antigravity window with MITM enabled"
+                  >
+                    <span className={`material-symbols-outlined text-[16px] ${launchingNew ? "animate-spin" : ""}`}>
+                      {launchingNew ? "progress_activity" : "add_circle"}
+                    </span>
+                    Open New Antigravity
                   </button>
                 )}
                 {canRestartAntigravity && (
@@ -660,7 +684,7 @@ export default function MitmToolCard({
           <Input
             value={restartPath}
             onChange={(e) => setRestartPath(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter" && !restarting) handleConfirmRestartPath(); }}
+            onKeyDown={(e) => { if (e.key === "Enter" && !restarting && !launchingNew) handleConfirmRestartPath(); }}
             placeholder="/Applications/Antigravity.app"
           />
           {restartMessage && (
@@ -674,7 +698,7 @@ export default function MitmToolCard({
               variant="ghost"
               size="sm"
               onClick={() => { setShowRestartPathModal(false); setRestartPath(""); }}
-              disabled={restarting}
+              disabled={restarting || launchingNew}
             >
               Cancel
             </Button>
@@ -682,9 +706,9 @@ export default function MitmToolCard({
               variant="primary"
               size="sm"
               onClick={handleConfirmRestartPath}
-              loading={restarting}
+              loading={restarting || launchingNew}
             >
-              Restart
+              {restartPathAction === "new" ? "Open New" : "Restart"}
             </Button>
           </div>
         </div>

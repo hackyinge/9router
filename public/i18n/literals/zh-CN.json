@@ -822,5 +822,9 @@
   "Your Kiro account via": "您的 Kiro 帐户通过",
   "Your organization's AWS IAM Identity Center URL": "您组织的 AWS IAM Identity Center URL",
   "Your requests start from your favorite tools — Cursor, Claude, Copilot, or any OpenAI-compatible SDK.": "请求从您常用的工具发起——Cursor、Claude、Copilot 或任何 OpenAI 兼容的 SDK。",
-  "关注UI": "关注UI"
+  "关注UI": "关注UI",
+  "Open New Antigravity": "新开 Antigravity",
+  "Open a new Antigravity window with MITM enabled": "新开一个启用 MITM 的 Antigravity 窗口",
+  "Opened new Antigravity": "已新开 Antigravity",
+  "Open New": "新开"
 }

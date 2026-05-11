@@ -199,5 +199,9 @@
   "Warning": "אזהרה",
   "When ON, dashboard requires password. When OFF, access without login.": "כאשר כבוי, לוח הבקרה דורש סיסמה. כאשר מכובה, גישה ללא כניסה.",
   "Yes": "כן",
-  "关注UI": "Focus UI"
+  "关注UI": "Focus UI",
+  "Open New Antigravity": "Open New Antigravity",
+  "Open a new Antigravity window with MITM enabled": "Open a new Antigravity window with MITM enabled",
+  "Opened new Antigravity": "Opened new Antigravity",
+  "Open New": "Open New"
 }

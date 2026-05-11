@@ -199,5 +199,9 @@
   "Warning": "Babala",
   "When ON, dashboard requires password. When OFF, access without login.": "Kapag ON, ang dashboard ay nangangailangan ng password. Kapag OFF, access nang walang login.",
   "Yes": "Oo",
-  "关注UI": "Focus UI"
+  "关注UI": "Focus UI",
+  "Open New Antigravity": "Open New Antigravity",
+  "Open a new Antigravity window with MITM enabled": "Open a new Antigravity window with MITM enabled",
+  "Opened new Antigravity": "Opened new Antigravity",
+  "Open New": "Open New"
 }

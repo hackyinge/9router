@@ -7,6 +7,10 @@ const { promisify } = require("util");
 const { execSync } = require("child_process");
 const { log, err, dumpRequest, createResponseDumper } = require("./logger");
 const { TARGET_HOSTS, URL_PATTERNS, MODEL_SYNONYMS, getToolForHost } = require("./config");
+const {
+  createLocalAntigravityLoadCodeAssistPayload,
+  createLocalAntigravityOnboardUserPayload,
+} = require("./antigravityBootstrap");
 const { buildAntigravityAvailableModelsResponse } = require("./antigravityModels");
 const { DATA_DIR, MITM_DIR } = require("./paths");
 const { getCertForDomain } = require("./cert/generate");
@@ -184,38 +188,13 @@ function handleLocalAntigravityBootstrap(req, res) {
   if (!localAuthBootstrap) return false;
 
   if (req.url.includes(":loadCodeAssist")) {
-    respondJson(res, 200, {
-      cloudaicompanionProject: "local-openrouterx",
-      allowedTiers: [
-        {
-          id: "standard-tier",
-          name: "OpenrouterX Local",
-          description: "Local MITM bootstrap tier",
-          isDefault: true,
-        },
-      ],
-      currentTier: {
-        id: "standard-tier",
-        name: "OpenrouterX Local",
-      },
-      userTier: {
-        id: "standard-tier",
-        name: "OpenrouterX Local",
-      },
-      tosAccepted: true,
-      done: true,
-    });
+    respondJson(res, 200, createLocalAntigravityLoadCodeAssistPayload());
     log("🧩 bootstrap | antigravity | local loadCodeAssist");
     return true;
   }
 
   if (req.url.includes(":onboardUser")) {
-    respondJson(res, 200, {
-      done: true,
-      response: {
-        cloudaicompanionProject: "local-openrouterx",
-      },
-    });
+    respondJson(res, 200, createLocalAntigravityOnboardUserPayload());
     log("🧩 bootstrap | antigravity | local onboardUser");
     return true;
   }

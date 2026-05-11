@@ -252,5 +252,9 @@
   "When ON, dashboard requires password. When OFF, access without login.": "打開時，儀表板需要密碼。關閉時，無需登錄即可訪問。",
   "Wi-Fi status": "Wi-Fi 狀態",
   "Yes": "是",
-  "关注UI": "關注UI"
+  "关注UI": "關注UI",
+  "Open New Antigravity": "新開 Antigravity",
+  "Open a new Antigravity window with MITM enabled": "新開一個啟用 MITM 的 Antigravity 視窗",
+  "Opened new Antigravity": "已新開 Antigravity",
+  "Open New": "新開"
 }

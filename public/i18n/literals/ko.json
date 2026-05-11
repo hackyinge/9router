@@ -199,5 +199,9 @@
   "Warning": "경고",
   "When ON, dashboard requires password. When OFF, access without login.": "ON일 때 대시보드에서 암호가 필요합니다. OFF일 때 로그인 없이 접근할 수 있습니다.",
   "Yes": "예",
-  "关注UI": "포커스 UI"
+  "关注UI": "포커스 UI",
+  "Open New Antigravity": "새 Antigravity 열기",
+  "Open a new Antigravity window with MITM enabled": "MITM이 활성화된 새 Antigravity 창 열기",
+  "Opened new Antigravity": "새 Antigravity를 열었습니다",
+  "Open New": "새로 열기"
 }

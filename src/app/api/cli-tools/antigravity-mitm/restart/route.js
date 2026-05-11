@@ -5,6 +5,13 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { NextResponse } from "next/server";
+import {
+  buildAntigravityLaunchArgs,
+  createAntigravityInstanceId,
+  getAntigravityStateDbPath,
+  getDefaultAntigravityUserDataDir,
+  getNewAntigravityUserDataDir,
+} from "../launchHelpers.js";
 
 const execFileAsync = promisify(execFile);
 const ANTIGRAVITY_NAME_RE = /antigravity/i;
@@ -218,16 +225,64 @@ async function getMacAppExecutable(appPath) {
   return path.join(appPath, "Contents", "MacOS", "Electron");
 }
 
-async function launchAntigravity(appPath) {
+async function copyStateDbFamily(sourceDbPath, targetDbPath) {
+  const sourceDir = path.dirname(sourceDbPath);
+  const targetDir = path.dirname(targetDbPath);
+  const baseName = path.basename(sourceDbPath);
+  let copied = false;
+
+  await fs.mkdir(targetDir, { recursive: true });
+
+  let entries = [];
+  try {
+    entries = await fs.readdir(sourceDir);
+  } catch {
+    return { copiedState: false, sourceDbPath, targetDbPath };
+  }
+
+  for (const entry of entries) {
+    if (entry !== baseName && !entry.startsWith(`${baseName}-`)) continue;
+    const source = path.join(sourceDir, entry);
+    const target = path.join(targetDir, entry);
+    try {
+      await fs.copyFile(source, target);
+      copied = true;
+    } catch {
+      // A live SQLite sidecar can disappear between readdir and copy; the main
+      // state DB copy is enough for freshly injected Antigravity auth.
+    }
+  }
+
+  return { copiedState: copied, sourceDbPath, targetDbPath };
+}
+
+async function prepareNewAntigravityInstanceProfile() {
+  const home = os.homedir();
+  const userDataDir = getNewAntigravityUserDataDir(home, createAntigravityInstanceId());
+  const sourceDbPath = getAntigravityStateDbPath(getDefaultAntigravityUserDataDir(home));
+  const targetDbPath = getAntigravityStateDbPath(userDataDir);
+  const copyResult = await copyStateDbFamily(sourceDbPath, targetDbPath);
+
+  return {
+    userDataDir,
+    ...copyResult,
+  };
+}
+
+async function launchAntigravity(appPath, { mode = "restart", userDataDir = "" } = {}) {
   const env = buildAntigravityLaunchEnv();
+  const launchArgs = buildAntigravityLaunchArgs({ mode, userDataDir });
 
   if (process.platform === "darwin") {
     const executable = await getMacAppExecutable(appPath);
     if (!await pathExists(executable)) {
-      await execFileAsync("/usr/bin/open", [appPath], { env });
+      const openArgs = mode === "new"
+        ? ["-n", appPath, "--args", ...launchArgs]
+        : [appPath];
+      await execFileAsync("/usr/bin/open", openArgs, { env });
       return;
     }
-    const child = spawn(executable, [], {
+    const child = spawn(executable, launchArgs, {
       cwd: os.homedir(),
       detached: true,
       env,
@@ -237,7 +292,7 @@ async function launchAntigravity(appPath) {
     return;
   }
 
-  const child = spawn(appPath, [], {
+  const child = spawn(appPath, launchArgs, {
     detached: true,
     env,
     stdio: "ignore",
@@ -262,6 +317,7 @@ export async function POST(request) {
   try {
     const body = await request.json().catch(() => ({}));
     const manualPath = normalizePath(body.path);
+    const mode = body.mode === "new" ? "new" : "restart";
     const installations = manualPath ? [manualPath] : await scanAntigravityInstallations();
     const appPath = installations[0];
 
@@ -287,13 +343,23 @@ export async function POST(request) {
       );
     }
 
-    await quitAntigravity();
-    await new Promise((resolve) => setTimeout(resolve, 900));
-    await launchAntigravity(appPath);
+    let instanceProfile = null;
+    if (mode === "restart") {
+      await quitAntigravity();
+      await new Promise((resolve) => setTimeout(resolve, 900));
+    } else {
+      instanceProfile = await prepareNewAntigravityInstanceProfile();
+    }
+
+    await launchAntigravity(appPath, { mode, userDataDir: instanceProfile?.userDataDir || "" });
 
     return NextResponse.json({
       success: true,
+      mode,
+      newInstance: mode === "new",
       path: appPath,
+      userDataDir: instanceProfile?.userDataDir || null,
+      copiedState: instanceProfile?.copiedState ?? null,
       scanned: !manualPath,
       installations,
     });

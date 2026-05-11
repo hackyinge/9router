@@ -199,5 +199,9 @@
   "Warning": "警告",
   "When ON, dashboard requires password. When OFF, access without login.": "ON の場合、ダッシュボードはパスワードが必要です。OFF の場合、ログインなしでアクセスできます。",
   "Yes": "はい",
-  "关注UI": "フォーカスUI"
+  "关注UI": "フォーカスUI",
+  "Open New Antigravity": "新しい Antigravity を開く",
+  "Open a new Antigravity window with MITM enabled": "MITM が有効な新しい Antigravity ウィンドウを開く",
+  "Opened new Antigravity": "新しい Antigravity を開きました",
+  "Open New": "新規で開く"
 }

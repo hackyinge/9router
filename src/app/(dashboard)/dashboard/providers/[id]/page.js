@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import { Card, Button, Badge, Input, Modal, CardSkeleton, OAuthModal, KiroOAuthWrapper, CursorAuthModal, IFlowCookieModal, GitLabAuthModal, Toggle, Select, EditConnectionModal, NoAuthProxyCard } from "@/shared/components";
-import { OAUTH_PROVIDERS, APIKEY_PROVIDERS, FREE_PROVIDERS, FREE_TIER_PROVIDERS, WEB_COOKIE_PROVIDERS, getProviderAlias, isOpenAICompatibleProvider, isAnthropicCompatibleProvider, AI_PROVIDERS, THINKING_CONFIG } from "@/shared/constants/providers";
+import { OAUTH_PROVIDERS, APIKEY_PROVIDERS, FREE_PROVIDERS, FREE_TIER_PROVIDERS, WEB_COOKIE_PROVIDERS, getProviderAlias, isOpenAICompatibleProvider, isAnthropicCompatibleProvider, AI_PROVIDERS } from "@/shared/constants/providers";
 import { getModelsByProviderId } from "@/shared/constants/models";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { fetchSuggestedModels } from "@/shared/utils/providerModelsFetcher";
@@ -72,13 +72,21 @@ export default function ProviderDetailPage() {
   const isOpenAICompatible = isOpenAICompatibleProvider(providerId);
   const isAnthropicCompatible = isAnthropicCompatibleProvider(providerId);
   const isCompatible = isOpenAICompatible || isAnthropicCompatible;
-  const thinkingConfig = AI_PROVIDERS[providerId]?.thinkingConfig || THINKING_CONFIG.extended;
+  const thinkingConfig = AI_PROVIDERS[providerId]?.thinkingConfig || null;
   
   const providerStorageAlias = isCompatible ? providerId : providerAlias;
   const providerDisplayAlias = isCompatible
     ? (providerNode?.prefix || providerId)
     : providerAlias;
   const hideProviderPrefixInModelLabel = providerId === "codex";
+  const thinkingOptions = (thinkingConfig?.options || []).map((option) => ({
+    value: option,
+    label: option === "auto"
+      ? (providerId === "codex" ? "Auto (Low)" : "Auto")
+      : option === "xhigh"
+        ? "XHigh"
+        : option.charAt(0).toUpperCase() + option.slice(1),
+  }));
 
   const fetchDisabledModels = useCallback(async () => {
     try {
@@ -992,21 +1000,31 @@ export default function ProviderDetailPage() {
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="text-lg font-semibold">Connections</h2>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
-              {/* Thinking config */}
-              {/* {thinkingConfig && (
+              {thinkingConfig && (
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-text-muted font-medium">Thinking</span>
-                  <select
-                    value={thinkingMode}
-                    onChange={(e) => handleThinkingModeChange(e.target.value)}
-                    className="text-xs px-2 py-1 border border-border rounded-md bg-background focus:outline-none focus:border-primary"
-                  >
-                    {thinkingConfig.options.map((opt) => (
-                      <option key={opt} value={opt}>{opt.charAt(0).toUpperCase() + opt.slice(1)}</option>
-                    ))}
-                  </select>
+                  <label htmlFor="provider-default-reasoning" className="text-xs font-medium text-text-muted whitespace-nowrap">
+                    Default Reasoning
+                  </label>
+                  <div className="relative">
+                    <select
+                      id="provider-default-reasoning"
+                      value={thinkingMode}
+                      onChange={(e) => handleThinkingModeChange(e.target.value)}
+                      disabled={loading}
+                      className="h-6 w-24 appearance-none rounded-full border border-border/60 bg-surface-2 pl-3 pr-7 text-xs font-medium text-text-main transition-colors focus:border-primary/50 focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {thinkingOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                    <span className="material-symbols-outlined pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[16px] text-text-muted">
+                      expand_more
+                    </span>
+                  </div>
                 </div>
-              )} */}
+              )}
               {/* Round Robin toggle */}
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-xs text-text-muted font-medium">Round Robin</span>

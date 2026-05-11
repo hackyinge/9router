@@ -199,5 +199,9 @@
   "Warning": "Προειδοποίηση",
   "When ON, dashboard requires password. When OFF, access without login.": "Όταν είναι ΕΝ, ο πίνακας ελέγχου απαιτεί κωδικό πρόσβασης. Όταν είναι ΑΠΕΝΕΡΓΟΠΟΙΗΜΕΝΟ, πρόσβαση χωρίς σύνδεση.",
   "Yes": "Ναι",
-  "关注UI": "Focus UI"
+  "关注UI": "Focus UI",
+  "Open New Antigravity": "Open New Antigravity",
+  "Open a new Antigravity window with MITM enabled": "Open a new Antigravity window with MITM enabled",
+  "Opened new Antigravity": "Opened new Antigravity",
+  "Open New": "Open New"
 }

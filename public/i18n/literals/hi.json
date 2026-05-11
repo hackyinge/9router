@@ -199,5 +199,9 @@
   "Warning": "चेतावनी",
   "When ON, dashboard requires password. When OFF, access without login.": "चालू होने पर, डैशबोर्ड को पासवर्ड की आवश्यकता होती है। बंद होने पर, लॉगिन के बिना एक्सेस करें।",
   "Yes": "हां",
-  "关注UI": "Focus UI"
+  "关注UI": "Focus UI",
+  "Open New Antigravity": "Open New Antigravity",
+  "Open a new Antigravity window with MITM enabled": "Open a new Antigravity window with MITM enabled",
+  "Opened new Antigravity": "Opened new Antigravity",
+  "Open New": "Open New"
 }
