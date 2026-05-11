@@ -110,6 +110,13 @@ const getPageInfo = (pathname) => {
       icon: "security",
       breadcrumbs: [],
     };
+  if (pathname.includes("/focus-ui"))
+    return {
+      title: "关注UI",
+      description: "Monitor MITM status, quota, and realtime logs in one place",
+      icon: "visibility",
+      breadcrumbs: [],
+    };
   if (pathname.includes("/cli-tools"))
     return {
       title: "CLI Tools",

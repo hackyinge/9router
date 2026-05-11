@@ -18,7 +18,15 @@ const REFRESH_INTERVAL_MS = 60000; // 60 seconds
 const DEPLETED_QUOTA_THRESHOLD = 5; // percent
 const AUTO_REFRESH_STORAGE_KEY = "quotaAutoRefresh";
 
-export default function ProviderLimits({ readOnly = false }) {
+export default function ProviderLimits({
+  readOnly = false,
+  embedded = false,
+  gridClassName = "grid grid-cols-1 md:grid-cols-2 gap-3",
+  title = "Provider Limits",
+  activeFirst = false,
+  maxRows = null,
+  maxColumns = 4,
+}) {
   const [connections, setConnections] = useState([]);
   const [quotaData, setQuotaData] = useState({});
   const [loading, setLoading] = useState({});
@@ -368,6 +376,11 @@ export default function ProviderLimits({ readOnly = false }) {
   // Sort providers by USAGE_SUPPORTED_PROVIDERS order, then alphabetically.
   // Optionally surface accounts with quotas expiring soonest first.
   const sortedConnections = [...providerFilteredConnections].sort((a, b) => {
+    if (activeFirst) {
+      const activeA = a.isActive === false ? 1 : 0;
+      const activeB = b.isActive === false ? 1 : 0;
+      if (activeA !== activeB) return activeA - activeB;
+    }
     if (expiringFirst) {
       const expiryDiff = getEarliestResetTime(a) - getEarliestResetTime(b);
       if (expiryDiff !== 0) return expiryDiff;
@@ -377,6 +390,12 @@ export default function ProviderLimits({ readOnly = false }) {
     if (orderA !== orderB) return orderA - orderB;
     return a.provider.localeCompare(b.provider);
   });
+  const maxVisibleItems = Number.isFinite(maxRows) && maxRows > 0
+    ? Math.floor(maxRows) * Math.max(1, Math.floor(maxColumns || 1))
+    : null;
+  const visibleConnections = maxVisibleItems
+    ? sortedConnections.slice(0, maxVisibleItems)
+    : sortedConnections;
 
   // Connection is depleted when any quota entry hit the threshold
   const isConnectionDepleted = (conn) => {
@@ -470,12 +489,12 @@ export default function ProviderLimits({ readOnly = false }) {
   }
 
   return (
-    <div className="space-y-6">
+    <div className={embedded ? "space-y-4" : "space-y-6"}>
       {/* Header Controls */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">
           <h2 className="text-xl font-semibold text-text-primary">
-            Provider Limits
+            {title}
           </h2>
         </div>
 
@@ -618,8 +637,8 @@ export default function ProviderLimits({ readOnly = false }) {
       </div>
 
       {/* Provider cards: 2 columns, compact */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {sortedConnections.map((conn) => {
+      <div className={gridClassName}>
+        {visibleConnections.map((conn) => {
           const quota = quotaData[conn.id];
           const isLoading = loading[conn.id];
           const error = errors[conn.id];

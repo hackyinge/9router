@@ -28,7 +28,8 @@ const ALWAYS_PROTECTED = [
   "/api/settings/database",
 ];
 
-// Require auth, but allow through if requireLogin is disabled
+// Require auth for sensitive dashboard APIs. The dashboard no longer exposes
+// authenticated surfaces just because the password toggle is disabled.
 const PROTECTED_API_PATHS = [
   "/api/settings",
   "/api/keys",
@@ -57,10 +58,7 @@ async function loadSettings() {
 }
 
 async function isAuthenticated(request) {
-  if (await hasValidToken(request)) return true;
-  const settings = await loadSettings();
-  if (settings && settings.requireLogin === false) return true;
-  return false;
+  return hasValidToken(request);
 }
 
 /**
@@ -98,13 +96,11 @@ export async function proxy(request) {
 
   // Protect all dashboard routes
   if (pathname.startsWith("/dashboard")) {
-    let requireLogin = true;
     let tunnelDashboardAccess = true;
 
     try {
       const settings = await loadSettings();
       if (settings) {
-        requireLogin = settings.requireLogin !== false;
         tunnelDashboardAccess = settings.tunnelDashboardAccess === true;
 
         // Block tunnel/tailscale access if disabled (redirect to login)
@@ -120,9 +116,6 @@ export async function proxy(request) {
     } catch {
       // On error, keep defaults (require login, block tunnel)
     }
-
-    // If login not required, allow through
-    if (!requireLogin) return NextResponse.next();
 
     // Verify JWT token and extract payload
     const token = request.cookies.get("auth_token")?.value;

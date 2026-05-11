@@ -1,6 +1,6 @@
 {
   "name": "9router-app",
-  "version": "0.4.26",
+  "version": "0.4.27",
   "description": "OpenrouterX web dashboard",
   "private": true,
   "scripts": {

@@ -25,6 +25,7 @@ const navItems = [
   { href: "/dashboard/usage", label: "Usage", icon: "bar_chart" },
   { href: "/dashboard/quota", label: "Quota Tracker", icon: "data_usage" },
   { href: "/dashboard/mitm", label: "MITM", icon: "security" },
+  { href: "/dashboard/focus-ui", label: "关注UI", icon: "visibility" },
   { href: "/dashboard/cli-tools", label: "CLI Tools", icon: "terminal" },
 ];
 
@@ -47,7 +48,7 @@ export default function Sidebar({ onClose }) {
   const visibleNavItems = isSuperAdmin ? navItems : navItems.filter(item => {
     if (item.href === "/dashboard/usage") return canViewUsage;
     // Super-admin pages hidden for sub-users
-    if (["/dashboard/providers", "/dashboard/combos", "/dashboard/mitm", "/dashboard/cli-tools", "/dashboard/proxy-pools", "/dashboard/quota", "/dashboard/network-analysis"].includes(item.href)) return false;
+    if (["/dashboard/providers", "/dashboard/combos", "/dashboard/mitm", "/dashboard/focus-ui", "/dashboard/cli-tools", "/dashboard/proxy-pools", "/dashboard/quota", "/dashboard/network-analysis"].includes(item.href)) return false;
     return true;
   });
 
