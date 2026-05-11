@@ -16,6 +16,7 @@ import ConnectionRow from "./ConnectionRow";
 import AddApiKeyModal from "./AddApiKeyModal";
 import EditCompatibleNodeModal from "./EditCompatibleNodeModal";
 import AddCustomModelModal from "./AddCustomModelModal";
+import CodexBatchImportModal from "./CodexBatchImportModal";
 
 export default function ProviderDetailPage() {
   const params = useParams();
@@ -27,6 +28,9 @@ export default function ProviderDetailPage() {
   const [proxyPools, setProxyPools] = useState([]);
   const [showOAuthModal, setShowOAuthModal] = useState(false);
   const [showIFlowCookieModal, setShowIFlowCookieModal] = useState(false);
+  const [showCodexBatchImportModal, setShowCodexBatchImportModal] = useState(false);
+  const [refreshingCodexTokens, setRefreshingCodexTokens] = useState(false);
+  const [codexRefreshResult, setCodexRefreshResult] = useState(null);
   const [showAddApiKeyModal, setShowAddApiKeyModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showEditNodeModal, setShowEditNodeModal] = useState(false);
@@ -357,6 +361,29 @@ export default function ProviderDetailPage() {
   const handleOAuthSuccess = () => {
     fetchConnections();
     setShowOAuthModal(false);
+  };
+
+  const handleRefreshAllCodexTokens = async () => {
+    if (refreshingCodexTokens) return;
+    setRefreshingCodexTokens(true);
+    setCodexRefreshResult(null);
+    try {
+      const res = await fetch("/api/oauth/codex/refresh-all", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json();
+      if (!res.ok && !data?.refreshed?.length) {
+        throw new Error(data.error || "Failed to refresh Codex tokens");
+      }
+      setCodexRefreshResult(data);
+      await fetchConnections();
+    } catch (error) {
+      setCodexRefreshResult({ error: error.message, refreshed: [], failed: [], skipped: [] });
+    } finally {
+      setRefreshingCodexTokens(false);
+    }
   };
 
   const handleIFlowCookieSuccess = () => {
@@ -1022,6 +1049,16 @@ export default function ProviderDetailPage() {
                   <Button size="sm" icon="add" onClick={() => isOAuth ? setShowOAuthModal(true) : setShowAddApiKeyModal(true)}>
                     {providerId === "iflow" ? "OAuth" : "Add Connection"}
                   </Button>
+                  {providerId === "codex" && (
+                    <Button size="sm" icon="upload_file" variant="secondary" onClick={() => setShowCodexBatchImportModal(true)}>
+                      Batch Import
+                    </Button>
+                  )}
+                  {providerId === "codex" && (
+                    <Button size="sm" icon="sync" variant="secondary" onClick={handleRefreshAllCodexTokens} loading={refreshingCodexTokens}>
+                      Refresh Tokens
+                    </Button>
+                  )}
                 </div>
               )}
             </div>
@@ -1050,9 +1087,43 @@ export default function ProviderDetailPage() {
                   >
                     Add
                   </Button>
+                  {providerId === "codex" && (
+                    <Button
+                      size="sm"
+                      icon="upload_file"
+                      variant="secondary"
+                      onClick={() => setShowCodexBatchImportModal(true)}
+                      className="w-full sm:w-auto"
+                    >
+                      Batch Import
+                    </Button>
+                  )}
+                  {providerId === "codex" && (
+                    <Button
+                      size="sm"
+                      icon="sync"
+                      variant="secondary"
+                      onClick={handleRefreshAllCodexTokens}
+                      loading={refreshingCodexTokens}
+                      className="w-full sm:w-auto"
+                    >
+                      Refresh Tokens
+                    </Button>
+                  )}
                 </div>
               )}
             </>
+          )}
+          {providerId === "codex" && codexRefreshResult && (
+            <div className={`mt-4 rounded-lg border px-3 py-2 text-sm ${
+              codexRefreshResult.error
+                ? "border-red-500/30 bg-red-500/10 text-red-600"
+                : "border-green-500/30 bg-green-500/10 text-green-700 dark:text-green-300"
+            }`}>
+              {codexRefreshResult.error
+                ? codexRefreshResult.error
+                : `Token refresh complete: ${codexRefreshResult.refreshed?.length || 0} refreshed, ${codexRefreshResult.failed?.length || 0} failed, ${codexRefreshResult.skipped?.length || 0} skipped.`}
+            </div>
           )}
         </Card>
       )}
@@ -1128,6 +1199,13 @@ export default function ProviderDetailPage() {
           isOpen={showIFlowCookieModal}
           onSuccess={handleIFlowCookieSuccess}
           onClose={() => setShowIFlowCookieModal(false)}
+        />
+      )}
+      {providerId === "codex" && (
+        <CodexBatchImportModal
+          isOpen={showCodexBatchImportModal}
+          onSuccess={fetchConnections}
+          onClose={() => setShowCodexBatchImportModal(false)}
         />
       )}
       <AddApiKeyModal

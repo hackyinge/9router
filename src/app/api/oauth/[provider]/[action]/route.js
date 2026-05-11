@@ -6,7 +6,10 @@ import {
   requestDeviceCode, 
   pollForToken 
 } from "@/lib/oauth/providers";
-import { createProviderConnection } from "@/models";
+import { createProviderConnection, getProviderConnections, updateProviderConnection } from "@/models";
+import { collectCodexImportRecords } from "@/lib/oauth/codexImport";
+import { refreshCodexConnections } from "@/lib/oauth/codexTokenRefresh";
+import { refreshCodexToken } from "@/sse/services/tokenRefresh";
 import {
   startCodexProxy,
   stopCodexProxy,
@@ -141,26 +144,28 @@ export async function POST(request, { params }) {
         return NextResponse.json({ error: "Import session only supported for codex" }, { status: 400 });
       }
 
-      const { accessToken, sessionToken, user, account, expires } = body;
-      
-      if (!accessToken || !sessionToken) {
-        return NextResponse.json({ error: "Missing accessToken or sessionToken" }, { status: 400 });
+      const { records, skipped } = collectCodexImportRecords({
+        filename: body.filename || "pasted JSON",
+        data: body,
+      });
+      const record = records[0];
+
+      if (!record) {
+        return NextResponse.json({ error: skipped[0]?.reason || "Missing supported Codex credentials" }, { status: 400 });
       }
 
       // Save to database
       const connection = await createProviderConnection({
         provider: "codex",
         authType: "oauth",
-        accessToken,
-        refreshToken: sessionToken,
-        expiresAt: expires || null,
-        email: user?.email,
-        displayName: user?.name,
-        providerSpecificData: {
-          chatgptAccountId: account?.id,
-          chatgptPlanType: account?.planType,
-          authMethod: "imported_session"
-        },
+        name: record.name,
+        accessToken: record.accessToken,
+        refreshToken: record.refreshToken,
+        expiresAt: record.expiresAt,
+        email: record.email,
+        displayName: record.displayName,
+        priority: record.priority,
+        providerSpecificData: record.providerSpecificData,
         testStatus: "active",
       });
 
@@ -173,6 +178,80 @@ export async function POST(request, { params }) {
           displayName: connection.displayName,
         }
       });
+    }
+
+    if (action === "import-batch") {
+      if (provider !== "codex") {
+        return NextResponse.json({ error: "Batch import only supported for codex" }, { status: 400 });
+      }
+
+      const items = Array.isArray(body.items)
+        ? body.items
+        : [{ filename: body.filename || "pasted JSON", jsonText: body.jsonText ?? JSON.stringify(body) }];
+      const { records, skipped } = collectCodexImportRecords(items);
+
+      if (records.length === 0) {
+        return NextResponse.json({
+          error: skipped[0]?.reason || "No supported Codex credentials found",
+          imported: [],
+          skipped,
+        }, { status: 400 });
+      }
+
+      const imported = [];
+      const failed = [];
+      for (const record of records) {
+        try {
+          const connection = await createProviderConnection({
+            provider: "codex",
+            authType: "oauth",
+            name: record.name,
+            accessToken: record.accessToken,
+            refreshToken: record.refreshToken,
+            expiresAt: record.expiresAt,
+            email: record.email,
+            displayName: record.displayName,
+            priority: record.priority,
+            providerSpecificData: record.providerSpecificData,
+            testStatus: "active",
+          });
+          imported.push({
+            id: connection.id,
+            provider: connection.provider,
+            email: connection.email,
+            displayName: connection.displayName,
+            name: connection.name,
+            sourceFormat: record.sourceFormat,
+            sourceFilename: record.providerSpecificData?.sourceFilename,
+          });
+        } catch (error) {
+          failed.push({
+            filename: record.providerSpecificData?.sourceFilename || "pasted JSON",
+            reason: error.message || "Failed to import account",
+          });
+        }
+      }
+
+      return NextResponse.json({
+        success: imported.length > 0,
+        imported,
+        skipped: [...skipped, ...failed],
+        detectedCount: records.length,
+      }, { status: imported.length > 0 ? 200 : 400 });
+    }
+
+    if (action === "refresh-all") {
+      if (provider !== "codex") {
+        return NextResponse.json({ error: "Refresh all only supported for codex" }, { status: 400 });
+      }
+
+      const connections = await getProviderConnections({ provider: "codex" });
+      const result = await refreshCodexConnections(connections, {
+        refreshToken: (refreshToken) => refreshCodexToken(refreshToken),
+        updateConnection: (id, updates) => updateProviderConnection(id, updates),
+      });
+
+      return NextResponse.json(result, { status: result.refreshed.length > 0 ? 200 : 400 });
     }
 
     if (action === "exchange") {
