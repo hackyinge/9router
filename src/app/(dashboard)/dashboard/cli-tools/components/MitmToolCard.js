@@ -456,7 +456,7 @@ export default function MitmToolCard({
             )}
             {/* Info */}
             <div className="flex flex-col gap-0.5 text-[11px] text-text-muted px-1">
-              <p>Toggle DNS to redirect {tool.name} traffic through OpenRouterX via MITM.</p>
+              <p>Toggle DNS to redirect {tool.name} traffic through OpenrouterX via MITM.</p>
               {!dnsActive && (
                 <p className="text-amber-600 text-[10px] mt-1">
                   ⚠️ DNS off: mappings are saved locally and will apply after DNS is enabled

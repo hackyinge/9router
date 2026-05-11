@@ -189,18 +189,18 @@ function handleLocalAntigravityBootstrap(req, res) {
       allowedTiers: [
         {
           id: "standard-tier",
-          name: "OpenRouterX Local",
+          name: "OpenrouterX Local",
           description: "Local MITM bootstrap tier",
           isDefault: true,
         },
       ],
       currentTier: {
         id: "standard-tier",
-        name: "OpenRouterX Local",
+        name: "OpenrouterX Local",
       },
       userTier: {
         id: "standard-tier",
-        name: "OpenRouterX Local",
+        name: "OpenrouterX Local",
       },
       tosAccepted: true,
       done: true,
@@ -384,7 +384,7 @@ const server = https.createServer(sslOptions, async (req, res) => {
     const bodyBuffer = await collectBodyRaw(req);
     if (ENABLE_FILE_LOG && shouldDumpRequest(req)) dumpRequest(req, bodyBuffer, "raw");
 
-    // Anti-loop: skip requests from 9Router
+    // Anti-loop: skip requests from OpenrouterX
     if (req.headers[INTERNAL_REQUEST_HEADER.name] === INTERNAL_REQUEST_HEADER.value) {
       return passthrough(req, res, bodyBuffer);
     }

@@ -56,7 +56,7 @@ const readSettings = async () => {
   }
 };
 
-// Check if settings has OpenRouterX config
+// Check if settings has OpenrouterX config
 const hasOpenRouterXConfig = (settings) => {
   if (!settings || !settings.models || !settings.models.providers) return false;
   return !!settings.models.providers[PROVIDER_KEY];
@@ -135,7 +135,7 @@ const writeAgentModels = async (agentDir, model, baseUrl, apiKey) => {
   await fs.writeFile(modelsPath, JSON.stringify(existing, null, 2));
 };
 
-// POST - Update OpenRouterX settings (merge with existing settings)
+// POST - Update OpenrouterX settings (merge with existing settings)
 export async function POST(request) {
   try {
     const { payload, response } = await requirePayload(request);
@@ -240,7 +240,7 @@ export async function POST(request) {
   }
 }
 
-// DELETE - Remove OpenRouterX settings only (keep other settings)
+// DELETE - Remove OpenrouterX settings only (keep other settings)
 export async function DELETE(request) {
   try {
     const { payload, response } = await requirePayload(request);
@@ -266,7 +266,7 @@ export async function DELETE(request) {
       throw error;
     }
 
-    // Remove OpenRouterX from models.providers
+    // Remove OpenrouterX from models.providers
     if (settings.models && settings.models.providers) {
       delete settings.models.providers[PROVIDER_KEY];
         
@@ -297,7 +297,7 @@ export async function DELETE(request) {
 
     return NextResponse.json({
       success: true,
-      message: "OpenRouterX settings removed successfully",
+      message: "OpenrouterX settings removed successfully",
     });
   } catch (error) {
     console.log("Error resetting openclaw settings:", error);

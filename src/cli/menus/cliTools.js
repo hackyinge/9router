@@ -277,7 +277,7 @@ async function buildDroidHeader() {
     ].join("\n");
   }
 
-  // Extract 9Router custom model config
+  // Extract OpenrouterX custom model config
   const custom = settings?.customModels?.find(m => m.id === "custom:9Router-0");
   const lines = [`Status:   ${COLORS.green}✓ Configured${COLORS.reset}`];
   if (custom?.baseUrl) lines.push(`Endpoint: ${COLORS.cyan}${custom.baseUrl}${COLORS.reset}`);
@@ -360,7 +360,7 @@ async function buildOpenClawHeader() {
     ].join("\n");
   }
 
-  // Extract 9Router provider config
+  // Extract OpenrouterX provider config
   const provider = settings?.models?.providers?.["9router"];
   const primary = settings?.agents?.defaults?.model?.primary || "";
   const model = primary.startsWith("9router/") ? primary.replace("9router/", "") : (provider?.models?.[0]?.id || "");
@@ -437,7 +437,7 @@ async function showCliToolsMenu(port, breadcrumb = []) {
   await showMenuWithBack({
     title: "🔧 CLI Tools",
     breadcrumb,
-    headerContent: `Configure CLI tools to use 9Router\nEndpoint: ${endpoint}`,
+    headerContent: `Configure CLI tools to use OpenrouterX\nEndpoint: ${endpoint}`,
     items: [
       {
         label: "Claude Code",

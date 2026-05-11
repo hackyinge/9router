@@ -188,12 +188,12 @@ export default function CodexToolCard({ tool, isExpanded, onToggle, baseUrl, api
     
     const effectiveSubagentModel = subagentModel || effectiveSelectedModel;
     
-    const configContent = `# OpenRouterX Configuration for Codex CLI
+    const configContent = `# OpenrouterX Configuration for Codex CLI
 model = "${effectiveSelectedModel}"
 model_provider = "openrouterx"
 
 [model_providers.openrouterx]
-name = "OpenRouterX"
+name = "OpenrouterX"
 base_url = "${getEffectiveBaseUrl()}"
 wire_api = "responses"
 
@@ -261,7 +261,7 @@ model = "${effectiveSubagentModel}"
                         ? (effectiveStatus.error === "Unauthorized"
                           ? "Please sign in first, then reopen this card to load Codex settings."
                           : effectiveStatus.error || "Unable to load Codex CLI status right now.")
-                        : "Manual configuration is still available if OpenRouterX is deployed on a remote server."}
+                        : "Manual configuration is still available if OpenrouterX is deployed on a remote server."}
                     </p>
                   </div>
                 </div>

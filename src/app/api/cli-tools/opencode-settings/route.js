@@ -95,7 +95,7 @@ export async function GET(request) {
   }
 }
 
-// POST - Apply OpenRouterX as openai-compatible provider (multi-model support)
+// POST - Apply OpenrouterX as openai-compatible provider (multi-model support)
 export async function POST(request) {
   try {
     const { payload, response } = await requirePayload(request);
@@ -228,7 +228,7 @@ export async function PATCH(request) {
   }
 }
 
-// DELETE - Remove OpenRouterX provider or specific models from config
+// DELETE - Remove OpenrouterX provider or specific models from config
 export async function DELETE(request) {
   try {
     const { payload, response } = await requirePayload(request);
@@ -283,7 +283,7 @@ export async function DELETE(request) {
 
     return NextResponse.json({
       success: true,
-      message: modelToRemove ? `Model "${modelToRemove}" removed` : "OpenRouterX settings removed from OpenCode",
+      message: modelToRemove ? `Model "${modelToRemove}" removed` : "OpenrouterX settings removed from OpenCode",
     });
   } catch (error) {
     console.log("Error resetting opencode settings:", error);

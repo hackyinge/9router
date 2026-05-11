@@ -106,7 +106,7 @@ const getPageInfo = (pathname) => {
   if (pathname.includes("/mitm"))
     return {
       title: "MITM Proxy",
-      description: "Intercept CLI tool traffic and route through 9Router",
+      description: "Intercept CLI tool traffic and route through OpenrouterX",
       icon: "security",
       breadcrumbs: [],
     };
@@ -124,10 +124,17 @@ const getPageInfo = (pathname) => {
       icon: "lan",
       breadcrumbs: [],
     };
+  if (pathname.includes("/network-analysis"))
+    return {
+      title: "Network Analysis",
+      description: "Diagnose local connectivity, proxy, DNS, and MITM network impact",
+      icon: "network_check",
+      breadcrumbs: [],
+    };
   if (pathname.includes("/skills"))
     return {
       title: "Agent Skills",
-      description: "Copy a link and paste to your AI to use 9Router — no install needed",
+      description: "Copy a link and paste to your AI to use OpenrouterX — no install needed",
       icon: "extension",
       breadcrumbs: [],
     };

@@ -77,7 +77,7 @@ export async function testProxyUrl({ proxyUrl, testUrl, timeoutMs } = {}) {
             dispatcher,
             signal: controller.signal,
             headers: {
-              "User-Agent": "OpenRouterX",
+              "User-Agent": "OpenrouterX",
             },
           });
 
@@ -120,7 +120,7 @@ async function fetchWithSocksAgent(targetUrl, { method, agent, signal }) {
       port: url.port || (url.protocol === "http:" ? 80 : 443),
       path: `${url.pathname}${url.search}`,
       method,
-      headers: { "User-Agent": "OpenRouterX" },
+      headers: { "User-Agent": "OpenrouterX" },
       agent,
     }, (res) => {
       res.resume();

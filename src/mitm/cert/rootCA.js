@@ -5,8 +5,8 @@ const { MITM_DIR } = require("../paths");
 
 const ROOT_CA_KEY_PATH = path.join(MITM_DIR, "rootCA.key");
 const ROOT_CA_CERT_PATH = path.join(MITM_DIR, "rootCA.crt");
-const ROOT_CA_CN = "OpenRouterX MITM Root CA";
-const ROOT_CA_ORG = "OpenRouterX";
+const ROOT_CA_CN = "OpenrouterX MITM Root CA";
+const ROOT_CA_ORG = "OpenrouterX";
 
 /**
  * Check if cert file is expired or expiring within 30 days
@@ -21,7 +21,7 @@ function isCertExpired(certPath) {
   }
 }
 
-function isOpenRouterXRootCA(certPath) {
+function isOpenrouterXRootCA(certPath) {
   try {
     const cert = forge.pki.certificateFromPem(fs.readFileSync(certPath, "utf8"));
     const cn = cert.subject.getField("CN")?.value;
@@ -38,7 +38,7 @@ function isOpenRouterXRootCA(certPath) {
  */
 async function generateRootCA() {
   const exists = fs.existsSync(ROOT_CA_KEY_PATH) && fs.existsSync(ROOT_CA_CERT_PATH);
-  if (exists && !isCertExpired(ROOT_CA_CERT_PATH) && isOpenRouterXRootCA(ROOT_CA_CERT_PATH)) {
+  if (exists && !isCertExpired(ROOT_CA_CERT_PATH) && isOpenrouterXRootCA(ROOT_CA_CERT_PATH)) {
     console.log("✅ Root CA already exists");
     return { key: ROOT_CA_KEY_PATH, cert: ROOT_CA_CERT_PATH };
   }

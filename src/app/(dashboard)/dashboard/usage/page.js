@@ -25,7 +25,7 @@ function UsageContent() {
   const router = useRouter();
 
   const [tabLoading, setTabLoading] = useState(false);
-  const [period, setPeriod] = useState("7d");
+  const [period, setPeriod] = useState("24h");
 
   const tabFromUrl = searchParams.get("tab");
   const activeTab = tabFromUrl && ["overview", "logs", "details"].includes(tabFromUrl)

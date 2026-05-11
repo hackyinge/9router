@@ -54,7 +54,7 @@ const readSettings = async () => {
   }
 };
 
-// Check if settings has OpenRouterX customModels
+// Check if settings has OpenrouterX customModels
 const hasOpenRouterXConfig = (settings) => {
   if (!settings || !settings.customModels) return false;
   return settings.customModels.some(m => m.id?.startsWith(CUSTOM_MODEL_PREFIX));
@@ -90,7 +90,7 @@ export async function GET(request) {
   }
 }
 
-// POST - Update OpenRouterX customModels (merge with existing settings)
+// POST - Update OpenrouterX customModels (merge with existing settings)
 // Accepts either `model` (string, legacy single-model) or `models` (array of strings, multi-model)
 // Also accepts `activeModel` to set which model is active/primary
 export async function POST(request) {
@@ -128,7 +128,7 @@ export async function POST(request) {
       settings.customModels = [];
     }
 
-    // Remove all existing OpenRouterX configs
+    // Remove all existing OpenrouterX configs
     settings.customModels = settings.customModels.filter(m => !m.id?.startsWith(CUSTOM_MODEL_PREFIX));
 
     // Normalize baseUrl to ensure /v1 suffix
@@ -188,7 +188,7 @@ export async function POST(request) {
   }
 }
 
-// DELETE - Remove OpenRouterX customModels only (keep other settings)
+// DELETE - Remove OpenrouterX customModels only (keep other settings)
 export async function DELETE(request) {
   try {
     const { payload, response } = await requirePayload(request);
@@ -214,7 +214,7 @@ export async function DELETE(request) {
       throw error;
     }
 
-    // Remove OpenRouterX customModels
+    // Remove OpenrouterX customModels
     if (settings.customModels) {
       settings.customModels = settings.customModels.filter(m => !m.id?.startsWith(CUSTOM_MODEL_PREFIX));
       
@@ -229,7 +229,7 @@ export async function DELETE(request) {
 
     return NextResponse.json({
       success: true,
-      message: "OpenRouterX settings removed successfully",
+      message: "OpenrouterX settings removed successfully",
     });
   } catch (error) {
     console.log("Error resetting droid settings:", error);

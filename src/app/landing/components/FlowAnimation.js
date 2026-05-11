@@ -79,7 +79,7 @@ export default function FlowAnimation() {
         ))}
       </div>
 
-      {/* SVG Lines from CLI to 9Router */}
+      {/* SVG Lines from CLI to OpenrouterX */}
       <svg
         className="absolute inset-0 w-full h-full z-10 pointer-events-none stroke-yellow-700"
         xmlns="http://www.w3.org/2000/svg"
@@ -114,7 +114,7 @@ export default function FlowAnimation() {
         ></path>
       </svg>
 
-      {/* SVG Lines from 9Router to Providers */}
+      {/* SVG Lines from OpenrouterX to Providers */}
       <svg
         className="absolute inset-0 w-full h-full z-10 pointer-events-none"
         xmlns="http://www.w3.org/2000/svg"

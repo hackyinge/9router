@@ -23,7 +23,7 @@ const getCodexDir = () => path.join(os.homedir(), ".codex");
 const getCodexConfigPath = () => path.join(getCodexDir(), "config.toml");
 const getCodexAuthPath = () => path.join(getCodexDir(), "auth.json");
 const PROVIDER_KEY = "openrouterx";
-const PROVIDER_LABEL = "OpenRouterX";
+const PROVIDER_LABEL = "OpenrouterX";
 
 const normalizeCodexModel = (model) => {
   if (typeof model !== "string") return model;
@@ -89,7 +89,7 @@ const readConfig = async () => {
   }
 };
 
-// Check if config has OpenRouterX settings
+// Check if config has OpenrouterX settings
 const hasOpenRouterXConfig = (config) => {
   if (!config) return false;
   return config.includes(`model_provider = "${PROVIDER_KEY}"`) || config.includes(`[model_providers.${PROVIDER_KEY}]`);
@@ -125,7 +125,7 @@ export async function GET(request) {
   }
 }
 
-// POST - Update OpenRouterX settings (merge with existing config)
+// POST - Update OpenrouterX settings (merge with existing config)
 export async function POST(request) {
   try {
     const { payload, response } = await requirePayload(request);
@@ -155,7 +155,7 @@ export async function POST(request) {
       parsed = parsedToWritable(parseTOML(existingConfig));
     } catch { /* No existing config */ }
 
-    // Update only OpenRouterX related fields (api_key goes to auth.json, not config.toml)
+    // Update only OpenrouterX related fields (api_key goes to auth.json, not config.toml)
     parsed.model = normalizedModel;
     parsed.model_provider = PROVIDER_KEY;
 
@@ -202,7 +202,7 @@ export async function POST(request) {
   }
 }
 
-// DELETE - Remove OpenRouterX settings only (keep other settings)
+// DELETE - Remove OpenrouterX settings only (keep other settings)
 export async function DELETE(request) {
   try {
     const { payload, response } = await requirePayload(request);
@@ -228,7 +228,7 @@ export async function DELETE(request) {
       throw error;
     }
 
-    // Remove OpenRouterX related root fields only if they point to openrouterx
+    // Remove OpenrouterX related root fields only if they point to openrouterx
     if (parsed.model_provider === PROVIDER_KEY) {
       delete parsed.model;
       delete parsed.model_provider;
@@ -262,7 +262,7 @@ export async function DELETE(request) {
 
     return NextResponse.json({
       success: true,
-      message: "OpenRouterX settings removed successfully",
+      message: "OpenrouterX settings removed successfully",
     });
   } catch (error) {
     console.log("Error resetting codex settings:", error);

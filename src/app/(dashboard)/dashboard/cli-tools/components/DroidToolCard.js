@@ -48,7 +48,7 @@ export default function DroidToolCard({
 
   const getConfigStatus = () => {
     if (!effectiveStatus?.installed) return null;
-    // Check for any OpenRouterX model entry (support multi-model: custom:openrouterx-0, custom:openrouterx-1, ...)
+    // Check for any OpenrouterX model entry (support multi-model: custom:openrouterx-0, custom:openrouterx-1, ...)
     const currentConfig = effectiveStatus.settings?.customModels?.find(m => m.id?.startsWith("custom:openrouterx"));
     if (!currentConfig) return "not_configured";
     const localMatch = currentConfig.baseUrl?.includes("localhost") || currentConfig.baseUrl?.includes("127.0.0.1");
@@ -234,7 +234,7 @@ export default function DroidToolCard({
                   <span className="material-symbols-outlined text-yellow-500">warning</span>
                   <div className="flex-1">
                     <p className="font-medium text-yellow-600 dark:text-yellow-400">Factory Droid CLI not detected locally</p>
-                    <p className="text-sm text-text-muted">Manual configuration is still available if OpenRouterX is deployed on a remote server.</p>
+                    <p className="text-sm text-text-muted">Manual configuration is still available if OpenrouterX is deployed on a remote server.</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2 pl-9">

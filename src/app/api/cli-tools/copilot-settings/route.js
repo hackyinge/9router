@@ -28,16 +28,22 @@ const readConfig = async () => {
   }
 };
 
-const ENTRY_NAME = "OpenRouterX";
+const ENTRY_NAME = "OpenrouterX";
+const LEGACY_ENTRY_NAMES = ["OpenRouterX"];
+
+const isOpenrouterXEntry = (entry) => {
+  const name = entry?.name;
+  return name === ENTRY_NAME || LEGACY_ENTRY_NAMES.includes(name);
+};
 
 const hasOpenRouterXConfig = (config) => {
   if (!Array.isArray(config)) return false;
-  return config.some((entry) => entry.name === ENTRY_NAME);
+  return config.some(isOpenrouterXEntry);
 };
 
 const getOpenRouterXEntry = (config) => {
   if (!Array.isArray(config)) return null;
-  return config.find((entry) => entry.name === ENTRY_NAME) || null;
+  return config.find(isOpenrouterXEntry) || null;
 };
 
 // GET - Read current copilot config
@@ -60,7 +66,7 @@ export async function GET() {
   }
 }
 
-// POST - Apply OpenRouterX config to chatLanguageModels.json
+// POST - Apply OpenrouterX config to chatLanguageModels.json
 export async function POST(request) {
   try {
     const { baseUrl, apiKey, models } = await request.json();
@@ -98,8 +104,8 @@ export async function POST(request) {
       })),
     };
 
-    // Replace existing OpenRouterX entry or append
-    const idx = config.findIndex((e) => e.name === ENTRY_NAME);
+    // Replace existing OpenrouterX entry or append
+    const idx = config.findIndex(isOpenrouterXEntry);
     if (idx >= 0) {
       config[idx] = newEntry;
     } else {
@@ -119,7 +125,7 @@ export async function POST(request) {
   }
 }
 
-// DELETE - Remove OpenRouterX entry from chatLanguageModels.json
+// DELETE - Remove OpenrouterX entry from chatLanguageModels.json
 export async function DELETE() {
   try {
     const configPath = getConfigPath();
@@ -136,12 +142,12 @@ export async function DELETE() {
       throw error;
     }
 
-    config = config.filter((e) => e.name !== ENTRY_NAME);
+    config = config.filter((e) => !isOpenrouterXEntry(e));
     await fs.writeFile(configPath, JSON.stringify(config, null, 2));
 
     return NextResponse.json({
       success: true,
-      message: "OpenRouterX removed from Copilot config",
+      message: "OpenrouterX removed from Copilot config",
     });
   } catch (error) {
     console.log("Error resetting copilot settings:", error);

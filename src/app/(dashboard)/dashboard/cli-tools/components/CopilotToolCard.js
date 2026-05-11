@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { Card, Button, ModelSelectModal, ManualConfigModal } from "@/shared/components";
 import Image from "next/image";
 import BaseUrlSelect from "./BaseUrlSelect";
@@ -12,7 +12,7 @@ export default function CopilotToolCard({ tool, isExpanded, onToggle, baseUrl, a
   const [applying, setApplying] = useState(false);
   const [restoring, setRestoring] = useState(false);
   const [message, setMessage] = useState(null);
-  const [selectedApiKey, setSelectedApiKey] = useState("");
+  const [selectedApiKey, setSelectedApiKey] = useState(apiKeys?.[0]?.key || "");
   const [customBaseUrl, setCustomBaseUrl] = useState("");
   const [modelAliases, setModelAliases] = useState({});
   const [showManualConfigModal, setShowManualConfigModal] = useState(false);
@@ -22,35 +22,7 @@ export default function CopilotToolCard({ tool, isExpanded, onToggle, baseUrl, a
   const [modelList, setModelList] = useState([]);
   const [modalOpen, setModalOpen] = useState(false);
 
-  useEffect(() => {
-    if (apiKeys?.length > 0 && !selectedApiKey) {
-      setSelectedApiKey(apiKeys[0].key);
-    }
-  }, [apiKeys, selectedApiKey]);
-
-  useEffect(() => {
-    if (initialStatus) setStatus(initialStatus);
-  }, [initialStatus]);
-
-  useEffect(() => {
-    if (isExpanded && !status) {
-      checkStatus();
-      fetchModelAliases();
-    }
-    if (isExpanded) fetchModelAliases();
-  }, [isExpanded]);
-
-  // Pre-fill model list from existing config
-  useEffect(() => {
-    if (status?.config && Array.isArray(status.config) && modelList.length === 0) {
-      const entry = status.config.find((e) => e.name === "OpenRouterX" || e.name === "OpenRouterX");
-      if (entry?.models?.length > 0) {
-        setModelList(entry.models.map((m) => m.id));
-      }
-    }
-  }, [status]);
-
-  const fetchModelAliases = async () => {
+  const fetchModelAliases = useCallback(async () => {
     try {
       const res = await fetch("/api/models/alias");
       const data = await res.json();
@@ -58,7 +30,54 @@ export default function CopilotToolCard({ tool, isExpanded, onToggle, baseUrl, a
     } catch (error) {
       console.log("Error fetching model aliases:", error);
     }
-  };
+  }, []);
+
+  const checkStatus = useCallback(async () => {
+    setChecking(true);
+    try {
+      const res = await fetch("/api/cli-tools/copilot-settings");
+      const data = await res.json();
+      setStatus(data);
+    } catch (error) {
+      setStatus({ error: error.message });
+    } finally {
+      setChecking(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (apiKeys?.length > 0 && !selectedApiKey) {
+      const timer = setTimeout(() => setSelectedApiKey(apiKeys[0].key), 0);
+      return () => clearTimeout(timer);
+    }
+  }, [apiKeys, selectedApiKey]);
+
+  useEffect(() => {
+    if (initialStatus) {
+      const timer = setTimeout(() => setStatus(initialStatus), 0);
+      return () => clearTimeout(timer);
+    }
+  }, [initialStatus]);
+
+  useEffect(() => {
+    if (!isExpanded) return;
+    const timer = setTimeout(() => {
+      if (!status) checkStatus();
+      fetchModelAliases();
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [checkStatus, fetchModelAliases, isExpanded, status]);
+
+  // Pre-fill model list from existing config
+  useEffect(() => {
+    if (status?.config && Array.isArray(status.config) && modelList.length === 0) {
+      const entry = status.config.find((e) => e.name === "OpenrouterX" || e.name === "OpenRouterX");
+      if (entry?.models?.length > 0) {
+        const timer = setTimeout(() => setModelList(entry.models.map((m) => m.id)), 0);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [modelList.length, status]);
 
   const getConfigStatus = () => {
     if (!status) return null;
@@ -82,19 +101,6 @@ export default function CopilotToolCard({ tool, isExpanded, onToggle, baseUrl, a
   };
 
   const removeModel = (id) => setModelList((prev) => prev.filter((m) => m !== id));
-
-  const checkStatus = async () => {
-    setChecking(true);
-    try {
-      const res = await fetch("/api/cli-tools/copilot-settings");
-      const data = await res.json();
-      setStatus(data);
-    } catch (error) {
-      setStatus({ error: error.message });
-    } finally {
-      setChecking(false);
-    }
-  };
 
   const handleApply = async () => {
     setApplying(true);
@@ -152,7 +158,7 @@ export default function CopilotToolCard({ tool, isExpanded, onToggle, baseUrl, a
     return [{
       filename: "~/Library/Application Support/Code/User/chatLanguageModels.json",
       content: JSON.stringify([{
-        name: "OpenRouterX",
+        name: "OpenrouterX",
         vendor: "azure",
         apiKey: keyToUse,
         models: modelList.map((id) => ({

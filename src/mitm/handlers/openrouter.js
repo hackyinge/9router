@@ -103,7 +103,7 @@ function buildInjectedModel(publicModelId) {
     canonical_slug: publicModelId,
     name: publicModelId,
     created: 0,
-    description: "Injected by 9Router MITM mapping",
+    description: "Injected by OpenrouterX MITM mapping",
     architecture: {
       modality: "text->text",
       input_modalities: ["text"],
@@ -158,7 +158,7 @@ async function handleModelsRequest(req, res, bodyBuffer, passthrough, aliasMappi
 }
 
 /**
- * Intercept OpenRouter request — replace public model alias and forward to matching 9Router endpoint.
+ * Intercept OpenRouter request — replace public model alias and forward to matching OpenrouterX endpoint.
  */
 async function intercept(req, res, bodyBuffer, mappedModel, passthrough, aliasMappings = {}) {
   try {

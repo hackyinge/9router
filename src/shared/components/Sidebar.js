@@ -29,6 +29,7 @@ const navItems = [
 ];
 
 const debugItems = [
+  { href: "/dashboard/network-analysis", label: "Network Analysis", icon: "network_check" },
   { href: "/dashboard/console-log", label: "Console Log", icon: "terminal" },
 ];
 
@@ -46,7 +47,7 @@ export default function Sidebar({ onClose }) {
   const visibleNavItems = isSuperAdmin ? navItems : navItems.filter(item => {
     if (item.href === "/dashboard/usage") return canViewUsage;
     // Super-admin pages hidden for sub-users
-    if (["/dashboard/providers", "/dashboard/combos", "/dashboard/mitm", "/dashboard/cli-tools", "/dashboard/proxy-pools", "/dashboard/quota"].includes(item.href)) return false;
+    if (["/dashboard/providers", "/dashboard/combos", "/dashboard/mitm", "/dashboard/cli-tools", "/dashboard/proxy-pools", "/dashboard/quota", "/dashboard/network-analysis"].includes(item.href)) return false;
     return true;
   });
 
@@ -394,8 +395,8 @@ export default function Sidebar({ onClose }) {
         isOpen={showUpdateModal}
         onClose={() => setShowUpdateModal(false)}
         onConfirm={handleUpdate}
-        title="Update 9Router"
-        message={`This will close 9Router and install v${updateInfo?.latestVersion || ""} in a separate window. Continue?`}
+        title="Update OpenrouterX"
+        message={`This will close OpenrouterX and install v${updateInfo?.latestVersion || ""} in a separate window. Continue?`}
         confirmText="Update"
         cancelText="Cancel"
         variant="primary"
@@ -445,7 +446,7 @@ function UpdateProgress({ status, latestVersion, installCmd, copied, onCopy }) {
   const errorMsg = status?.error;
 
   const steps = [
-    { key: "stopped", label: "Stopped 9Router server", state: "done" },
+    { key: "stopped", label: "Stopped OpenrouterX server", state: "done" },
     {
       key: "launched",
       label: "Launched background installer",
@@ -487,7 +488,7 @@ function UpdateProgress({ status, latestVersion, installCmd, copied, onCopy }) {
         </div>
         <div>
           <h2 className="text-lg font-semibold">
-            {done && success ? "Update Completed" : done && !success ? "Update Failed" : "Updating 9Router"}
+            {done && success ? "Update Completed" : done && !success ? "Update Failed" : "Updating OpenrouterX"}
           </h2>
           <p className="text-xs text-white/60">
             {done && success
@@ -534,7 +535,7 @@ function UpdateProgress({ status, latestVersion, installCmd, copied, onCopy }) {
       {done && success ? (
         <div className="space-y-2">
           <p className="text-sm text-white/80">
-            Run <code className="px-1.5 py-0.5 rounded bg-white/10 text-green-400">9router</code> in your terminal to start the new version.
+            Run <code className="px-1.5 py-0.5 rounded bg-white/10 text-green-400">openrouterX</code> in your terminal to start the new version.
           </p>
           <Button variant="secondary" fullWidth onClick={() => globalThis.location.reload()}>
             Reload Page
@@ -554,7 +555,7 @@ function UpdateProgress({ status, latestVersion, installCmd, copied, onCopy }) {
         </div>
       ) : (
         <p className="text-xs text-white/50 text-center">
-          This may take 30-60 seconds. Please don't close this window.
+          This may take 30-60 seconds. Please don&apos;t close this window.
         </p>
       )}
     </div>
