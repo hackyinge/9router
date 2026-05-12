@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSettings, getUserByUsername } from "@/lib/localDb";
 import bcrypt from "bcryptjs";
-import { SignJWT } from "jose";
 import { cookies } from "next/headers";
 import {
   getEffectiveAllowedProviderConnectionIds,

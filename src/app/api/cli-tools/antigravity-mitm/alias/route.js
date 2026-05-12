@@ -48,6 +48,7 @@ export async function PUT(request) {
     }
 
     await setMitmAliasAll(tool, filtered);
+    writeAliasForTool(tool, filtered);
     return NextResponse.json({ success: true, aliases: filtered });
   } catch (error) {
     console.log("Error saving MITM aliases:", error.message);

@@ -124,7 +124,6 @@ export default function OpenClawToolCard({
     const url = customBaseUrl || getLocalBaseUrl();
     return url.endsWith("/v1") ? url : `${url}/v1`;
   };
-  const hasCustomSelectedApiKey = selectedApiKey && !apiKeys.some((key) => key.key === selectedApiKey);
 
   const handleApplySettings = async () => {
     setApplying(true);

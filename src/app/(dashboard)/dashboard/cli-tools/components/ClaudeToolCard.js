@@ -115,7 +115,6 @@ export default function ClaudeToolCard({
     const url = customBaseUrl || baseUrl;
     return url.endsWith("/v1") ? url : `${url}/v1`;
   };
-  const hasCustomSelectedApiKey = selectedApiKey && !apiKeys.some((key) => key.key === selectedApiKey);
 
   const handleApplySettings = async () => {
     setApplying(true);

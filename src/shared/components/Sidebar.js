@@ -66,8 +66,7 @@ export default function Sidebar({ onClose }) {
   const [updateStatus, setUpdateStatus] = useState(null);
   const { copied, copy } = useCopyToClipboard(2000);
 
-  const INSTALL_CMD = UPDATER_CONFIG.installCmd;
-  const STATUS_URL = `http://localhost:${UPDATER_CONFIG.statusPort}/update/status`;
+  const INSTALL_CMD = UPDATER_CONFIG.installCmdLatest;
 
   // Lazy check for new npm version on mount
   useEffect(() => {
@@ -84,40 +83,37 @@ export default function Sidebar({ onClose }) {
     return pathname.startsWith(href);
   };
 
-  const handleUpdate = async () => {
-    setIsUpdating(true);
+  // Open manual update panel (no countdown yet — user must click Copy to trigger shutdown)
+  const handleUpdate = () => {
     setShowUpdateModal(false);
-    try {
-      const res = await fetch("/api/version/update", { method: "POST" });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        alert(data.message || "Update failed. Please run the install command manually.");
-        setIsUpdating(false);
-        return;
-      }
-      setIsDisconnected(true);
-    } catch (e) {
-      setIsDisconnected(true);
-    }
+    setIsUpdating(true);
   };
 
-  // Poll updater status server while updating (Next server is dead, updater.js is alive)
-  useEffect(() => {
-    if (!isUpdating || !isDisconnected) return;
-    let stopped = false;
-    const tick = async () => {
-      try {
-        const res = await fetch(STATUS_URL, { cache: "no-store" });
-        if (res.ok) {
-          const data = await res.json();
-          if (!stopped) setUpdateStatus(data);
-        }
-      } catch { /* updater not ready yet or finished */ }
-    };
-    tick();
-    const id = setInterval(tick, UPDATER_CONFIG.statusPollIntervalMs);
-    return () => { stopped = true; clearInterval(id); };
-  }, [isUpdating, isDisconnected, STATUS_URL]);
+  // Triggered by Copy button inside ManualUpdatePanel: copy + countdown + shutdown
+  const handleCopyAndShutdown = async () => {
+    try { await navigator.clipboard.writeText(INSTALL_CMD); } catch { /* clipboard blocked */ }
+    copy(INSTALL_CMD);
+    let remaining = UPDATER_CONFIG.shutdownCountdownSec;
+    setShutdownCountdown(remaining);
+    const timer = setInterval(() => {
+      remaining -= 1;
+      setShutdownCountdown(remaining);
+      if (remaining <= 0) {
+        clearInterval(timer);
+        fetch("/api/version/shutdown", { method: "POST" }).catch(() => {});
+        setIsDisconnected(true);
+      }
+    }, 1000);
+  };
+
+  const handleCancelUpdate = () => {
+    setIsUpdating(false);
+    setShutdownCountdown(0);
+  };
+
+  // Note: legacy updater poll removed. New flow: copy install cmd + shutdown server,
+  // user runs the command manually in another terminal.
+
 
   const handleShutdown = async () => {
     setIsShuttingDown(true);
@@ -401,19 +397,20 @@ export default function Sidebar({ onClose }) {
         confirmText="Update"
         cancelText="Cancel"
         variant="primary"
-        loading={isUpdating}
       />
 
-      {/* Disconnected Overlay */}
-      {isDisconnected && (
+      {/* Disconnected / Updating Overlay */}
+      {(isDisconnected || isUpdating) && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-6">
           {isUpdating ? (
-            <UpdateProgress
-              status={updateStatus}
+            <ManualUpdatePanel
               latestVersion={updateInfo?.latestVersion}
               installCmd={INSTALL_CMD}
               copied={copied}
-              onCopy={() => copy(INSTALL_CMD)}
+              onCopyAndShutdown={handleCopyAndShutdown}
+              onCancel={handleCancelUpdate}
+              countdown={shutdownCountdown}
+              isDisconnected={isDisconnected}
             />
           ) : (
             <div className="text-center p-8">
@@ -474,63 +471,33 @@ function UpdateProgress({ status, latestVersion, installCmd, copied, onCopy }) {
   return (
     <div className="w-full max-w-lg rounded-xl bg-neutral-900/95 border border-white/10 p-6 text-white">
       <div className="flex items-center gap-3 mb-4">
-        <div className={cn(
-          "flex items-center justify-center size-11 rounded-full",
-          done && success ? "bg-green-500/20 text-green-400" :
-          done && !success ? "bg-red-500/20 text-red-400" :
-          "bg-blue-500/20 text-blue-400"
-        )}>
-          <span className={cn(
-            "material-symbols-outlined text-[24px]",
-            !done && "animate-spin"
-          )}>
-            {done && success ? "check_circle" : done && !success ? "error" : "progress_activity"}
-          </span>
+        <div className="flex items-center justify-center size-11 rounded-full bg-amber-500/20 text-amber-400">
+          <span className="material-symbols-outlined text-[24px]">content_copy</span>
         </div>
         <div>
           <h2 className="text-lg font-semibold">
             {done && success ? "Update Completed" : done && !success ? "Update Failed" : "Updating OpenrouterX"}
           </h2>
           <p className="text-xs text-white/60">
-            {done && success
-              ? `Installed v${latestVersion || "latest"} successfully`
-              : done && !success
-                ? (errorMsg || "Installation failed")
-                : `Installing v${latestVersion || "latest"} from npm...`}
+            {isDisconnected
+              ? "Server stopped. Paste the command into a terminal to install."
+              : isCountingDown
+                ? `Command copied. Server will stop in ${countdown}s...`
+                : "Click the button below to copy the install command and shutdown."}
           </p>
         </div>
       </div>
 
-      {/* Timeline */}
-      <ul className="space-y-2 mb-4">
-        {steps.map((s) => (
-          <li key={s.key} className="flex items-center gap-3 text-sm">
-            <span className={cn(
-              "material-symbols-outlined text-[18px] shrink-0",
-              s.state === "done" && "text-green-400",
-              s.state === "active" && "text-blue-400 animate-pulse",
-              s.state === "error" && "text-red-400",
-              s.state === "pending" && "text-white/30"
-            )}>
-              {s.state === "done" ? "check_circle" :
-                s.state === "error" ? "cancel" :
-                  s.state === "active" ? "radio_button_checked" : "radio_button_unchecked"}
-            </span>
-            <span className={cn(
-              s.state === "pending" ? "text-white/40" : "text-white/90"
-            )}>{s.label}</span>
-          </li>
-        ))}
-      </ul>
+      <p className="text-sm text-white/80 mb-2">Install command:</p>
+      <div className="w-full px-3 py-2 rounded bg-white/5 mb-4">
+        <code className="text-xs font-mono text-amber-400 break-all">{installCmd}</code>
+      </div>
 
-      {/* Log tail */}
-      {logTail.length > 0 && (
-        <div className="rounded-md bg-black/50 border border-white/5 p-3 mb-4 max-h-40 overflow-auto">
-          <pre className="text-[11px] font-mono text-white/70 whitespace-pre-wrap break-all">
-            {logTail.join("\n")}
-          </pre>
-        </div>
-      )}
+      <ol className="text-xs text-white/70 space-y-1 list-decimal list-inside mb-4">
+        <li>Click <strong>Copy & Shutdown</strong> below.</li>
+        <li>Paste the command into your terminal and press Enter.</li>
+        <li>Run <code className="px-1 rounded bg-white/10 text-green-400">9router</code> again after install.</li>
+      </ol>
 
       {/* Actions */}
       {done && success ? (
@@ -563,10 +530,12 @@ function UpdateProgress({ status, latestVersion, installCmd, copied, onCopy }) {
   );
 }
 
-UpdateProgress.propTypes = {
-  status: PropTypes.object,
+ManualUpdatePanel.propTypes = {
   latestVersion: PropTypes.string,
   installCmd: PropTypes.string.isRequired,
   copied: PropTypes.bool,
-  onCopy: PropTypes.func.isRequired,
+  onCopyAndShutdown: PropTypes.func.isRequired,
+  onCancel: PropTypes.func.isRequired,
+  countdown: PropTypes.number,
+  isDisconnected: PropTypes.bool,
 };

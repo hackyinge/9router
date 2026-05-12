@@ -80,6 +80,13 @@ export default function LoginPage() {
     }
   };
 
+  const handleOidcLogin = () => {
+    window.location.href = "/api/auth/oidc/start";
+  };
+
+  const oidcAvailable = oidcConfigured && ["oidc", "both"].includes(authMode);
+  const passwordAvailable = authMode !== "oidc" || !oidcConfigured;
+
   // Show loading state while checking password
   if (hasPassword === null) {
     return (

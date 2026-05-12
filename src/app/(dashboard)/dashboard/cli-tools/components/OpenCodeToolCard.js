@@ -84,7 +84,6 @@ export default function OpenCodeToolCard({ tool, isExpanded, onToggle, baseUrl, 
   };
 
   const getDisplayUrl = () => customBaseUrl || `${baseUrl}/v1`;
-  const hasCustomSelectedApiKey = selectedApiKey && !apiKeys.some((key) => key.key === selectedApiKey);
 
   const checkStatus = async () => {
     setChecking(true);

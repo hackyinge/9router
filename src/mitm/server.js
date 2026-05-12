@@ -14,8 +14,7 @@ const {
 const { buildAntigravityAvailableModelsResponse } = require("./antigravityModels");
 const { DATA_DIR, MITM_DIR } = require("./paths");
 const { getCertForDomain } = require("./cert/generate");
-
-const DB_FILE = path.join(DATA_DIR, "db.json");
+const { getMitmAlias } = require("./dbReader");
 const LOCAL_PORT = 443;
 const IS_WIN = process.platform === "win32";
 const ENABLE_FILE_LOG = true;

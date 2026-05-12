@@ -548,6 +548,7 @@ async function startServer(apiKey, sudoPassword, forceKillPort443 = false) {
     }
 
     // Spawn directly — process already has admin rights
+    // cwd=tmpdir so process doesn't lock the install dir on Windows (EBUSY on update)
     serverProcess = spawn(
       process.execPath,
       [effectiveServerPath],
@@ -555,6 +556,7 @@ async function startServer(apiKey, sudoPassword, forceKillPort443 = false) {
         cwd: mitmServerCwd,
         detached: false,
         windowsHide: true,
+        cwd: os.tmpdir(),
         stdio: ["ignore", "pipe", "pipe"],
         env: {
           ...process.env,
@@ -591,6 +593,7 @@ async function startServer(apiKey, sudoPassword, forceKillPort443 = false) {
       cwd: mitmServerCwd,
       detached: false,
       windowsHide: true,
+      cwd: os.tmpdir(),
       stdio: ["ignore", "pipe", "pipe"],
       env: {
         ...process.env,

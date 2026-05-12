@@ -115,7 +115,6 @@ export default function CodexToolCard({ tool, isExpanded, onToggle, baseUrl, api
   };
 
   const getDisplayUrl = () => customBaseUrl || `${baseUrl}/v1`;
-  const hasCustomSelectedApiKey = selectedApiKey && !apiKeys.some((key) => key.key === selectedApiKey);
 
   const handleApplySettings = async () => {
     setApplying(true);

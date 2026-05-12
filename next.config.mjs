@@ -1,3 +1,9 @@
+import { fileURLToPath } from "node:url";
+import { dirname, resolve } from "node:path";
+
+const projectRoot = dirname(fileURLToPath(import.meta.url));
+const monorepoRoot = resolve(projectRoot, "..");
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: "standalone",
@@ -17,8 +23,8 @@ const nextConfig = {
         path: false,
       };
     }
-    // Stop watching logs directory to prevent HMR during streaming
-    config.watchOptions = { ...config.watchOptions, ignored: /[\\/](logs|\.next)[\\/]/ };
+    // Exclude logs, .next, gitbook subapp from watcher
+    config.watchOptions = { ...config.watchOptions, ignored: /[\\/](logs|\.next|gitbook)[\\/]/ };
     return config;
   },
   async rewrites() {

@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { jwtVerify } from "jose";
 import { getSettings } from "@/lib/localDb";
 import { getConsistentMachineId } from "@/shared/utils/machineId";
 
@@ -39,13 +38,7 @@ const PROTECTED_API_PATHS = [
 
 async function hasValidToken(request) {
   const token = request.cookies.get("auth_token")?.value;
-  if (!token) return false;
-  try {
-    await jwtVerify(token, SECRET);
-    return true;
-  } catch {
-    return false;
-  }
+  return await verifyDashboardAuthToken(token);
 }
 
 // Read settings directly from DB to avoid self-fetch deadlock in proxy

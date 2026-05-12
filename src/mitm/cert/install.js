@@ -163,9 +163,55 @@ function checkCertInstalledLinux() {
   return Promise.resolve(fs.existsSync(LINUX_CERT_FILE));
 }
 
+async function updateNssDatabases(certPath, action = 'add') {
+  const certName = "9Router MITM Root CA";
+  
+  const script = `
+    if ! command -v certutil &> /dev/null; then
+      exit 0
+    fi
+    
+    DIRS="$HOME/.pki/nssdb $HOME/snap/chromium/current/.pki/nssdb"
+    
+    if [ -d "$HOME/.mozilla/firefox" ]; then
+      for profile in "$HOME"/.mozilla/firefox/*/; do
+        if [ -f "\${profile}cert9.db" ] || [ -f "\${profile}cert8.db" ]; then
+          DIRS="$DIRS $profile"
+        fi
+      done
+    fi
+
+    if [ -d "$HOME/snap/firefox/common/.mozilla/firefox" ]; then
+      for profile in "$HOME"/snap/firefox/common/.mozilla/firefox/*/; do
+        if [ -f "\${profile}cert9.db" ] || [ -f "\${profile}cert8.db" ]; then
+          DIRS="$DIRS $profile"
+        fi
+      done
+    fi
+
+    for db in $DIRS; do
+      if [ -d "$db" ]; then
+        if [ "${action}" = "add" ]; then
+          certutil -d sql:"$db" -A -t "C,," -n "${certName}" -i "${certPath}" 2>/dev/null || \\
+          certutil -d "$db" -A -t "C,," -n "${certName}" -i "${certPath}" 2>/dev/null || true
+        else
+          certutil -d sql:"$db" -D -n "${certName}" 2>/dev/null || \\
+          certutil -d "$db" -D -n "${certName}" 2>/dev/null || true
+        fi
+      fi
+    done
+  `;
+  
+  return new Promise((resolve) => {
+    exec(script, { shell: "/bin/bash" }, () => resolve());
+  });
+}
+
 async function installCertLinux(sudoPassword, certPath) {
   if (!isSudoAvailable()) {
     log(`🔐 Cert: cannot install to system store without sudo — trust this file on clients: ${certPath}`);
+    // Still try to update user NSS DBs even if no sudo!
+    await updateNssDatabases(certPath, 'add');
     return;
   }
   const destFile = LINUX_CERT_FILE;
@@ -173,20 +219,24 @@ async function installCertLinux(sudoPassword, certPath) {
   const cmd = `rm -f "${LEGACY_LINUX_CERT_FILE}" && cp "${certPath}" "${destFile}" && (update-ca-certificates 2>/dev/null || update-ca-trust 2>/dev/null || true)`;
   try {
     await execWithPassword(cmd, sudoPassword);
-    log("🔐 Cert: ✅ installed to Linux trust store");
+    await updateNssDatabases(certPath, 'add');
+    log(`🔐 Cert: ✅ installed to Linux trust store (${config.dir}) and user browser databases`);
   } catch (error) {
-    throw new Error("Certificate install failed");
+    throw new Error(`Certificate install failed: ${error.message}`);
   }
 }
 
 async function uninstallCertLinux(sudoPassword) {
+  // Always try to uninstall from user DBs even without sudo
+  await updateNssDatabases(null, 'delete');
+
   if (!isSudoAvailable()) {
     return;
   }
   const cmd = `rm -f "${LINUX_CERT_FILE}" "${LEGACY_LINUX_CERT_FILE}" && (update-ca-certificates 2>/dev/null || update-ca-trust 2>/dev/null || true)`;
   try {
     await execWithPassword(cmd, sudoPassword);
-    log("🔐 Cert: ✅ uninstalled from Linux trust store");
+    log("🔐 Cert: ✅ uninstalled from Linux trust store and user browser databases");
   } catch (error) {
     throw new Error("Failed to uninstall certificate");
   }
