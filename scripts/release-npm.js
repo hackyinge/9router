@@ -135,10 +135,10 @@ function createAppPackageJson() {
     description: "9Router web dashboard",
     private: true,
     scripts: {
-      dev: "next dev --webpack --port 20128",
+      dev: "next dev --webpack --port 20502",
       build: "NODE_ENV=production next build --webpack",
       start: "NODE_ENV=production next start",
-      "dev:bun": "bun --bun next dev --webpack --port 20128",
+      "dev:bun": "bun --bun next dev --webpack --port 20502",
       "build:bun": "NODE_ENV=production bun --bun next build --webpack",
       "start:bun": "NODE_ENV=production bun ./.next/standalone/server.js",
     },

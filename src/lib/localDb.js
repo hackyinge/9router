@@ -6,7 +6,7 @@ import fs from "node:fs";
 import lockfile from "proper-lockfile";
 import { DATA_DIR, DB_FILE } from "@/lib/dataDir.js";
 
-const DEFAULT_MITM_ROUTER_BASE = "http://localhost:20128";
+const DEFAULT_MITM_ROUTER_BASE = "http://localhost:20502";
 const isCloud = typeof caches !== 'undefined' || typeof caches === 'object';
 const MITM_MODELS_FILE = isCloud ? null : path.join(process.cwd(), "src", "mitm", "models.json");
 

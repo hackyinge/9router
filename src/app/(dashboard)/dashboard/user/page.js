@@ -73,7 +73,7 @@ export default function SubUserPage() {
   const [modelTestResults, setModelTestResults] = useState({});
   const [modelsTestError, setModelsTestError] = useState("");
   const [testingModelId, setTestingModelId] = useState(null);
-  const [requestBaseUrl, setRequestBaseUrl] = useState("http://localhost:20128");
+  const [requestBaseUrl, setRequestBaseUrl] = useState("http://localhost:20502");
   const [loading, setLoading] = useState(true);
   const { copied, copy } = useCopyToClipboard();
 

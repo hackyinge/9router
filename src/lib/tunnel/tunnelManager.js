@@ -84,7 +84,7 @@ function throwIfCancelled(token, label) {
   if (token.cancelled) throw new Error(`${label} cancelled`);
 }
 
-export async function enableTunnel(localPort = 20128) {
+export async function enableTunnel(localPort = 20502) {
   console.log(`[Tunnel] enable start (port=${localPort})`);
   tunnelSvc.cancelToken = { cancelled: false };
   tunnelSvc.activeLocalPort = localPort;
@@ -189,7 +189,7 @@ export async function getTunnelStatus() {
 
 // ─── Tailscale Funnel ─────────────────────────────────────────────────────────
 
-export async function enableTailscale(localPort = 20128) {
+export async function enableTailscale(localPort = 20502) {
   console.log(`[Tailscale] enable start (port=${localPort})`);
   tailscaleSvc.cancelToken = { cancelled: false };
   tailscaleSvc.activeLocalPort = localPort;

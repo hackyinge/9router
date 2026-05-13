@@ -6,6 +6,7 @@ const require = createRequire(import.meta.url);
 const {
   getMissingHostsEntries,
   hostHasRequiredLoopbacks,
+  isMacAntigravityPfRedirectEnabled,
 } = require("../../src/mitm/dns/dnsConfig.js");
 
 describe("MITM DNS hosts entries", () => {
@@ -30,5 +31,11 @@ describe("MITM DNS hosts entries", () => {
 
     expect(hostHasRequiredLoopbacks(content, hosts[0], loopbacks)).toBe(true);
     expect(getMissingHostsEntries(content, hosts, loopbacks)).toEqual([]);
+  });
+
+  it("keeps Antigravity PF/IP redirect opt-in to avoid shared Google IP interception", () => {
+    expect(isMacAntigravityPfRedirectEnabled({})).toBe(false);
+    expect(isMacAntigravityPfRedirectEnabled({ OPENROUTERX_MITM_ANTIGRAVITY_PF: "0" })).toBe(false);
+    expect(isMacAntigravityPfRedirectEnabled({ OPENROUTERX_MITM_ANTIGRAVITY_PF: "1" })).toBe(true);
   });
 });

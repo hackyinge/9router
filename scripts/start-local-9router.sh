@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-PORT="${PORT:-20128}"
+PORT="${PORT:-20502}"
 HOST="${HOSTNAME:-127.0.0.1}"
 BASE_URL="${NEXT_PUBLIC_BASE_URL:-http://localhost:${PORT}}"
 GLOBAL_OPENROUTERX_PATTERN="/lib/node_modules/openrouterx/cli.js"

@@ -2,11 +2,13 @@ const https = require("https");
 const fs = require("fs");
 const path = require("path");
 const dns = require("dns");
+const os = require("os");
 const zlib = require("zlib");
 const { promisify } = require("util");
 const { execSync } = require("child_process");
 const { log, err, dumpRequest, createResponseDumper } = require("./logger");
 const { TARGET_HOSTS, URL_PATTERNS, MODEL_SYNONYMS, getToolForHost } = require("./config");
+const { pickReachableAddress, createLocalAliasResolutionError } = require("./upstreamResolver");
 const {
   createLocalAntigravityLoadCodeAssistPayload,
   createLocalAntigravityOnboardUserPayload,
@@ -78,36 +80,80 @@ try {
 
 const cachedTargetIPs = {};
 const CACHE_TTL_MS = 5 * 60 * 1000;
+const PUBLIC_DNS_SERVERS = ["8.8.8.8", "1.1.1.1"];
+const DNS_QUERY_TIMEOUT_MS = 1500;
+const GOOGLE_FRONTEND_FALLBACK_HOSTS = ["storage.googleapis.com", "www.gstatic.com"];
+const GOOGLE_HOST_SUFFIXES = [".googleapis.com", ".google.com", ".gstatic.com"];
+const PASSTHROUGH_CONNECT_TIMEOUT_MS = 15000;
 
 function getLocalIPv4Aliases() {
-  if (process.platform !== "darwin") return [];
+  const addresses = [];
+  for (const iface of Object.values(os.networkInterfaces())) {
+    for (const address of iface || []) {
+      if (address.family === "IPv4" || address.family === 4) addresses.push(address.address);
+    }
+  }
+  if (process.platform !== "darwin") return [...new Set(addresses)];
   try {
     const out = execSync("ifconfig lo0", { encoding: "utf8", windowsHide: true });
-    return [...out.matchAll(/^\s+inet\s+(\d+\.\d+\.\d+\.\d+)\s+/gm)].map((m) => m[1]);
+    addresses.push(...[...out.matchAll(/^\s+inet\s+(\d+\.\d+\.\d+\.\d+)\s+/gm)].map((m) => m[1]));
   } catch {
-    return [];
+    // Best effort; networkInterfaces still covers normal local addresses.
   }
+  return [...new Set(addresses)];
 }
 
-async function resolveTargetIP(hostname) {
+async function resolveTargetIP(hostname, options = {}) {
+  const avoidAddresses = options.avoidAddresses || [];
+  const force = options.force === true || avoidAddresses.length > 0;
   const cached = cachedTargetIPs[hostname];
-  const localAliases = new Set(getLocalIPv4Aliases());
-  if (cached && Date.now() - cached.ts < CACHE_TTL_MS && !localAliases.has(cached.ip)) return cached.ip;
-  const resolver = new dns.Resolver();
-  resolver.setServers(["8.8.8.8"]);
-  const resolve4 = promisify(resolver.resolve4.bind(resolver));
-  let addresses;
-  try {
-    addresses = await resolve4(hostname);
-  } catch (primaryError) {
-    const lookup = promisify(dns.lookup);
-    const records = await lookup(hostname, { family: 4, all: true }).catch(() => []);
-    addresses = records.map((record) => record.address).filter((addr) => !localAliases.has(addr));
-    if (addresses.length === 0) throw primaryError;
+  const localAliases = getLocalIPv4Aliases();
+  if (!force && cached && Date.now() - cached.ts < CACHE_TTL_MS) {
+    const ip = pickReachableAddress([cached.ip], { localAddresses: localAliases });
+    if (ip) return ip;
   }
-  const ip = addresses.find((addr) => !localAliases.has(addr)) || addresses[0];
+  const addresses = await resolveIPv4Candidates(hostname);
+  let ip = pickReachableAddress(addresses, { localAddresses: localAliases, avoidAddresses });
+  if (!ip && isGoogleHost(hostname)) {
+    const fallbackAddresses = (await Promise.all(
+      GOOGLE_FRONTEND_FALLBACK_HOSTS.map((host) => resolveIPv4Candidates(host).catch(() => []))
+    )).flat();
+    ip = pickReachableAddress(fallbackAddresses, { localAddresses: localAliases, avoidAddresses });
+    if (ip) log(`⏩ upstream fallback | ${hostname} via Google frontend ${ip}`);
+  }
+  if (!ip) throw createLocalAliasResolutionError(hostname, addresses, { localAddresses: localAliases, avoidAddresses });
   cachedTargetIPs[hostname] = { ip, ts: Date.now() };
   return cachedTargetIPs[hostname].ip;
+}
+
+function isGoogleHost(hostname) {
+  return GOOGLE_HOST_SUFFIXES.some((suffix) => hostname === suffix.slice(1) || hostname.endsWith(suffix));
+}
+
+async function resolveIPv4Candidates(hostname) {
+  const attempts = await Promise.all(PUBLIC_DNS_SERVERS.map(async (server) => {
+    const resolver = new dns.Resolver();
+    resolver.setServers([server]);
+    const resolve4 = promisify(resolver.resolve4.bind(resolver));
+    return withTimeout(resolve4(hostname), DNS_QUERY_TIMEOUT_MS).catch(() => []);
+  }));
+  const addresses = [...new Set(attempts.flat())];
+  if (addresses.length > 0) return addresses;
+
+  const lookup = promisify(dns.lookup);
+  const records = await lookup(hostname, { family: 4, all: true }).catch(() => []);
+  if (records.length === 0) throw new Error(`DNS resolve failed for ${hostname}`);
+  return [...new Set(records.map((record) => record.address))];
+}
+
+function withTimeout(promise, timeoutMs) {
+  let timeout;
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      timeout = setTimeout(() => reject(new Error("DNS query timed out")), timeoutMs);
+    }),
+  ]).finally(() => clearTimeout(timeout));
 }
 
 function collectBodyRaw(req) {
@@ -273,78 +319,95 @@ async function passthrough(req, res, bodyBuffer, onResponse, transformResponse) 
   const originalHost = (req.headers.host || TARGET_HOSTS[0]).split(":")[0];
   const targetHost = HOST_REWRITE[originalHost] || originalHost;
   const dumper = ENABLE_FILE_LOG && shouldDumpRequest(req) ? createResponseDumper(req, "passthrough") : null;
-  let targetIP;
-  try {
-    targetIP = await resolveTargetIP(targetHost);
-  } catch (e) {
+  const writeResolveError = (e) => {
     err(`Passthrough resolve error for ${targetHost}: ${e.code || e.message}`);
     if (dumper) { dumper.writeChunk(`\n[ERROR] resolve ${targetHost}: ${e.message}\n`); dumper.end(); }
     if (!res.headersSent) res.writeHead(502, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ error: { message: `DNS resolve failed for ${targetHost}`, type: "mitm_dns_error" } }));
-    return;
-  }
+    res.end(JSON.stringify({ error: { message: e.message || `DNS resolve failed for ${targetHost}`, type: "mitm_dns_error" } }));
+  };
 
-  const forwardReq = https.request({
-    hostname: targetIP,
-    port: 443,
-    path: req.url,
-    method: req.method,
-    headers: { ...req.headers, host: targetHost },
-    servername: targetHost,
-    rejectUnauthorized: false
-  }, (forwardRes) => {
-    // When transformResponse is provided, buffer the full response so we can
-    // modify it before sending to the client.
-    const shouldBuffer = transformResponse != null;
-    if (!shouldBuffer) res.writeHead(forwardRes.statusCode, forwardRes.headers);
-
-    if (!onResponse && !dumper && !shouldBuffer) {
-      forwardRes.pipe(res);
+  const startForward = async (attempt = 0, avoidAddresses = []) => {
+    let targetIP;
+    try {
+      targetIP = await resolveTargetIP(targetHost, { force: attempt > 0, avoidAddresses });
+    } catch (e) {
+      writeResolveError(e);
       return;
     }
 
-    const chunks = [];
-    forwardRes.on("data", chunk => {
-      if (dumper) dumper.writeChunk(chunk);
-      if (onResponse || shouldBuffer) chunks.push(chunk);
-      if (!shouldBuffer) res.write(chunk);
-    });
-    forwardRes.on("end", () => {
-      const rawBuffer = Buffer.concat(chunks);
+    const forwardReq = https.request({
+      hostname: targetIP,
+      port: 443,
+      path: req.url,
+      method: req.method,
+      headers: { ...req.headers, host: targetHost },
+      servername: targetHost,
+      rejectUnauthorized: false
+    }, (forwardRes) => {
+      // When transformResponse is provided, buffer the full response so we can
+      // modify it before sending to the client.
+      const shouldBuffer = transformResponse != null;
+      if (!shouldBuffer) res.writeHead(forwardRes.statusCode, forwardRes.headers);
 
-      if (shouldBuffer) {
-        try {
-          const modified = transformResponse(rawBuffer, forwardRes.headers);
-          // Update Content-Length if present to match modified body
-          const headers = { ...forwardRes.headers };
-          if (headers["content-length"] != null) {
-            headers["content-length"] = String(Buffer.byteLength(modified));
-          }
-          res.writeHead(forwardRes.statusCode, headers);
-          res.end(modified);
-        } catch (e) {
-          err(`transformResponse error: ${e.message}`);
-          if (!res.headersSent) res.writeHead(502);
-          res.end("Bad Gateway");
-        }
-      } else {
-        res.end();
+      if (!onResponse && !dumper && !shouldBuffer) {
+        forwardRes.pipe(res);
+        return;
       }
 
-      if (dumper) dumper.end();
-      if (onResponse) try { onResponse(rawBuffer, forwardRes.headers); } catch { /* ignore */ }
+      const chunks = [];
+      forwardRes.on("data", chunk => {
+        if (dumper) dumper.writeChunk(chunk);
+        if (onResponse || shouldBuffer) chunks.push(chunk);
+        if (!shouldBuffer) res.write(chunk);
+      });
+      forwardRes.on("end", () => {
+        const rawBuffer = Buffer.concat(chunks);
+
+        if (shouldBuffer) {
+          try {
+            const modified = transformResponse(rawBuffer, forwardRes.headers);
+            // Update Content-Length if present to match modified body
+            const headers = { ...forwardRes.headers };
+            if (headers["content-length"] != null) {
+              headers["content-length"] = String(Buffer.byteLength(modified));
+            }
+            res.writeHead(forwardRes.statusCode, headers);
+            res.end(modified);
+          } catch (e) {
+            err(`transformResponse error: ${e.message}`);
+            if (!res.headersSent) res.writeHead(502);
+            res.end("Bad Gateway");
+          }
+        } else {
+          res.end();
+        }
+
+        if (dumper) dumper.end();
+        if (onResponse) try { onResponse(rawBuffer, forwardRes.headers); } catch { /* ignore */ }
+      });
     });
-  });
 
-  forwardReq.on("error", (e) => {
-    err(`Passthrough error: ${e.message}`);
-    if (dumper) { dumper.writeChunk(`\n[ERROR] ${e.message}\n`); dumper.end(); }
-    if (!res.headersSent) res.writeHead(502);
-    res.end("Bad Gateway");
-  });
+    forwardReq.on("error", (e) => {
+      if (attempt === 0 && (e.code === "EADDRNOTAVAIL" || /secure TLS connection/i.test(e.message || ""))) {
+        delete cachedTargetIPs[targetHost];
+        log(`⏩ passthrough retry | ${targetHost} | ${targetIP} failed: ${e.code || e.message}`);
+        startForward(1, [targetIP]);
+        return;
+      }
+      err(`Passthrough error: ${e.message}`);
+      if (dumper) { dumper.writeChunk(`\n[ERROR] ${e.message}\n`); dumper.end(); }
+      if (!res.headersSent) res.writeHead(502);
+      res.end("Bad Gateway");
+    });
+    forwardReq.setTimeout(PASSTHROUGH_CONNECT_TIMEOUT_MS, () => {
+      forwardReq.destroy(new Error(`Passthrough timed out connecting to ${targetHost}`));
+    });
 
-  if (bodyBuffer.length > 0) forwardReq.write(bodyBuffer);
-  forwardReq.end();
+    if (bodyBuffer.length > 0) forwardReq.write(bodyBuffer);
+    forwardReq.end();
+  };
+
+  await startForward();
 }
 
 // ── Request handler ───────────────────────────────────────────

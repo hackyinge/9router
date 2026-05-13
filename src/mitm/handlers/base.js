@@ -1,6 +1,6 @@
 const { log, err } = require("../logger");
 
-const DEFAULT_LOCAL_ROUTER = "http://localhost:20128";
+const DEFAULT_LOCAL_ROUTER = "http://localhost:20502";
 const ROUTER_BASE = String(process.env.MITM_ROUTER_BASE || DEFAULT_LOCAL_ROUTER)
   .trim()
   .replace(/\/+$/, "") || DEFAULT_LOCAL_ROUTER;
@@ -12,17 +12,25 @@ const STRIP_HEADERS = new Set([
   "content-type", "authorization"
 ]);
 
+function normalizeRouterPath(path) {
+  const rawPath = String(path || "").trim() || "/v1/chat/completions";
+  if (rawPath === "/v1") return "/api/v1";
+  if (rawPath.startsWith("/v1/")) return `/api${rawPath}`;
+  return rawPath;
+}
+
 /**
  * Send body to OpenrouterX at the given path and return the fetch Response object.
  * Optionally forwards client headers (stripped of hop-by-hop / overridden keys).
  */
 async function fetchRouter(openaiBody, path = "/v1/chat/completions", clientHeaders = {}) {
+  const routerPath = normalizeRouterPath(path);
   const forwarded = {};
   for (const [k, v] of Object.entries(clientHeaders)) {
     if (!STRIP_HEADERS.has(k.toLowerCase())) forwarded[k] = v;
   }
 
-  const response = await fetch(`${ROUTER_BASE}${path}`, {
+  const response = await fetch(`${ROUTER_BASE}${routerPath}`, {
     method: "POST",
     headers: {
       ...forwarded,
@@ -65,4 +73,4 @@ async function pipeSSE(routerRes, res, dumper) {
   }
 }
 
-module.exports = { fetchRouter, pipeSSE };
+module.exports = { fetchRouter, normalizeRouterPath, pipeSSE };

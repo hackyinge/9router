@@ -16,24 +16,90 @@ const { isCertExpired } = require("./cert/rootCA");
 const { DATA_DIR, MITM_DIR } = require("./paths");
 const { log, err } = require("./logger");
 
-const DEFAULT_MITM_ROUTER_BASE = "http://localhost:20128";
+const DEFAULT_MITM_ROUTER_BASE = "http://localhost:20502";
 
 function shellQuoteSingle(str) {
   if (str == null || str === "") return "''";
   return `'${String(str).replace(/'/g, "'\\''")}'`;
 }
 
+function normalizeHttpBaseUrl(input) {
+  const raw = input == null ? "" : String(input).trim();
+  if (!raw) return "";
+  try {
+    const u = new URL(raw.replace(/\/+$/, ""));
+    if (u.protocol !== "http:" && u.protocol !== "https:") return "";
+    return u.toString().replace(/\/+$/, "");
+  } catch {
+    return "";
+  }
+}
+
+function isLoopbackBaseUrl(baseUrl) {
+  try {
+    const host = new URL(baseUrl).hostname.toLowerCase();
+    return host === "localhost" || host === "127.0.0.1" || host === "::1";
+  } catch {
+    return false;
+  }
+}
+
+function readCurrentServerBaseUrl() {
+  try {
+    const file = path.join(DATA_DIR, "server.json");
+    if (!fs.existsSync(file)) return "";
+    const parsed = JSON.parse(fs.readFileSync(file, "utf8"));
+    return normalizeHttpBaseUrl(parsed && parsed.baseUrl);
+  } catch {
+    return "";
+  }
+}
+
+function canConnectBaseUrl(baseUrl, timeoutMs = 350) {
+  return new Promise((resolve) => {
+    let u;
+    try {
+      u = new URL(baseUrl);
+    } catch {
+      resolve(false);
+      return;
+    }
+
+    const port = Number(u.port || (u.protocol === "https:" ? 443 : 80));
+    const socket = net.connect({ host: u.hostname, port });
+    const done = (ok) => {
+      socket.removeAllListeners();
+      socket.destroy();
+      resolve(ok);
+    };
+    socket.setTimeout(timeoutMs, () => done(false));
+    socket.once("connect", () => done(true));
+    socket.once("error", () => done(false));
+  });
+}
+
 async function resolveMitmRouterBaseUrl() {
-  if (!_getSettings) return DEFAULT_MITM_ROUTER_BASE;
+  const currentServerBase = readCurrentServerBaseUrl();
+  if (!_getSettings) return currentServerBase || DEFAULT_MITM_ROUTER_BASE;
   try {
     const s = await _getSettings();
-    const raw = s && s.mitmRouterBaseUrl != null ? String(s.mitmRouterBaseUrl).trim() : "";
-    if (!raw) return DEFAULT_MITM_ROUTER_BASE;
-    const u = new URL(raw);
-    if (u.protocol !== "http:" && u.protocol !== "https:") return DEFAULT_MITM_ROUTER_BASE;
-    return raw.replace(/\/+$/, "");
+    const configuredBase = normalizeHttpBaseUrl(s && s.mitmRouterBaseUrl);
+    if (!configuredBase) return currentServerBase || DEFAULT_MITM_ROUTER_BASE;
+
+    if (isLoopbackBaseUrl(configuredBase) && currentServerBase && configuredBase !== currentServerBase) {
+      const configuredAlive = await canConnectBaseUrl(configuredBase);
+      if (!configuredAlive && await canConnectBaseUrl(currentServerBase)) {
+        if (_updateSettings) {
+          _updateSettings({ mitmRouterBaseUrl: currentServerBase }).catch(() => { });
+        }
+        log(`🚀 MITM router base auto-corrected: ${configuredBase} → ${currentServerBase}`);
+        return currentServerBase;
+      }
+    }
+
+    return configuredBase;
   } catch {
-    return DEFAULT_MITM_ROUTER_BASE;
+    return currentServerBase || DEFAULT_MITM_ROUTER_BASE;
   }
 }
 
@@ -792,4 +858,7 @@ module.exports = {
   restoreToolDNS,
   hasDnsPrivilege,
   removeAllDNSEntriesSync,
+  resolveMitmRouterBaseUrl,
+  normalizeHttpBaseUrl,
+  readCurrentServerBaseUrl,
 };

@@ -33,7 +33,7 @@ async function showSettingsMenu(breadcrumb = []) {
         ].join("\n");
       } else {
         return [
-          `  Endpoint: http://localhost:20128/v1`,
+          `  Endpoint: http://localhost:20502/v1`,
           `  Tunnel:   ${COLORS.red}OFF${COLORS.reset} ${COLORS.dim}(local only)${COLORS.reset}`
         ].join("\n");
       }

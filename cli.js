@@ -17,7 +17,7 @@ const PID_FILE = path.join(DATA_DIR, "server.pid");
 const META_FILE = path.join(DATA_DIR, "server.json");
 const LOG_FILE = path.join(DATA_DIR, "server.log");
 const MITM_PID_FILE = path.join(DATA_DIR, "mitm", ".mitm.pid");
-const DEFAULT_PORT = "20128";
+const DEFAULT_PORT = "20502";
 const DEFAULT_HOST = "0.0.0.0";
 
 function parseArgs(argv = process.argv.slice(2)) {

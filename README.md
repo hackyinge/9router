@@ -6,8 +6,8 @@
 
 ## 为什么用 openrouterX
 
-- 统一本地接口：`http://localhost:20128/v1`
-- 统一管理后台：`http://localhost:20128/dashboard`
+- 统一本地接口：`http://localhost:20502/v1`
+- 统一管理后台：`http://localhost:20502/dashboard`
 - 同时接入订阅型供应商、API Key 供应商、免费供应商
 - 支持组合模型与自动 fallback
 - 内置 `RTK`，适合 `git diff`、`grep`、日志等重工具调用场景
@@ -26,8 +26,8 @@ openrouterX
 
 启动后默认地址：
 
-- Dashboard：`http://localhost:20128/dashboard`
-- OpenAI-compatible API：`http://localhost:20128/v1`
+- Dashboard：`http://localhost:20502/dashboard`
+- OpenAI-compatible API：`http://localhost:20502/v1`
 
 ## 快速开始
 
@@ -40,7 +40,7 @@ openrouterX
 登录页默认在：
 
 ```txt
-http://localhost:20128/login
+http://localhost:20502/login
 ```
 
 ### 2. 登录
@@ -63,7 +63,7 @@ http://localhost:20128/login
 ### 5. 把工具接到 openrouterX
 
 ```txt
-Base URL: http://localhost:20128/v1
+Base URL: http://localhost:20502/v1
 API Key:  你的 Dashboard API Key
 Model:    任意可用模型或 combo
 ```
@@ -95,7 +95,7 @@ openrouterX
 多个工具共享同一个本地入口：
 
 ```txt
-http://localhost:20128/v1
+http://localhost:20502/v1
 ```
 
 ### Dashboard 驱动配置
@@ -218,7 +218,7 @@ Dashboard 内置了 `CLI Tools` 页面，可以直接生成可复制的配置。
 ### 通用 OpenAI-compatible 配置
 
 ```txt
-Base URL: http://localhost:20128/v1
+Base URL: http://localhost:20502/v1
 API Key:  你的 Dashboard API Key
 Model:    你选择的模型或 combo
 ```
@@ -226,7 +226,7 @@ Model:    你选择的模型或 combo
 ### Codex CLI
 
 ```bash
-export OPENAI_BASE_URL="http://localhost:20128/v1"
+export OPENAI_BASE_URL="http://localhost:20502/v1"
 export OPENAI_API_KEY="your-dashboard-api-key"
 ```
 
@@ -280,14 +280,14 @@ export OPENAI_API_KEY="your-dashboard-api-key"
 ```bash
 cp .env.example .env
 npm install
-PORT=20128 NEXT_PUBLIC_BASE_URL=http://localhost:20128 npm run dev
+PORT=20502 NEXT_PUBLIC_BASE_URL=http://localhost:20502 npm run dev
 ```
 
 生产构建：
 
 ```bash
 npm run build
-PORT=20128 HOSTNAME=0.0.0.0 NEXT_PUBLIC_BASE_URL=http://localhost:20128 npm run start
+PORT=20502 HOSTNAME=0.0.0.0 NEXT_PUBLIC_BASE_URL=http://localhost:20502 npm run start
 ```
 
 ## 部署
@@ -307,7 +307,7 @@ docker build -t openrouterx .
 
 docker run -d \
   --name openrouterx \
-  -p 20128:20128 \
+  -p 20502:20502 \
   --env-file ./.env \
   -v openrouterx-data:/app/data \
   openrouterx
@@ -337,7 +337,7 @@ docker run -d \
 ### Chat Completions
 
 ```bash
-curl http://localhost:20128/v1/chat/completions \
+curl http://localhost:20502/v1/chat/completions \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -352,7 +352,7 @@ curl http://localhost:20128/v1/chat/completions \
 ### 列出模型
 
 ```bash
-curl http://localhost:20128/v1/models \
+curl http://localhost:20502/v1/models \
   -H "Authorization: Bearer YOUR_API_KEY"
 ```
 
@@ -360,8 +360,8 @@ curl http://localhost:20128/v1/models \
 
 ### Dashboard 打不开
 
-- 检查 `20128` 端口是否被占用
-- 启动前显式设置 `PORT=20128`
+- 检查 `20502` 端口是否被占用
+- 启动前显式设置 `PORT=20502`
 
 ### 登录失败
 
@@ -376,7 +376,7 @@ curl http://localhost:20128/v1/models \
 
 ### Usage 没有数据
 
-- 确认工具接入的是 `http://localhost:20128/v1`
+- 确认工具接入的是 `http://localhost:20502/v1`
 - 确认使用的是 Dashboard 中生成的 Bearer API Key
 
 ### 上游报错或配额不足

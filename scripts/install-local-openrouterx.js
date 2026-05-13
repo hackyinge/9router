@@ -102,7 +102,7 @@ function main() {
   console.log("openrouterX local install ok");
   console.log(`command: ${commandPath}`);
   console.log("run: openrouterX");
-  console.log("dashboard: http://localhost:20128/dashboard");
+  console.log("dashboard: http://localhost:20502/dashboard");
   console.log("uninstall: npm uninstall -g openrouterx-local");
 
   if (!keepTarball) {

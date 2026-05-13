@@ -50,6 +50,10 @@ const MAC_ANTIGRAVITY_LEGACY_SHARED_IP_PREFIXES = [
 ];
 const REQUIRED_HOST_LOOPBACKS = IS_WIN ? ["127.0.0.1"] : ["127.0.0.1", "::1"];
 
+function isMacAntigravityPfRedirectEnabled(env = process.env) {
+  return String(env.OPENROUTERX_MITM_ANTIGRAVITY_PF || "").trim() === "1";
+}
+
 function lineHasHostEntry(line, address, host) {
   const trimmed = String(line || "").trim();
   if (!trimmed || trimmed.startsWith("#")) return false;
@@ -187,6 +191,11 @@ function getMacLegacyAntigravityAliases() {
 
 async function enableMacAntigravityRedirect(sudoPassword) {
   if (!IS_MAC) return;
+  if (!isMacAntigravityPfRedirectEnabled()) {
+    await disableMacAntigravityRedirect(sudoPassword);
+    log("🌐 PF antigravity: skipped (hosts-only mode; set OPENROUTERX_MITM_ANTIGRAVITY_PF=1 to opt in)");
+    return;
+  }
   const ips = await getMacAntigravityRedirectIPs();
   if (ips.length === 0) return;
 
@@ -405,4 +414,5 @@ module.exports = {
   checkAllDNSStatus,
   getMissingHostsEntries,
   hostHasRequiredLoopbacks,
+  isMacAntigravityPfRedirectEnabled,
 };

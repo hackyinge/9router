@@ -44,10 +44,10 @@ Stop any installed `openrouterX` background process:
 openrouterX stop || true
 ```
 
-If port `20128` is still occupied, inspect and stop the listener:
+If port `20502` is still occupied, inspect and stop the listener:
 
 ```bash
-lsof -nP -iTCP:20128 -sTCP:LISTEN
+lsof -nP -iTCP:20502 -sTCP:LISTEN
 kill <pid>
 ```
 
@@ -124,7 +124,7 @@ After `release:npm:install-local`, run:
 openrouterX --version
 openrouterX --no-browser
 openrouterX status
-curl -i http://127.0.0.1:20128/api/health
+curl -i http://127.0.0.1:20502/api/health
 ```
 
 Expected health response:
@@ -138,7 +138,7 @@ HTTP/1.1 200 OK
 Open the dashboard:
 
 ```txt
-http://127.0.0.1:20128/dashboard
+http://127.0.0.1:20502/dashboard
 ```
 
 Stop the installed process when finished:
@@ -155,7 +155,7 @@ Do not claim npm package validation from any of these alone:
 - `bun run build:bun`
 - `next start`
 - `node .next/standalone/server.js`
-- Running the source checkout on `20128`
+- Running the source checkout on `20502`
 - A dashboard page returning `200` from the source checkout
 
 Those commands can be useful for quick source checks, but they bypass the packaged CLI and installed app layout.
@@ -203,7 +203,7 @@ npm run release:npm:install-local -- --skip-build --keep-tarball
 
 Running `.next/standalone/server.js` directly can resolve runtime paths differently from the installed CLI. The CLI sets the app root to the packaged `app/` directory and stores runtime metadata under `~/.openrouterx`. Test installed behavior through `openrouterX`.
 
-### Port `20128` is occupied
+### Port `20502` is occupied
 
 Stop the existing process first. If testing an alternate port:
 
@@ -233,5 +233,5 @@ Build: npm run build
 Package install: npm run release:npm:install-local -- --keep-tarball
 Tarball: npm-local/openrouterx-local-0.4.22.tgz
 Command: /opt/homebrew/bin/openrouterX
-Health: http://127.0.0.1:20128/api/health -> 200 {"ok":true}
+Health: http://127.0.0.1:20502/api/health -> 200 {"ok":true}
 ```

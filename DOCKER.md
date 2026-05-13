@@ -12,14 +12,14 @@ docker build -t openrouterx .
 
 ```bash
 docker run --rm \
-  -p 20128:20128 \
+  -p 20502:20502 \
   -v "$HOME/.openrouterx:/app/data" \
   -e DATA_DIR=/app/data \
   --name openrouterx \
   openrouterx
 ```
 
-The app listens on port `20128` in the container.
+The app listens on port `20502` in the container.
 
 ## What the volume does
 
@@ -53,7 +53,7 @@ docker stop openrouterx
 
 ```bash
 docker run -d \
-  -p 20128:20128 \
+  -p 20502:20502 \
   -v "$HOME/.openrouterx:/app/data" \
   -e DATA_DIR=/app/data \
   --name openrouterx \
@@ -74,10 +74,10 @@ Example:
 
 ```bash
 docker run --rm \
-  -p 20128:20128 \
+  -p 20502:20502 \
   -v "$HOME/.openrouterx:/app/data" \
   -e DATA_DIR=/app/data \
-  -e PORT=20128 \
+  -e PORT=20502 \
   -e HOSTNAME=0.0.0.0 \
   -e DEBUG=true \
   --name openrouterx \

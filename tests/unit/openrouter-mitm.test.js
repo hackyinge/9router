@@ -30,6 +30,14 @@ describe("OpenRouter MITM integration", () => {
     expect(getToolForHost("api.openrouter.ai")).toBe("openrouter");
   });
 
+  it("MITM 内部转发直连 Next API 路径，不依赖 /v1 rewrite", () => {
+    const { normalizeRouterPath } = require("../../src/mitm/handlers/base.js");
+
+    expect(normalizeRouterPath("/v1/chat/completions")).toBe("/api/v1/chat/completions");
+    expect(normalizeRouterPath("/v1/messages")).toBe("/api/v1/messages");
+    expect(normalizeRouterPath("/api/v1/chat/completions")).toBe("/api/v1/chat/completions");
+  });
+
   it("将 OpenRouter chat 请求改写模型后转发到 9Router chat completions", async () => {
     const { intercept } = require("../../src/mitm/handlers/openrouter.js");
     const req = {
