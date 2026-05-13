@@ -31,6 +31,7 @@ export default function OpenClawToolCard({
   const [showManualConfigModal, setShowManualConfigModal] = useState(false);
   const [customBaseUrl, setCustomBaseUrl] = useState("");
   const hasInitializedModel = useRef(false);
+  const hasCustomSelectedApiKey = selectedApiKey && !apiKeys?.some((key) => key.key === selectedApiKey);
 
   const getConfigStatus = () => {
     if (!openclawStatus?.installed) return null;
@@ -276,7 +277,7 @@ export default function OpenClawToolCard({
             </div>
           )}
 
-          {!checkingOpenclaw && openclawStatus?.installed && (
+          {!checkingOpenclaw && openclawStatus && (
             <>
               <div className="flex flex-col gap-2">
                 {/* Current Base URL */}

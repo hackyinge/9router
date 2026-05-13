@@ -8,24 +8,18 @@ const releaseScriptPath = path.join(projectRoot, "scripts", "release-npm.js");
 const cliPath = path.join(projectRoot, "cli.js");
 
 describe("npm publish CLI entry", () => {
-  it("keeps the prebuilt npm package contract for 9router", () => {
+  it("keeps the OpenrouterX source and publish package contracts aligned", () => {
     const pkg = JSON.parse(readFileSync(packageJsonPath, "utf8"));
 
-    expect(pkg.name).toBe("9router");
-    expect(pkg.bin).toEqual({
-      "9router": "./cli.js",
-    });
-    expect(pkg.files).toEqual([
-      "cli.js",
-      "src",
-      "README.md",
-      "LICENSE",
-    ]);
+    expect(pkg.name).toBe("9router-app");
+    expect(pkg.private).toBe(true);
     expect(pkg.scripts["release:npm:dry"]).toBe("node scripts/release-npm.js --dry-run");
     expect(existsSync(cliPath)).toBe(true);
     expect(existsSync(releaseScriptPath)).toBe(true);
 
     const releaseScript = readFileSync(releaseScriptPath, "utf8");
+    expect(releaseScript).toContain("name: \"@yina-npm/openrouterx\"");
+    expect(releaseScript).toContain("openrouterX: \"./cli.js\"");
     expect(releaseScript).toContain("writePostinstallHook");
     expect(releaseScript).toContain("hooks/postinstall.js");
   });

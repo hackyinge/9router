@@ -175,7 +175,7 @@ export default function MitmServerCard({ apiKeys, cloudEnabled, onStatusChange }
           {/* Base URL + API Key — same row pattern as Claude Code / cli-tools */}
           <div className="flex flex-col gap-2">
             <div className="flex items-center gap-2">
-              <span className="w-32 shrink-0 text-sm font-semibold text-text-main text-right">OpenrouterX Base URL</span>
+              <span className="w-32 shrink-0 text-sm font-semibold text-text-main text-right">base URL</span>
               <span className="material-symbols-outlined text-text-muted text-[14px]">arrow_forward</span>
               <input
                 type="text"

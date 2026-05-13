@@ -2,14 +2,11 @@ import { NextResponse } from "next/server";
 import { getSettings, getUserByUsername } from "@/lib/localDb";
 import bcrypt from "bcryptjs";
 import { cookies } from "next/headers";
+import { setDashboardAuthCookie } from "@/lib/auth/dashboardSession";
 import {
   getEffectiveAllowedProviderConnectionIds,
   getEffectiveAllowedProviders,
 } from "@/shared/utils/subUserAccess";
-
-const SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || "openrouterx-default-secret-change-me"
-);
 
 function isTunnelRequest(request, settings) {
   const host = (request.headers.get("host") || "").split(":")[0].toLowerCase();
@@ -40,25 +37,10 @@ export async function POST(request) {
       }
 
       if (isValid) {
-        const forceSecureCookie = process.env.AUTH_COOKIE_SECURE === "true";
-        const forwardedProto = request.headers.get("x-forwarded-proto");
-        const useSecureCookie = forceSecureCookie || forwardedProto === "https";
-
-        const token = await new SignJWT({
-          authenticated: true,
+        const cookieStore = await cookies();
+        await setDashboardAuthCookie(cookieStore, request, {
           role: "super_admin",
           permissions: ["*"],
-        })
-          .setProtectedHeader({ alg: "HS256" })
-          .setExpirationTime("24h")
-          .sign(SECRET);
-
-        const cookieStore = await cookies();
-        cookieStore.set("auth_token", token, {
-          httpOnly: true,
-          secure: useSecureCookie,
-          sameSite: "lax",
-          path: "/",
         });
 
         return NextResponse.json({ success: true, role: "super_admin" });
@@ -82,12 +64,8 @@ export async function POST(request) {
       return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
     }
 
-    const forceSecureCookie = process.env.AUTH_COOKIE_SECURE === "true";
-    const forwardedProto = request.headers.get("x-forwarded-proto");
-    const useSecureCookie = forceSecureCookie || forwardedProto === "https";
-
-    const subToken = await new SignJWT({
-      authenticated: true,
+    const cookieStore = await cookies();
+    await setDashboardAuthCookie(cookieStore, request, {
       userId: subUser.id,
       username: subUser.username,
       displayName: subUser.displayName,
@@ -96,17 +74,6 @@ export async function POST(request) {
       showQuotaTracker: subUser.showQuotaTracker !== false,
       allowedProviders: getEffectiveAllowedProviders(subUser),
       allowedProviderConnectionIds: getEffectiveAllowedProviderConnectionIds(subUser),
-    })
-      .setProtectedHeader({ alg: "HS256" })
-      .setExpirationTime("24h")
-      .sign(SECRET);
-
-    const cookieStore = await cookies();
-    cookieStore.set("auth_token", subToken, {
-      httpOnly: true,
-      secure: useSecureCookie,
-      sameSite: "lax",
-      path: "/",
     });
 
     return NextResponse.json({ success: true, role: subUser.role || "sub_user" });

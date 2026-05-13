@@ -4,6 +4,7 @@ import fs from "fs";
 import path from "path";
 import os from "os";
 import { ANTIGRAVITY_CONFIG } from "@/lib/oauth/constants/oauth.js";
+import { buildAntigravityLaunchEnv } from "../launchHelpers.js";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,24 +14,6 @@ const ANTIGRAVITY_APP_CANDIDATES = [
   "/Applications/Google Antigravity.app",
   path.join(os.homedir(), "Applications", "Antigravity.app"),
   path.join(os.homedir(), "Applications", "Google Antigravity.app"),
-];
-const ANTIGRAVITY_NO_PROXY_HOSTS = [
-  "localhost",
-  "127.0.0.1",
-  "::1",
-  "cloudcode-pa.googleapis.com",
-  "daily-cloudcode-pa.googleapis.com",
-  "daily-cloudcode-pa.sandbox.googleapis.com",
-];
-const PROXY_ENV_KEYS = [
-  "HTTP_PROXY",
-  "HTTPS_PROXY",
-  "ALL_PROXY",
-  "http_proxy",
-  "https_proxy",
-  "all_proxy",
-  "NINE_ROUTER_PROXY_URL",
-  "NINE_ROUTER_PROXY_MANAGED",
 ];
 
 function getAntigravityGlobalStorageDir() {
@@ -294,44 +277,6 @@ function quitAntigravity() {
 
 function findAntigravityAppPath() {
   return ANTIGRAVITY_APP_CANDIDATES.find((candidate) => fs.existsSync(candidate)) || "";
-}
-
-function mergeNoProxy(existing) {
-  const seen = new Set();
-  return [
-    ...String(existing || "").split(","),
-    ...ANTIGRAVITY_NO_PROXY_HOSTS,
-  ]
-    .map((entry) => entry.trim())
-    .filter((entry) => {
-      if (!entry || seen.has(entry)) return false;
-      seen.add(entry);
-      return true;
-    })
-    .join(",");
-}
-
-function mergeGoDebug(existing) {
-  const entries = String(existing || "")
-    .split(",")
-    .map((entry) => entry.trim())
-    .filter((entry) => entry && !entry.startsWith("netdns="));
-  entries.push("netdns=cgo");
-  return entries.join(",");
-}
-
-function buildAntigravityLaunchEnv() {
-  const env = { ...process.env };
-  for (const key of PROXY_ENV_KEYS) delete env[key];
-
-  const noProxy = mergeNoProxy(process.env.NO_PROXY || process.env.no_proxy);
-  env.NO_PROXY = noProxy;
-  env.no_proxy = noProxy;
-  env.GODEBUG = mergeGoDebug(process.env.GODEBUG);
-
-  const rootCaPath = path.join(os.homedir(), ".openrouterx", "mitm", "rootCA.crt");
-  if (fs.existsSync(rootCaPath)) env.NODE_EXTRA_CA_CERTS = rootCaPath;
-  return env;
 }
 
 function getMacAppExecutable(appPath) {

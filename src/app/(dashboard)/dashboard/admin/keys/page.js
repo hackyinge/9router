@@ -92,7 +92,7 @@ export default function AdminKeysPage() {
                     <p className="font-semibold font-mono text-sm">{key.name}</p>
                     <p className={`text-xs ${color}`}>
                       {label}
-                      {key.assignedAt && <span className="ml-2 text-text-muted">assigned {new Date(key.assignedAt).toLocaleDateString()}</span>}
+                      {key.assignedAt && <span className="ml-2 text-text-muted"><span>assigned</span> {new Date(key.assignedAt).toLocaleDateString()}</span>}
                     </p>
                   </div>
                 </div>
@@ -111,7 +111,11 @@ export default function AdminKeysPage() {
 
       {/* Assign Modal */}
       {assignModal && (
-        <Modal isOpen={!!assignModal} title={`Assign Key: ${assignModal.name}`} onClose={() => setAssignModal(null)}>
+        <Modal
+          isOpen={!!assignModal}
+          title={<><span>Assign Key:</span> {assignModal.name}</>}
+          onClose={() => setAssignModal(null)}
+        >
           <div className="flex flex-col gap-4">
             <Select
               label="Assign to user"

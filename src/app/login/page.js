@@ -12,6 +12,9 @@ export default function LoginPage() {
   const [loginAs, setLoginAs] = useState("super_admin"); // "super_admin" | "sub_user"
   const [users, setUsers] = useState([]); // available sub-users
   const [username, setUsername] = useState("");
+  const [authMode, setAuthMode] = useState("password");
+  const [oidcConfigured, setOidcConfigured] = useState(false);
+  const [oidcLoginLabel, setOidcLoginLabel] = useState("Sign in with OIDC");
   const router = useRouter();
 
   useEffect(() => {
@@ -26,15 +29,22 @@ export default function LoginPage() {
         });
         clearTimeout(timeoutId);
 
-        if (res.ok) {
-          await res.json().catch(() => ({}));
-          setHasPassword(true);
-        } else {
-          setHasPassword(true);
-        }
+        setHasPassword(true);
       } catch (err) {
         clearTimeout(timeoutId);
         setHasPassword(true);
+      }
+
+      try {
+        const authRes = await fetch(`${baseUrl}/api/auth/status`, { cache: "no-store" });
+        const authData = authRes.ok ? await authRes.json() : {};
+        setAuthMode(authData.authMode || "password");
+        setOidcConfigured(!!authData.oidcConfigured);
+        setOidcLoginLabel(authData.oidcLoginLabel || "Sign in with OIDC");
+      } catch {
+        setAuthMode("password");
+        setOidcConfigured(false);
+        setOidcLoginLabel("Sign in with OIDC");
       }
     }
     checkAuth();
@@ -111,6 +121,22 @@ export default function LoginPage() {
 
         <Card>
           <form onSubmit={handleLogin} className="flex flex-col gap-4">
+            {oidcAvailable && (
+              <Button type="button" variant="primary" className="w-full" onClick={handleOidcLogin}>
+                {oidcLoginLabel}
+              </Button>
+            )}
+
+            {oidcAvailable && passwordAvailable && (
+              <div className="flex items-center gap-3 text-xs text-text-muted">
+                <span className="h-px flex-1 bg-border" />
+                <span>or</span>
+                <span className="h-px flex-1 bg-border" />
+              </div>
+            )}
+
+            {passwordAvailable && (
+              <>
             {/* Account type switcher */}
             <div className="flex gap-2">
               {["super_admin", "sub_user"].map(type => (
@@ -187,6 +213,8 @@ export default function LoginPage() {
             >
               Sign In
             </Button>
+              </>
+            )}
 
           </form>
         </Card>

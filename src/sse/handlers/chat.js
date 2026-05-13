@@ -25,6 +25,25 @@ import {
   resolveSubUserAccessContext,
 } from "@/lib/subUserAccess";
 
+function hasOwn(object, key) {
+  return Object.prototype.hasOwnProperty.call(object || {}, key);
+}
+
+function resolveProviderThinking(settings, provider, subUserContext) {
+  const globalThinking = (settings.providerThinking || {})[provider] || {};
+  const accountKey = subUserContext?.role === "sub_user" ? subUserContext.userId : "super_admin";
+  const accountThinking =
+    subUserContext?.role === "sub_user"
+      ? (subUserContext.providerThinking || {})[provider] || {}
+      : (settings.userProviderThinking || {})[accountKey]?.[provider] || {};
+
+  const resolved = { ...globalThinking };
+  if (hasOwn(accountThinking, "mode")) resolved.mode = accountThinking.mode;
+  if (hasOwn(accountThinking, "fastMode")) resolved.fastMode = accountThinking.fastMode;
+
+  return Object.keys(resolved).length > 0 ? resolved : null;
+}
+
 /**
  * Handle chat completion request
  * Supports: OpenAI, Claude, Gemini, OpenAI Responses API formats
@@ -220,7 +239,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
 
     // Use shared chatCore
     const chatSettings = await getSettings();
-    const providerThinking = (chatSettings.providerThinking || {})[provider] || null;
+    const providerThinking = resolveProviderThinking(chatSettings, provider, subUserContext);
     const result = await handleChatCore({
       body: { ...body, model: `${provider}/${model}` },
       modelInfo: { provider, model },

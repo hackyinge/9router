@@ -266,7 +266,7 @@ export default function DroidToolCard({
             </div>
           )}
 
-          {!checkingDroid && effectiveStatus?.installed && (
+          {!checkingDroid && effectiveStatus && (
             <>
               <div className="flex flex-col gap-2">
                 {/* Current Base URL */}

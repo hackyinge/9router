@@ -3,7 +3,7 @@ import { JSONFile } from "lowdb/node";
 import { EventEmitter } from "events";
 import path from "path";
 import fs from "fs";
-import { DATA_DIR } from "@/lib/dataDir.js";
+import { DATA_DIR } from "./dataDir.js";
 
 const DB_FILE = path.join(DATA_DIR, "usage.json");
 const LOG_FILE = path.join(DATA_DIR, "log.txt");

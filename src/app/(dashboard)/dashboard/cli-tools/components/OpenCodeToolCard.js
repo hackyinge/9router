@@ -23,6 +23,7 @@ export default function OpenCodeToolCard({ tool, isExpanded, onToggle, baseUrl, 
   const [selectedModels, setSelectedModels] = useState([]);
   const [activeModel, setActiveModel] = useState("");
   const effectiveSelectedApiKey = selectedApiKey || apiKeys?.[0]?.key || "";
+  const hasCustomSelectedApiKey = selectedApiKey && !apiKeys?.some((key) => key.key === selectedApiKey);
 
   useEffect(() => {
     if (apiKeys?.length > 0 && !selectedApiKey) {
@@ -259,7 +260,7 @@ export default function OpenCodeToolCard({ tool, isExpanded, onToggle, baseUrl, 
             </div>
           )}
 
-          {!checking && status?.installed && (
+          {!checking && status && (
             <>
               <div className="flex flex-col gap-2">
                 {/* Current base URL */}

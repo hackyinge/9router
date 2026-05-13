@@ -65,6 +65,17 @@ const DEFAULT_RESPONSE_EXAMPLE = `{
 
 const CLOUDFLARE_TEST_IMAGE_URL = "https://pub-1fb693cb11cc46b2b2f656f51e015a2c.r2.dev/dog.png";
 const CLOUDFLARE_TEST_MASK_URL = "https://pub-1fb693cb11cc46b2b2f656f51e015a2c.r2.dev/dog-mask.png";
+const HIDDEN_MEDIA_MODEL_IDS = {
+  image: new Set(["gpt-image-2"]),
+};
+
+function isVisibleMediaModel(kind, model) {
+  return !HIDDEN_MEDIA_MODEL_IDS[kind]?.has(model.id);
+}
+
+function getHiddenMediaModelIds(kind) {
+  return [...(HIDDEN_MEDIA_MODEL_IDS[kind] || [])];
+}
 
 function getImageEditDefaults(providerId, modelId) {
   if (providerId !== "cloudflare-ai") return {};
@@ -943,7 +954,9 @@ function GenericExampleCard({ providerId, kind, providerAliasOverride = "", cust
   const safeExConfig = exConfig || {};
 
   // Get models for this kind (e.g., type="image")
-  const builtInKindModels = getModelsByProviderId(providerId).filter((m) => m.type === kind);
+  const builtInKindModels = getModelsByProviderId(providerId)
+    .filter((m) => m.type === kind)
+    .filter((m) => isVisibleMediaModel(kind, m));
   const [customKindModels, setCustomKindModels] = useState([]);
   const kindModels = [...builtInKindModels, ...customKindModels];
   // Kinds that need a model identifier in the request (image/video/music)
@@ -2072,6 +2085,7 @@ export default function MediaProviderDetailPage() {
           providerId={id}
           kindFilter={kind}
           providerAliasOverride={isCustom ? customNode?.prefix : undefined}
+          hiddenModelIds={getHiddenMediaModelIds(kind)}
         />
       )}
 

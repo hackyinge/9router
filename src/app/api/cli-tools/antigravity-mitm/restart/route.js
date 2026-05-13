@@ -1,12 +1,12 @@
 import { execFile, spawn } from "node:child_process";
 import fs from "node:fs/promises";
-import nodeFs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { NextResponse } from "next/server";
 import {
   buildAntigravityLaunchArgs,
+  buildAntigravityLaunchEnv,
   createAntigravityInstanceId,
   getAntigravityStateDbPath,
   getDefaultAntigravityUserDataDir,
@@ -15,24 +15,6 @@ import {
 
 const execFileAsync = promisify(execFile);
 const ANTIGRAVITY_NAME_RE = /antigravity/i;
-const ANTIGRAVITY_NO_PROXY_HOSTS = [
-  "localhost",
-  "127.0.0.1",
-  "::1",
-  "cloudcode-pa.googleapis.com",
-  "daily-cloudcode-pa.googleapis.com",
-  "daily-cloudcode-pa.sandbox.googleapis.com",
-];
-const PROXY_ENV_KEYS = [
-  "HTTP_PROXY",
-  "HTTPS_PROXY",
-  "ALL_PROXY",
-  "http_proxy",
-  "https_proxy",
-  "all_proxy",
-  "NINE_ROUTER_PROXY_URL",
-  "NINE_ROUTER_PROXY_MANAGED",
-];
 
 function uniq(values) {
   return [...new Set(values.filter(Boolean))];
@@ -167,47 +149,6 @@ async function quitAntigravity() {
 
   await execFileAsync("pkill", ["-x", "antigravity"]).catch(() => {});
   await execFileAsync("pkill", ["-f", "Antigravity"]).catch(() => {});
-}
-
-function mergeNoProxy(existing) {
-  const seen = new Set();
-  return [
-    ...String(existing || "").split(","),
-    ...ANTIGRAVITY_NO_PROXY_HOSTS,
-  ]
-    .map((entry) => entry.trim())
-    .filter((entry) => {
-      if (!entry || seen.has(entry)) return false;
-      seen.add(entry);
-      return true;
-    })
-    .join(",");
-}
-
-function buildAntigravityLaunchEnv() {
-  const env = { ...process.env };
-  for (const key of PROXY_ENV_KEYS) delete env[key];
-
-  const noProxy = mergeNoProxy(process.env.NO_PROXY || process.env.no_proxy);
-  env.NO_PROXY = noProxy;
-  env.no_proxy = noProxy;
-  env.GODEBUG = mergeGoDebug(process.env.GODEBUG);
-
-  const rootCaPath = path.join(os.homedir(), ".openrouterx", "mitm", "rootCA.crt");
-  if (nodeFs.existsSync(rootCaPath)) {
-    env.NODE_EXTRA_CA_CERTS = rootCaPath;
-  }
-
-  return env;
-}
-
-function mergeGoDebug(existing) {
-  const entries = String(existing || "")
-    .split(",")
-    .map((entry) => entry.trim())
-    .filter((entry) => entry && !entry.startsWith("netdns="));
-  entries.push("netdns=cgo");
-  return entries.join(",");
 }
 
 async function getMacAppExecutable(appPath) {

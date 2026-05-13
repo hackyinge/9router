@@ -16,6 +16,7 @@ const DATA_DIR = process.platform === "win32"
 const PID_FILE = path.join(DATA_DIR, "server.pid");
 const META_FILE = path.join(DATA_DIR, "server.json");
 const LOG_FILE = path.join(DATA_DIR, "server.log");
+const MITM_PID_FILE = path.join(DATA_DIR, "mitm", ".mitm.pid");
 const DEFAULT_PORT = "20128";
 const DEFAULT_HOST = "0.0.0.0";
 
@@ -145,9 +146,19 @@ function readPid() {
   }
 }
 
+function readPidFile(filePath) {
+  try {
+    const pid = Number(fs.readFileSync(filePath, "utf8").trim());
+    return Number.isFinite(pid) && pid > 0 ? pid : null;
+  } catch {
+    return null;
+  }
+}
+
 function removeRuntimeFiles() {
   fs.rmSync(PID_FILE, { force: true });
   fs.rmSync(META_FILE, { force: true });
+  fs.rmSync(MITM_PID_FILE, { force: true });
 }
 
 function isProcessRunning(pid) {
@@ -161,6 +172,140 @@ function isProcessRunning(pid) {
   } catch {
     return false;
   }
+}
+
+function getUnixProcessTable() {
+  if (process.platform === "win32") return [];
+  try {
+    const output = require("node:child_process").execFileSync(
+      "ps",
+      ["-axo", "pid=,ppid=,command="],
+      { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }
+    );
+    return output.split("\n").map((line) => {
+      const match = line.trim().match(/^(\d+)\s+(\d+)\s+(.*)$/);
+      if (!match) return null;
+      return { pid: Number(match[1]), ppid: Number(match[2]), command: match[3] || "" };
+    }).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+function getDescendantPids(rootPid, table = getUnixProcessTable()) {
+  const root = Number(rootPid);
+  if (!Number.isFinite(root) || root <= 0) return [];
+  const childrenByParent = new Map();
+  for (const proc of table) {
+    const list = childrenByParent.get(proc.ppid) || [];
+    list.push(proc.pid);
+    childrenByParent.set(proc.ppid, list);
+  }
+
+  const descendants = [];
+  const stack = [...(childrenByParent.get(root) || [])];
+  while (stack.length > 0) {
+    const pid = stack.pop();
+    descendants.push(pid);
+    stack.push(...(childrenByParent.get(pid) || []));
+  }
+  return descendants;
+}
+
+function killPid(pid, signal = "SIGTERM") {
+  const target = Number(pid);
+  if (!Number.isFinite(target) || target <= 0 || target === process.pid) return false;
+
+  if (process.platform === "win32") {
+    try {
+      require("node:child_process").execFileSync("taskkill", ["/F", "/T", "/PID", String(target)], {
+        stdio: "ignore",
+        windowsHide: true,
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  try {
+    process.kill(target, signal);
+    return true;
+  } catch (error) {
+    if (error?.code !== "EPERM") return false;
+    try {
+      require("node:child_process").execFileSync("sudo", ["-n", "kill", signal === "SIGKILL" ? "-9" : "-TERM", String(target)], {
+        stdio: "ignore",
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+}
+
+function killProcessTree(pid) {
+  const root = Number(pid);
+  if (!Number.isFinite(root) || root <= 0 || root === process.pid) return false;
+
+  if (process.platform === "win32") {
+    return killPid(root);
+  }
+
+  const table = getUnixProcessTable();
+  const targets = [...getDescendantPids(root, table).reverse(), root];
+  let killedAny = false;
+  for (const target of targets) {
+    killedAny = killPid(target, "SIGTERM") || killedAny;
+  }
+
+  const deadline = Date.now() + 1500;
+  while (Date.now() < deadline && targets.some((target) => isProcessRunning(target))) {
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100);
+  }
+
+  for (const target of targets) {
+    if (isProcessRunning(target)) {
+      killedAny = killPid(target, "SIGKILL") || killedAny;
+    }
+  }
+  return killedAny;
+}
+
+function collectOpenrouterXPids() {
+  if (process.platform === "win32") return [];
+  return getUnixProcessTable()
+    .filter((proc) => proc.pid !== process.pid)
+    .filter((proc) => {
+      const command = proc.command.toLowerCase();
+      const isRuntimeProcess = command.includes("node")
+        || command.includes("sudo");
+      const isOpenrouterXPackage = command.includes("openrouterx")
+        || command.includes("@yina-npm/openrouterx");
+      const isMitmServer = command.includes("mitm/server.js");
+      return isRuntimeProcess && (isOpenrouterXPackage || isMitmServer);
+    })
+    .map((proc) => proc.pid);
+}
+
+function stopRelatedProcesses() {
+  let stoppedAny = false;
+  const mitmPid = readPidFile(MITM_PID_FILE);
+  if (mitmPid && isProcessRunning(mitmPid)) {
+    stoppedAny = killProcessTree(mitmPid) || stoppedAny;
+  }
+
+  const serverPid = readPid();
+  if (serverPid && isProcessRunning(serverPid)) {
+    stoppedAny = killProcessTree(serverPid) || stoppedAny;
+  }
+
+  for (const pid of collectOpenrouterXPids()) {
+    if (pid !== process.pid && isProcessRunning(pid)) {
+      stoppedAny = killProcessTree(pid) || stoppedAny;
+    }
+  }
+  return stoppedAny;
 }
 
 function openBrowser(url) {
@@ -191,25 +336,10 @@ function printStatus() {
 }
 
 function stopServer() {
-  const pid = readPid();
-
-  if (!isProcessRunning(pid)) {
-    removeRuntimeFiles();
-    console.log(`${APP_NAME} is not running`);
-    return false;
-  }
-
-  try {
-    process.kill(pid, "SIGTERM");
-  } catch {
-    removeRuntimeFiles();
-    console.log(`${APP_NAME} is not running`);
-    return false;
-  }
-
+  const stoppedAny = stopRelatedProcesses();
   removeRuntimeFiles();
-  console.log(`${APP_NAME} stopped`);
-  return true;
+  console.log(stoppedAny ? `${APP_NAME} stopped` : `${APP_NAME} is not running`);
+  return stoppedAny;
 }
 
 function createLogFileDescriptors() {

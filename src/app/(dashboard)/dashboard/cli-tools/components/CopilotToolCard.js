@@ -19,6 +19,7 @@ export default function CopilotToolCard({ tool, isExpanded, onToggle, baseUrl, a
   const [showManualConfigModal, setShowManualConfigModal] = useState(false);
   const [selectedModels, setSelectedModels] = useState([]);
   const [modalOpen, setModalOpen] = useState(false);
+  const hasCustomSelectedApiKey = selectedApiKey && !apiKeys?.some((key) => key.key === selectedApiKey);
 
   const fetchModelAliases = useCallback(async () => {
     try {
@@ -68,14 +69,14 @@ export default function CopilotToolCard({ tool, isExpanded, onToggle, baseUrl, a
 
   // Pre-fill model list from existing config
   useEffect(() => {
-    if (status?.config && Array.isArray(status.config) && modelList.length === 0) {
+    if (status?.config && Array.isArray(status.config) && selectedModels.length === 0) {
       const entry = status.config.find((e) => e.name === "OpenrouterX" || e.name === "OpenRouterX");
       if (entry?.models?.length > 0) {
-        const timer = setTimeout(() => setModelList(entry.models.map((m) => m.id)), 0);
+        const timer = setTimeout(() => setSelectedModels(entry.models.map((m) => m.id)), 0);
         return () => clearTimeout(timer);
       }
     }
-  }, [modelList.length, status]);
+  }, [selectedModels.length, status]);
 
   const getConfigStatus = () => {
     if (!status) return null;

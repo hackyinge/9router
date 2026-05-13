@@ -12,16 +12,16 @@ const projectRoot = path.resolve(import.meta.dirname, "../..");
 const cliPath = path.join(projectRoot, "cli.js");
 
 describe("CLI chooser compatibility", () => {
-  it("locks legacy default port, conflict messaging, banner, and chooser options", () => {
-    expect(getPreferredPort({ PORT: undefined })).toBe("5020");
+  it("locks default port, conflict messaging, banner, and chooser options", () => {
+    expect(getPreferredPort({ PORT: undefined })).toBe("20128");
 
-    const conflictMessage = getPortConflictMessage("5020");
-    expect(conflictMessage).toContain("9router");
+    const conflictMessage = getPortConflictMessage("20128");
+    expect(conflictMessage).toContain("openrouterX");
     expect(conflictMessage).toContain("PORT");
 
-    const banner = formatChooserBanner("http://localhost:5020");
-    expect(banner).toContain("Choose Interface");
-    expect(banner).toContain("http://localhost:5020");
+    const banner = formatChooserBanner("http://localhost:20128");
+    expect(banner).toContain("openrouterX");
+    expect(banner).toContain("http://localhost:20128");
 
     expect(getChooserOptions()).toEqual([
       "Web UI",
@@ -31,11 +31,11 @@ describe("CLI chooser compatibility", () => {
     ]);
   });
 
-  it("starts from the published source package instead of requiring hidden dot-build artifacts", () => {
+  it("starts from the packaged app server instead of hidden dot-build artifacts", () => {
     const cliSource = readFileSync(cliPath, "utf8");
 
-    expect(cliSource).toContain("npmCmd");
-    expect(cliSource).toContain('["run", "dev"]');
+    expect(cliSource).toContain('path.join(projectRoot, "app")');
+    expect(cliSource).toContain('path.join(appRoot, "server.js")');
     expect(cliSource).not.toContain("standalone/server.js");
   });
 
@@ -44,7 +44,7 @@ describe("CLI chooser compatibility", () => {
       readFileSync(path.join(projectRoot, "package.json"), "utf8"),
     );
 
-    expect(pkg.scripts.dev).toBe("next dev --webpack");
-    expect(pkg.scripts["dev:bun"]).toBe("bun --bun next dev --webpack");
+    expect(pkg.scripts.dev).toBe("next dev --webpack --port 20128");
+    expect(pkg.scripts["dev:bun"]).toBe("bun --bun next dev --webpack --port 20128");
   });
 });

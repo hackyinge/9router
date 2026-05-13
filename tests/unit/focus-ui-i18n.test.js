@@ -6,7 +6,7 @@ const ROOT_DIR = path.resolve(import.meta.dirname, "../..");
 const LITERALS_DIR = path.join(ROOT_DIR, "public", "i18n", "literals");
 
 const FOCUS_UI_LITERALS = [
-  "关注UI",
+  "Focus UI",
   "Monitor MITM status, quota, and realtime logs in one place",
   "MITM server status and controls",
   "MITM tool interception status",
@@ -38,5 +38,9 @@ describe("Focus UI i18n literals", () => {
     );
 
     expect(missingByLocale).toEqual({});
+  });
+
+  it("keeps the Simplified Chinese Focus UI label localized", () => {
+    expect(readLocale("zh-CN.json")["Focus UI"]).toBe("关注UI");
   });
 });

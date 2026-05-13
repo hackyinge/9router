@@ -112,7 +112,7 @@ const getPageInfo = (pathname) => {
     };
   if (pathname.includes("/focus-ui"))
     return {
-      title: "关注UI",
+      title: "Focus UI",
       description: "Monitor MITM status, quota, and realtime logs in one place",
       icon: "visibility",
       breadcrumbs: [],

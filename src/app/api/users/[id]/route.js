@@ -48,6 +48,9 @@ export async function PATCH(request, { params }) {
       allowedProviderConnectionIds: normalizeProviderConnectionIds(body.allowedProviderConnectionIds),
       showQuotaTracker: body.showQuotaTracker !== false,
     };
+    if (Object.prototype.hasOwnProperty.call(body, "providerThinking")) {
+      update.providerThinking = body.providerThinking && typeof body.providerThinking === "object" ? body.providerThinking : {};
+    }
     if (body.password) {
       const bcrypt = await import("bcryptjs");
       update.passwordHash = await bcrypt.hash(body.password, 10);

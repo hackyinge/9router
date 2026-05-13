@@ -113,13 +113,14 @@ export default function FocusUIPageClient() {
   const visibleMitmTools = FOCUS_MITM_TOOLS.filter(([toolId]) => visibleTools[toolId]);
 
   return (
-    <div className="flex w-full flex-col gap-6">
+    <div className="flex h-full min-h-0 w-full flex-col gap-6 overflow-hidden">
       <CollapsibleSection
         title="MITM Server"
         subtitle="MITM server status and controls"
         expanded={serverExpanded}
         onToggle={() => setServerExpanded((value) => !value)}
         bodyClassName="p-0"
+        className="shrink-0"
       >
         <MitmServerCard
           apiKeys={apiKeys}
@@ -133,6 +134,7 @@ export default function FocusUIPageClient() {
         subtitle="MITM tool interception status"
         expanded={providersExpanded}
         onToggle={() => setProvidersExpanded((value) => !value)}
+        className="shrink-0"
         headerControls={(
           <ProviderVisibilityControls
             tools={FOCUS_MITM_TOOLS}
@@ -170,6 +172,7 @@ export default function FocusUIPageClient() {
         expanded={quotaExpanded}
         onToggle={() => setQuotaExpanded((value) => !value)}
         bodyClassName="p-4"
+        className="shrink-0"
       >
         <ProviderLimits
           embedded
@@ -186,13 +189,14 @@ export default function FocusUIPageClient() {
         subtitle="MITM / OpenrouterX realtime output"
         expanded={logsExpanded}
         onToggle={() => setLogsExpanded((value) => !value)}
-        bodyClassName="p-3"
+        bodyClassName="flex min-h-0 flex-1 flex-col p-3"
+        className={logsExpanded ? "flex min-h-0 flex-1 flex-col" : "shrink-0"}
       >
         <ConsoleLogPanel
           active={logsExpanded}
           compact
           showToolbar
-          heightClassName="h-[calc(100vh-28rem)] min-h-[30rem]"
+          heightClassName="min-h-0 flex-1"
         />
       </CollapsibleSection>
     </div>
@@ -230,11 +234,12 @@ function CollapsibleSection({
   expanded,
   onToggle,
   children,
+  className = "",
   bodyClassName = "p-0",
   headerControls = null,
 }) {
   return (
-    <div className="overflow-hidden rounded-xl border border-border bg-surface shadow-sm">
+    <div className={`overflow-hidden rounded-xl border border-border bg-surface shadow-sm ${className}`}>
       <div className="flex w-full flex-col gap-3 px-4 py-3 transition-colors hover:bg-surface-2/60 lg:flex-row lg:items-center">
         <button
           type="button"

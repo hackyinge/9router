@@ -94,7 +94,7 @@ function main() {
   const packResult = JSON.parse(packOutput)[0];
   const tarballPath = path.join(localDir, packResult.filename);
 
-  run("npm", ["install", "-g", tarballPath, "--ignore-scripts=false"]);
+  run("npm", ["install", "-g", tarballPath, "--ignore-scripts=false", "--force"]);
 
   const commandPath = getCommandPath("openrouterX");
   assert(fs.existsSync(commandPath), `openrouterX command was not installed: ${commandPath}`);

@@ -4,7 +4,11 @@ import { useEffect, useState } from "react";
 import PropTypes from "prop-types";
 import { Button, Badge, Input, Modal, Select } from "@/shared/components";
 
-export default function AddApiKeyModal({ isOpen, provider, providerName, isCompatible, isAnthropic, authType, authHint, website, proxyPools, onSave, onClose }) {
+const BULK_PLACEHOLDER = `Production|sk-...
+Backup|sk-...
+sk-...`;
+
+export default function AddApiKeyModal({ isOpen, provider, providerName, isCompatible, isAnthropic, authType, authHint, website, proxyPools, onSave, onBulkDone, onClose }) {
   const NONE_PROXY_POOL_VALUE = "__none__";
   const isOllamaLocal = provider === "ollama-local";
   const isCookie = authType === "cookie";
@@ -33,6 +37,9 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
   const [validating, setValidating] = useState(false);
   const [validationResult, setValidationResult] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [mode, setMode] = useState("single");
+  const [bulkText, setBulkText] = useState("");
+  const [bulkResult, setBulkResult] = useState(null);
   const defaultConnectionName = isOllamaLocal
     ? "Ollama Local"
     : (isCookie ? `${providerName || provider} Cookie` : "Production Key");
@@ -56,6 +63,9 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
     setValidating(false);
     setValidationResult(null);
     setSaving(false);
+    setMode("single");
+    setBulkText("");
+    setBulkResult(null);
   }, [defaultConnectionName, isCompatible, isOpen]);
 
   const buildProviderSpecificData = () => {

@@ -14,11 +14,11 @@ export default function AdminUsersPage() {
   const [providerOptions, setProviderOptions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
-  const [form, setForm] = useState({ username: "", password: "", displayName: "", role: "sub_user", permissions: [], allowedProviders: [], allowedProviderConnectionIds: [], showQuotaTracker: true });
+  const [form, setForm] = useState({ username: "", password: "", displayName: "", role: "sub_user", permissions: [], allowedProviders: [], allowedProviderConnectionIds: [], showQuotaTracker: true, codexFastMode: false });
   const [formLoading, setFormLoading] = useState(false);
   const [formError, setFormError] = useState("");
   const [editingUser, setEditingUser] = useState(null);
-  const [editForm, setEditForm] = useState({ displayName: "", role: "", permissions: [], allowedProviders: [], allowedProviderConnectionIds: [], showQuotaTracker: true, password: "" });
+  const [editForm, setEditForm] = useState({ displayName: "", role: "", permissions: [], allowedProviders: [], allowedProviderConnectionIds: [], showQuotaTracker: true, codexFastMode: false, password: "" });
   const [deleteConfirm, setDeleteConfirm] = useState(null);
 
   useEffect(() => {
@@ -61,7 +61,10 @@ export default function AdminUsersPage() {
       const res = await fetch("/api/users", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify({
+          ...form,
+          providerThinking: buildProviderThinking(form.codexFastMode),
+        }),
       });
       const data = await res.json();
       if (!res.ok) { setFormError(data.error || "Failed"); return; }
@@ -75,6 +78,7 @@ export default function AdminUsersPage() {
         allowedProviders: getDefaultAllowedProviders(providerOptions),
         allowedProviderConnectionIds: getDefaultAllowedProviderConnectionIds(providerOptions),
         showQuotaTracker: true,
+        codexFastMode: false,
       });
       fetchUsers();
     } catch {
@@ -93,6 +97,7 @@ export default function AdminUsersPage() {
       allowedProviders: getEffectiveAllowedProviders(user, getDefaultAllowedProviders(providerOptions)),
       allowedProviderConnectionIds: getEffectiveAllowedProviderConnectionIds(user) ?? getDefaultAllowedProviderConnectionIdsForUser(user, providerOptions),
       showQuotaTracker: user.showQuotaTracker !== false,
+      codexFastMode: user.providerThinking?.codex?.fastMode === true,
       password: "",
     });
   }
@@ -108,6 +113,7 @@ export default function AdminUsersPage() {
         allowedProviders: editForm.allowedProviders,
         allowedProviderConnectionIds: editForm.allowedProviderConnectionIds,
         showQuotaTracker: editForm.showQuotaTracker,
+        providerThinking: buildProviderThinking(editForm.codexFastMode),
       };
       if (editForm.password) body.password = editForm.password;
       const res = await fetch(`/api/users/${editingUser.id}`, {
@@ -140,6 +146,7 @@ export default function AdminUsersPage() {
       allowedProviders: getDefaultAllowedProviders(providerOptions),
       allowedProviderConnectionIds: getDefaultAllowedProviderConnectionIds(providerOptions),
       showQuotaTracker: true,
+      codexFastMode: false,
     });
     setFormError("");
     setShowCreate(true);
@@ -221,6 +228,9 @@ export default function AdminUsersPage() {
                 <span className={`text-xs px-2 py-1 rounded-full ${user.showQuotaTracker !== false ? "bg-emerald-500/10 text-emerald-600" : "bg-surface-alt text-text-muted"}`}>
                   {user.showQuotaTracker !== false ? "Quota On" : "Quota Off"}
                 </span>
+                <span className={`text-xs px-2 py-1 rounded-full ${user.providerThinking?.codex?.fastMode === true ? "bg-orange-500/10 text-orange-600" : "bg-surface-alt text-text-muted"}`}>
+                  {user.providerThinking?.codex?.fastMode === true ? "Fast On" : "Fast Off"}
+                </span>
                 <Button variant="secondary" size="sm" onClick={() => openEdit(user)}>Edit</Button>
                 <Button variant="danger" size="sm" onClick={() => setDeleteConfirm(user)}>Delete</Button>
               </div>
@@ -231,7 +241,7 @@ export default function AdminUsersPage() {
 
       {/* Create Modal */}
       {showCreate && (
-        <Modal isOpen={showCreate} title="Create Sub-user" onClose={() => setShowCreate(false)}>
+        <Modal isOpen={showCreate} title="Create Sub-user" onClose={() => setShowCreate(false)} size="full">
           <form onSubmit={handleCreate} className="flex flex-col gap-4">
             <Input label="Username" value={form.username} onChange={e => setForm(f => ({ ...f, username: e.target.value }))} required />
             <Input label="Display Name" value={form.displayName} onChange={e => setForm(f => ({ ...f, displayName: e.target.value }))} />
@@ -266,6 +276,14 @@ export default function AdminUsersPage() {
               />
               Allow Quota Tracker for this sub-user
             </label>
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <input
+                type="checkbox"
+                checked={form.codexFastMode}
+                onChange={(e) => setForm((f) => ({ ...f, codexFastMode: e.target.checked }))}
+              />
+              Enable Codex Fast Mode for this sub-user
+            </label>
             {formError && <p className="text-red-500 text-sm">{formError}</p>}
             <div className="flex justify-end gap-2 mt-2">
               <Button variant="secondary" type="button" onClick={() => setShowCreate(false)}>Cancel</Button>
@@ -277,7 +295,7 @@ export default function AdminUsersPage() {
 
       {/* Edit Modal */}
       {editingUser && (
-        <Modal isOpen={!!editingUser} title={`Edit ${editingUser.username}`} onClose={() => setEditingUser(null)}>
+        <Modal isOpen={!!editingUser} title={`Edit ${editingUser.username}`} onClose={() => setEditingUser(null)} size="full">
           <form onSubmit={handleEdit} className="flex flex-col gap-4">
             <Input label="Display Name" value={editForm.displayName}
               onChange={e => setEditForm(f => ({ ...f, displayName: e.target.value }))} />
@@ -310,6 +328,14 @@ export default function AdminUsersPage() {
                 onChange={(e) => setEditForm((f) => ({ ...f, showQuotaTracker: e.target.checked }))}
               />
               Allow Quota Tracker for this sub-user
+            </label>
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <input
+                type="checkbox"
+                checked={editForm.codexFastMode}
+                onChange={(e) => setEditForm((f) => ({ ...f, codexFastMode: e.target.checked }))}
+              />
+              Enable Codex Fast Mode for this sub-user
             </label>
             <Input label="New Password (leave blank to keep)" type="password" value={editForm.password}
               onChange={e => setEditForm(f => ({ ...f, password: e.target.value }))} />
@@ -435,6 +461,14 @@ function formatAllowedAccounts(user, providerOptions) {
 
   if (totalAccounts === 0) return "No accounts";
   return `${allowedConnectionSet.size}/${totalAccounts} accounts`;
+}
+
+function buildProviderThinking(codexFastMode) {
+  return {
+    codex: {
+      fastMode: codexFastMode === true,
+    },
+  };
 }
 
 function ProviderSelector({ providerOptions, selectedProviders, selectedConnectionIds, onToggle, onToggleConnection }) {

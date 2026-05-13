@@ -31,6 +31,7 @@ export default function HermesToolCard({
   const [showManualConfigModal, setShowManualConfigModal] = useState(false);
   const [customBaseUrl, setCustomBaseUrl] = useState("");
   const hasInitializedModel = useRef(false);
+  const hasCustomSelectedApiKey = selectedApiKey && !apiKeys?.some((key) => key.key === selectedApiKey);
 
   const getConfigStatus = () => {
     if (!hermesStatus?.installed) return null;
@@ -226,7 +227,7 @@ export default function HermesToolCard({
             </div>
           )}
 
-          {!checking && hermesStatus?.installed && (
+          {!checking && hermesStatus && (
             <>
               <div className="flex flex-col gap-2">
                 {hermesStatus?.settings?.model?.base_url && (

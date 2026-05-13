@@ -50,6 +50,7 @@ export async function POST(request) {
       allowedProviders,
       allowedProviderConnectionIds,
       showQuotaTracker,
+      providerThinking,
     } = await request.json();
     if (!username || !password) {
       return NextResponse.json({ error: "username and password are required" }, { status: 400 });
@@ -65,6 +66,7 @@ export async function POST(request) {
       allowedProviders: normalizeProviderIds(allowedProviders),
       allowedProviderConnectionIds: normalizeProviderConnectionIds(allowedProviderConnectionIds),
       showQuotaTracker: showQuotaTracker !== false,
+      providerThinking: providerThinking && typeof providerThinking === "object" ? providerThinking : {},
     });
     return NextResponse.json({ user }, { status: 201 });
   } catch (error) {

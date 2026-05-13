@@ -246,7 +246,7 @@ model = "${effectiveSubagentModel}"
             </div>
           )}
 
-          {!checkingCodex && hasKnownInstallState && !effectiveStatus.installed && (
+          {!manualOnly && !checkingCodex && hasKnownInstallState && !effectiveStatus.installed && (
             <div className="flex flex-col gap-4">
               <div className="flex flex-col gap-3 p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
                 <div className="flex items-start gap-3">
@@ -300,7 +300,7 @@ model = "${effectiveSubagentModel}"
             </div>
           )}
 
-          {!checkingCodex && effectiveStatus?.installed && (
+          {!checkingCodex && effectiveStatus && (
             <>
               <div className="flex flex-col gap-2">
                 {/* Current Base URL */}

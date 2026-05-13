@@ -34,9 +34,12 @@ function getToastStyle(type) {
 
 export default function DashboardLayout({ children }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const pathname = usePathname();
   const { role } = useUserRole();
   const isSubUser = role === "sub_user";
+  const isBasicChat = pathname === "/dashboard/basic-chat";
+  const isFocusUI = pathname === "/dashboard/focus-ui";
   const notifications = useNotificationStore((state) => state.notifications);
   const removeNotification = useNotificationStore((state) => state.removeNotification);
 
@@ -82,7 +85,7 @@ export default function DashboardLayout({ children }) {
       {/* Sidebar - Desktop */}
       {!isSubUser && (
         <div className="hidden lg:flex">
-          <Sidebar />
+          <Sidebar collapsed={sidebarCollapsed} onCollapsedChange={setSidebarCollapsed} />
         </div>
       )}
 
@@ -101,8 +104,15 @@ export default function DashboardLayout({ children }) {
       <main className="flex flex-col flex-1 h-full min-w-0 relative isolate transition-colors duration-300">
         <div className="landing-grid absolute inset-0 pointer-events-none -z-10" aria-hidden="true" />
         <Header key={pathname} onMenuClick={() => setSidebarOpen(true)} showMenuButton={!isSubUser} />
-        <div className={`flex-1 overflow-y-auto custom-scrollbar ${pathname === "/dashboard/basic-chat" ? "" : "p-6 lg:p-10"} ${pathname === "/dashboard/basic-chat" ? "flex flex-col overflow-hidden" : ""}`}>
-          <div className={`${pathname === "/dashboard/basic-chat" ? "flex-1 w-full h-full flex flex-col" : "max-w-7xl mx-auto"}`}>{children}</div>
+        <div className={`flex-1 custom-scrollbar ${isBasicChat ? "" : "p-6 lg:p-10"} ${isBasicChat || isFocusUI ? "flex flex-col overflow-hidden" : "overflow-y-auto"}`}>
+          <div className={isBasicChat
+            ? "flex-1 w-full h-full flex flex-col"
+            : isFocusUI
+              ? "mx-auto flex h-full min-h-0 w-full max-w-7xl flex-1 flex-col"
+              : "max-w-7xl mx-auto"}
+          >
+            {children}
+          </div>
         </div>
       </main>
     </div>

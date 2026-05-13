@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { jwtVerify } from "jose";
-import { getUserById } from "@/lib/localDb";
+import { getSettings, getUserById } from "@/lib/localDb";
 import {
   getEffectiveAllowedProviderConnectionIds,
   getEffectiveAllowedProviders,
@@ -21,6 +21,12 @@ export async function GET(request) {
       payload.role === "sub_user" && payload.userId
         ? await getUserById(payload.userId)
         : null;
+    const settings = await getSettings();
+    const providerThinkingScopeKey = currentUser?.id || payload.userId || "super_admin";
+    const accountProviderThinking =
+      currentUser?.role === "sub_user"
+        ? currentUser?.providerThinking || {}
+        : (settings.userProviderThinking || {})[providerThinkingScopeKey] || {};
 
     return NextResponse.json({
       role: currentUser?.role || payload.role || null,
@@ -40,6 +46,8 @@ export async function GET(request) {
         currentUser?.role === "sub_user"
           ? getEffectiveAllowedProviderConnectionIds(currentUser)
           : payload.allowedProviderConnectionIds || null,
+      providerThinkingScopeKey,
+      providerThinking: accountProviderThinking,
     });
   } catch {
     return NextResponse.json({ role: null, userId: null });

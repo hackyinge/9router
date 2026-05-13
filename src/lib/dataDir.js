@@ -24,8 +24,7 @@ export function getLegacyDataDir() {
   return resolveHomeDataDir(LEGACY_APP_NAME);
 }
 
-export function getDataDir() {
-  if (process.env.DATA_DIR) return process.env.DATA_DIR;
+function defaultDir() {
   return resolveHomeDataDir(APP_NAME);
 }
 
@@ -37,7 +36,7 @@ export function getDataDir() {
     return configured;
   } catch (e) {
     if (e?.code === "EACCES" || e?.code === "EPERM") {
-      console.warn(`[DATA_DIR] '${configured}' not writable → fallback ~/.${APP_NAME}`);
+      console.warn(`[DATA_DIR] '${configured}' not writable -> fallback ~/.${APP_NAME}`);
       return defaultDir();
     }
     throw e;

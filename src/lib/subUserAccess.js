@@ -27,6 +27,7 @@ function buildSubUserAccessContext(user, source) {
     permissions: Array.isArray(user.permissions) ? user.permissions : [],
     allowedProviders: getEffectiveAllowedProviders(user),
     allowedProviderConnectionIds: getEffectiveAllowedProviderConnectionIds(user),
+    providerThinking: user.providerThinking || {},
     source,
   };
 }

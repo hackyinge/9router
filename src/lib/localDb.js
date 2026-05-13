@@ -24,6 +24,7 @@ const DEFAULT_SETTINGS = {
   stickyRoundRobinLimit: 3,
   providerStrategies: {},
   providerThinking: {},
+  userProviderThinking: {},
   comboStrategy: "fallback",
   comboStickyRoundRobinLimit: 1,
   comboStrategies: {},
@@ -689,6 +690,7 @@ export async function createUser({
   allowedProviders,
   allowedProviderConnectionIds,
   showQuotaTracker = true,
+  providerThinking = {},
 }) {
   const db = await getDb();
   if (!db.data.users) db.data.users = [];
@@ -704,6 +706,7 @@ export async function createUser({
     permissions,
     displayName: displayName || username,
     showQuotaTracker,
+    providerThinking,
     createdAt: now,
     updatedAt: now,
   };

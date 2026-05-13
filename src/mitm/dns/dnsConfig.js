@@ -48,6 +48,32 @@ const MAC_ANTIGRAVITY_LEGACY_SHARED_IP_PREFIXES = [
   "142.251.",
   "172.217.",
 ];
+const REQUIRED_HOST_LOOPBACKS = IS_WIN ? ["127.0.0.1"] : ["127.0.0.1", "::1"];
+
+function lineHasHostEntry(line, address, host) {
+  const trimmed = String(line || "").trim();
+  if (!trimmed || trimmed.startsWith("#")) return false;
+  const parts = trimmed.split(/\s+/);
+  return parts[0] === address && parts.slice(1).includes(host);
+}
+
+function hasHostLoopback(content, host, address) {
+  return String(content || "")
+    .split(/\r?\n/)
+    .some((line) => lineHasHostEntry(line, address, host));
+}
+
+function hostHasRequiredLoopbacks(content, host, loopbacks = REQUIRED_HOST_LOOPBACKS) {
+  return loopbacks.every((address) => hasHostLoopback(content, host, address));
+}
+
+function getMissingHostsEntries(content, hosts, loopbacks = REQUIRED_HOST_LOOPBACKS) {
+  return hosts.flatMap((host) =>
+    loopbacks
+      .filter((address) => !hasHostLoopback(content, host, address))
+      .map((address) => `${address} ${host}`)
+  );
+}
 
 /** True when `sudo` exists (e.g. missing on minimal Docker images like Alpine). */
 function isSudoAvailable() {
@@ -219,9 +245,9 @@ async function removeToolNetworkRedirect(tool, sudoPassword) {
 function checkDNSEntry(host = null) {
   try {
     const hostsContent = fs.readFileSync(HOSTS_FILE, "utf8");
-    if (host) return hostsContent.includes(host);
+    if (host) return hostHasRequiredLoopbacks(hostsContent, host);
     // Legacy: check all antigravity hosts (backward compat)
-    return TOOL_HOSTS.antigravity.every(h => hostsContent.includes(h));
+    return TOOL_HOSTS.antigravity.every(h => hostHasRequiredLoopbacks(hostsContent, h));
   } catch {
     return false;
   }
@@ -235,7 +261,7 @@ function checkAllDNSStatus() {
     const hostsContent = fs.readFileSync(HOSTS_FILE, "utf8");
     const result = {};
     for (const [tool, hosts] of Object.entries(TOOL_HOSTS)) {
-      result[tool] = hosts.every(h => hostsContent.includes(h));
+      result[tool] = hosts.every(h => hostHasRequiredLoopbacks(hostsContent, h));
     }
     return result;
   } catch {
@@ -250,7 +276,8 @@ async function addDNSEntry(tool, sudoPassword) {
   const hosts = TOOL_HOSTS[tool];
   if (!hosts) throw new Error(`Unknown tool: ${tool}`);
 
-  const entriesToAdd = hosts.filter(h => !checkDNSEntry(h));
+  const currentContent = fs.readFileSync(HOSTS_FILE, "utf8");
+  const entriesToAdd = getMissingHostsEntries(currentContent, hosts);
   if (entriesToAdd.length === 0) {
     log(`🌐 DNS ${tool}: already active`);
     await ensureToolNetworkRedirect(tool, sudoPassword);
@@ -260,16 +287,16 @@ async function addDNSEntry(tool, sudoPassword) {
   try {
     if (IS_WIN) {
       // Read → trim → append → atomic write (Node-side, no CLI size limit)
-      const current = fs.readFileSync(HOSTS_FILE, "utf8");
+      const current = currentContent;
       const trimmed = current.replace(/[\r\n\s]+$/g, "");
-      const toAppend = entriesToAdd.map(h => `127.0.0.1 ${h}`).join("\r\n");
+      const toAppend = entriesToAdd.join("\r\n");
       const next = `${trimmed}\r\n${toAppend}\r\n`;
       atomicWriteHostsWin(HOSTS_FILE, current, next);
       await runElevatedPowerShell("ipconfig /flushdns | Out-Null");
     } else {
-      const current = fs.readFileSync(HOSTS_FILE, "utf8");
+      const current = currentContent;
       const trimmed = current.replace(/[\r\n\s]+$/g, "");
-      const toAppend = entriesToAdd.map(h => `127.0.0.1 ${h}`).join("\n");
+      const toAppend = entriesToAdd.join("\n");
       const next = `${trimmed}\n${toAppend}\n`;
       // Use tee via sudo to overwrite atomically — escape single quotes in content
       const escaped = next.replace(/'/g, "'\\''");
@@ -376,4 +403,6 @@ module.exports = {
   isSudoPasswordRequired,
   checkDNSEntry,
   checkAllDNSStatus,
+  getMissingHostsEntries,
+  hostHasRequiredLoopbacks,
 };

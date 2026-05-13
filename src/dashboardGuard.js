@@ -1,10 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSettings } from "@/lib/localDb";
+import { getDashboardAuthSession, verifyDashboardAuthToken } from "@/lib/auth/dashboardSession";
 import { getConsistentMachineId } from "@/shared/utils/machineId";
-
-const SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || "openrouterx-default-secret-change-me"
-);
 
 const CLI_TOKEN_HEADER = "x-openrouterx-cli-token";
 const CLI_TOKEN_SALT = "openrouterx-cli-auth";
@@ -60,13 +57,7 @@ async function isAuthenticated(request) {
  */
 export async function getAuthPayload(request) {
   const token = request.cookies.get("auth_token")?.value;
-  if (!token) return null;
-  try {
-    const { payload } = await jwtVerify(token, SECRET);
-    return payload;
-  } catch {
-    return null;
-  }
+  return getDashboardAuthSession(token);
 }
 
 export async function proxy(request) {
@@ -114,13 +105,8 @@ export async function proxy(request) {
     const token = request.cookies.get("auth_token")?.value;
     if (!token) return NextResponse.redirect(new URL("/login", request.url));
 
-    let payload;
-    try {
-      const result = await jwtVerify(token, SECRET);
-      payload = result.payload;
-    } catch {
-      return NextResponse.redirect(new URL("/login", request.url));
-    }
+    const payload = await getDashboardAuthSession(token);
+    if (!payload) return NextResponse.redirect(new URL("/login", request.url));
 
     // Super admin: unrestricted dashboard access
     if (payload.role === "super_admin") return NextResponse.next();

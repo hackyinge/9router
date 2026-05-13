@@ -271,7 +271,7 @@ export default function ClaudeToolCard({
             </div>
           )}
 
-          {!checkingClaude && effectiveStatus?.installed && (
+          {!checkingClaude && effectiveStatus && (
             <>
               <div className="flex flex-col gap-2">
                 {/* Current Base URL */}

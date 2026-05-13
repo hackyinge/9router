@@ -8,6 +8,7 @@ import { Card, Button, Badge, Input, Modal, CardSkeleton, OAuthModal, KiroOAuthW
 import { OAUTH_PROVIDERS, APIKEY_PROVIDERS, FREE_PROVIDERS, FREE_TIER_PROVIDERS, WEB_COOKIE_PROVIDERS, getProviderAlias, isOpenAICompatibleProvider, isAnthropicCompatibleProvider, AI_PROVIDERS } from "@/shared/constants/providers";
 import { getModelsByProviderId } from "@/shared/constants/models";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
+import { buildThinkingOptions } from "@/shared/utils/thinkingOptions";
 import { fetchSuggestedModels } from "@/shared/utils/providerModelsFetcher";
 import ModelRow from "./ModelRow";
 import PassthroughModelsSection from "./PassthroughModelsSection";
@@ -48,6 +49,9 @@ export default function ProviderDetailPage() {
   const [providerStrategy, setProviderStrategy] = useState(null); // null = use global, "round-robin" = override
   const [providerStickyLimit, setProviderStickyLimit] = useState("");
   const [thinkingMode, setThinkingMode] = useState("auto");
+  const [codexGlobalFastMode, setCodexGlobalFastMode] = useState(false);
+  const [codexFastMode, setCodexFastMode] = useState(false);
+  const [providerThinkingScopeKey, setProviderThinkingScopeKey] = useState("super_admin");
   const [suggestedModels, setSuggestedModels] = useState([]);
   const [kiloFreeModels, setKiloFreeModels] = useState([]);
   const [disabledModelIds, setDisabledModelIds] = useState([]);
@@ -79,14 +83,7 @@ export default function ProviderDetailPage() {
     ? (providerNode?.prefix || providerId)
     : providerAlias;
   const hideProviderPrefixInModelLabel = providerId === "codex";
-  const thinkingOptions = (thinkingConfig?.options || []).map((option) => ({
-    value: option,
-    label: option === "auto"
-      ? (providerId === "codex" ? "Auto (Low)" : "Auto")
-      : option === "xhigh"
-        ? "XHigh"
-        : option.charAt(0).toUpperCase() + option.slice(1),
-  }));
+  const thinkingOptions = buildThinkingOptions(thinkingConfig, providerId);
 
   const fetchDisabledModels = useCallback(async () => {
     try {
@@ -168,16 +165,18 @@ export default function ProviderDetailPage() {
 
   const fetchConnections = useCallback(async () => {
     try {
-      const [connectionsRes, nodesRes, proxyPoolsRes, settingsRes] = await Promise.all([
+      const [connectionsRes, nodesRes, proxyPoolsRes, settingsRes, meRes] = await Promise.all([
         fetch("/api/providers", { cache: "no-store" }),
         fetch("/api/provider-nodes", { cache: "no-store" }),
         fetch("/api/proxy-pools?isActive=true", { cache: "no-store" }),
         fetch("/api/settings", { cache: "no-store" }),
+        fetch("/api/auth/me", { cache: "no-store" }),
       ]);
       const connectionsData = await connectionsRes.json();
       const nodesData = await nodesRes.json();
       const proxyPoolsData = await proxyPoolsRes.json();
       const settingsData = settingsRes.ok ? await settingsRes.json() : {};
+      const meData = meRes.ok ? await meRes.json() : {};
       if (connectionsRes.ok) {
         const filtered = (connectionsData.connections || []).filter(c => c.provider === providerId);
         setConnections(filtered);
@@ -191,7 +190,19 @@ export default function ProviderDetailPage() {
       setProviderStickyLimit(override.stickyRoundRobinLimit != null ? String(override.stickyRoundRobinLimit) : "1");
       // Load per-provider thinking config
       const thinkingCfg = (settingsData.providerThinking || {})[providerId] || {};
+      const selfKey = meData.providerThinkingScopeKey || meData.userId || "super_admin";
+      const selfThinkingCfg =
+        meData.role === "sub_user"
+          ? (meData.providerThinking || {})[providerId] || {}
+          : (settingsData.userProviderThinking || {})[selfKey]?.[providerId] || {};
       setThinkingMode(thinkingCfg.mode || "auto");
+      setCodexGlobalFastMode(thinkingCfg.fastMode === true);
+      setProviderThinkingScopeKey(selfKey);
+      setCodexFastMode(
+        Object.prototype.hasOwnProperty.call(selfThinkingCfg, "fastMode")
+          ? selfThinkingCfg.fastMode === true
+          : thinkingCfg.fastMode === true
+      );
       if (nodesRes.ok) {
         let node = (nodesData.nodes || []).find((entry) => entry.id === providerId) || null;
 
@@ -278,16 +289,20 @@ export default function ProviderDetailPage() {
     saveProviderStrategy("round-robin", value);
   };
 
-  const saveThinkingConfig = async (mode) => {
+  const saveThinkingConfig = async (mode, globalFastMode = codexGlobalFastMode) => {
     try {
       const settingsRes = await fetch("/api/settings", { cache: "no-store" });
       const settingsData = settingsRes.ok ? await settingsRes.json() : {};
       const current = settingsData.providerThinking || {};
       const updated = { ...current };
-      if (!mode || mode === "auto") {
+      const nextConfig = {};
+      if (mode && mode !== "auto") nextConfig.mode = mode;
+      if (providerId === "codex" && globalFastMode === true) nextConfig.fastMode = true;
+
+      if (Object.keys(nextConfig).length === 0) {
         delete updated[providerId];
       } else {
-        updated[providerId] = { mode };
+        updated[providerId] = nextConfig;
       }
       await fetch("/api/settings", {
         method: "PATCH",
@@ -302,6 +317,44 @@ export default function ProviderDetailPage() {
   const handleThinkingModeChange = (mode) => {
     setThinkingMode(mode);
     saveThinkingConfig(mode);
+  };
+
+  const handleCodexGlobalFastModeChange = (enabled) => {
+    setCodexGlobalFastMode(enabled);
+    saveThinkingConfig(thinkingMode, enabled);
+  };
+
+  const handleCodexFastModeChange = (enabled) => {
+    setCodexFastMode(enabled);
+    saveAccountFastMode(enabled);
+  };
+
+  const saveAccountFastMode = async (enabled) => {
+    try {
+      const settingsRes = await fetch("/api/settings", { cache: "no-store" });
+      const settingsData = settingsRes.ok ? await settingsRes.json() : {};
+      const current = settingsData.userProviderThinking || {};
+      const scopeKey = providerThinkingScopeKey || "super_admin";
+      const accountConfig = current[scopeKey] || {};
+      const providerConfig = accountConfig[providerId] || {};
+      const updated = {
+        ...current,
+        [scopeKey]: {
+          ...accountConfig,
+          [providerId]: {
+            ...providerConfig,
+            fastMode: enabled,
+          },
+        },
+      };
+      await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userProviderThinking: updated }),
+      });
+    } catch (error) {
+      console.log("Error saving account fast mode:", error);
+    }
   };
 
   useEffect(() => {
@@ -995,6 +1048,24 @@ export default function ProviderDetailPage() {
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="text-lg font-semibold">Connections</h2>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
+              {providerId === "codex" && (
+                <div className="flex flex-wrap items-center gap-3">
+                  <label className="flex items-center gap-2">
+                    <span className="text-xs font-medium text-text-muted whitespace-nowrap">Global Fast</span>
+                    <Toggle
+                      checked={codexGlobalFastMode}
+                      onChange={handleCodexGlobalFastModeChange}
+                    />
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <span className="text-xs font-medium text-text-muted whitespace-nowrap">My Fast</span>
+                    <Toggle
+                      checked={codexFastMode}
+                      onChange={handleCodexFastModeChange}
+                    />
+                  </label>
+                </div>
+              )}
               {thinkingConfig && (
                 <div className="flex items-center gap-2">
                   <label htmlFor="provider-default-reasoning" className="text-xs font-medium text-text-muted whitespace-nowrap">
@@ -1006,7 +1077,7 @@ export default function ProviderDetailPage() {
                       value={thinkingMode}
                       onChange={(e) => handleThinkingModeChange(e.target.value)}
                       disabled={loading}
-                      className="h-6 w-24 appearance-none rounded-full border border-border/60 bg-surface-2 pl-3 pr-7 text-xs font-medium text-text-main transition-colors focus:border-primary/50 focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="h-6 w-28 appearance-none rounded-full border border-border/60 bg-surface-2 pl-3 pr-7 text-xs font-medium text-text-main transition-colors focus:border-primary/50 focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       {thinkingOptions.map((option) => (
                         <option key={option.value} value={option.value}>

@@ -135,11 +135,9 @@ function extractModel(url, body) {
 function getMappedModel(tool, model) {
   if (!model) return null;
   try {
-    if (!fs.existsSync(DB_FILE)) return null;
-    const db = JSON.parse(fs.readFileSync(DB_FILE, "utf-8"));
     const aliases = {
       ...(MODEL_SYNONYMS?.[tool]?.__defaults || {}),
-      ...(db.mitmAlias?.[tool] || {}),
+      ...(getMitmAlias(tool) || {}),
     };
     // Normalize via synonym map (e.g., gemini-default → gemini-3-flash)
     const lookup = MODEL_SYNONYMS?.[tool]?.[model] || model;
@@ -388,8 +386,7 @@ const server = https.createServer(sslOptions, async (req, res) => {
 
     const model = extractModel(req.url, bodyBuffer);
     const mappedModel = getMappedModel(tool, model);
-    const db = fs.existsSync(DB_FILE) ? JSON.parse(fs.readFileSync(DB_FILE, "utf-8")) : {};
-    const aliasMappings = db.mitmAlias?.[tool] || {};
+    const aliasMappings = getMitmAlias(tool) || {};
     if (!mappedModel && tool !== "openrouter" && !req.url.includes("/models")) {
       log(`⏩ passthrough | no mapping | ${tool} | ${model || "unknown"}`);
       return passthrough(req, res, bodyBuffer);

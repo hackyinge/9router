@@ -109,7 +109,7 @@ AddCustomModelModal.propTypes = {
 // ── ModelsCard ─────────────────────────────────────────────────
 // Self-contained card: shows models for a provider, filtered by optional `kindFilter`.
 // kindFilter: if provided, only shows models with matching type/kinds field.
-export default function ModelsCard({ providerId, kindFilter, providerAliasOverride }) {
+export default function ModelsCard({ providerId, kindFilter, providerAliasOverride, hiddenModelIds = [] }) {
   const { copied, copy } = useCopyToClipboard();
   const [modelAliases, setModelAliases] = useState({});
   const [customModels, setCustomModels] = useState([]);
@@ -122,6 +122,7 @@ export default function ModelsCard({ providerId, kindFilter, providerAliasOverri
   const providerAlias = providerAliasOverride || getProviderAlias(providerId);
   const hideProviderPrefixInModelLabel = providerId === "codex";
   const effectiveType = kindFilter || "llm";
+  const hiddenModelIdSet = new Set(hiddenModelIds);
 
   const fetchData = useCallback(async () => {
     try {
@@ -209,8 +210,8 @@ export default function ModelsCard({ providerId, kindFilter, providerAliasOverri
     ? allBuiltIn.filter((m) => {
         if (m.kinds) return m.kinds.includes(kindFilter);
         return (m.type || "llm") === kindFilter;
-      })
-    : allBuiltIn;
+      }).filter((m) => !hiddenModelIdSet.has(m.id))
+    : allBuiltIn.filter((m) => !hiddenModelIdSet.has(m.id));
 
   // Custom models for this provider + kind, dedupe vs built-in
   const myCustomModels = customModels.filter(
@@ -295,4 +296,5 @@ ModelsCard.propTypes = {
   providerId: PropTypes.string.isRequired,
   kindFilter: PropTypes.string, // e.g. "tts", "embedding" — filters models shown
   providerAliasOverride: PropTypes.string, // override alias (e.g. for custom-embedding nodes using prefix)
+  hiddenModelIds: PropTypes.arrayOf(PropTypes.string),
 };
