@@ -2,6 +2,10 @@
 
 面向 AI 编码工具的本地统一路由服务。
 
+> 当前代码分支：[`feat/openrouterx-release`](https://github.com/hackyinge/9router/tree/feat/openrouterx-release)  
+> GitHub 仓库：[`hackyinge/9router`](https://github.com/hackyinge/9router)  
+> 如果这个项目对你有帮助，欢迎点一个 Star，后续会继续更新更多 AI 编码工具、MITM、账号切换和团队网关能力。
+
 `openrouterX` 可以把 Claude Code、Codex、Cursor、OpenCode、OpenClaw、Cline、Continue、Roo 等客户端统一接到一个本地 OpenAI-compatible 接口，并提供 Dashboard、模型路由、API Key 管理、Usage 分析、组合模型与自动 fallback。
 
 ## 为什么用 openrouterX
@@ -10,8 +14,50 @@
 - 统一管理后台：`http://localhost:20502/dashboard`
 - 同时接入订阅型供应商、API Key 供应商、免费供应商
 - 支持组合模型与自动 fallback
+- 支持 Codex 账号一键激活到本机 Codex，并自动刷新 token、写入 macOS Keychain、重启 Codex App
+- 支持子用户在授权范围内切换 Codex 账号，适合团队共用多账号额度
+- 支持 Antigravity MITM，带上游解析修复，避免依赖固定 IP 导致网络漂移后失效
+- 默认端口前移到 `20502`，安装和启动时会迁移旧的 `20128` MITM router 配置
+- 配额刷新请求做了分散调度，降低多个账号集中请求触发风控的概率
 - 内置 `RTK`，适合 `git diff`、`grep`、日志等重工具调用场景
 - 支持管理员创建子用户，并精细限制子用户可用供应商与 API Key
+
+## 新增功能速览
+
+### Codex 账号一键激活
+
+在配额页面的 Codex 账号卡片上点击 `Activate`，即可把该账号应用到本机 Codex：
+
+- 检测本机是否安装 Codex CLI 或 macOS Codex.app
+- 使用账号的 `refresh_token` 刷新最新 `access_token` / `id_token`
+- 写入 `~/.codex/auth.json`
+- 在 macOS 上同步写入 `Codex Auth` Keychain
+- 自动重启 Codex.app，让新账号立即生效
+
+如果本机没有安装 Codex，会提示安装方式：
+
+```bash
+npm install -g @openai/codex
+# macOS 也可以：
+brew install --cask codex
+```
+
+### 子用户也能切换 Codex 账号
+
+子用户在配额页面仍然保持只读，不能编辑、删除或启停供应商连接，但可以对自己被授权看到的 Codex 账号点击 `Activate`。后端会做连接级权限校验，手写未授权的 `connectionId` 会返回 `403`。
+
+注意：Codex 激活修改的是当前机器的本地 Codex 登录态，是机器级状态，不是每个子用户隔离一份本地 Codex 状态。
+
+### Antigravity MITM 更稳定
+
+MITM 不再依赖固定上游 IP 列表。解析上游地址时会跳过本机 alias、回环路由和已失败地址，减少这类错误：
+
+```txt
+Passthrough error: connect EADDRNOTAVAIL ...
+Router fetch failed for http://localhost:20128/v1/chat/completions
+```
+
+同时默认端口已从 `20128` 迁移到 `20502`，升级安装和启动时会刷新旧配置，避免其他机器升级后继续指向旧端口。
 
 ## 安装
 
@@ -412,7 +458,15 @@ curl http://localhost:20502/v1/models \
 
 - npm 包：[`@yina-npm/openrouterx`](https://www.npmjs.com/package/@yina-npm/openrouterx)
 - 启动命令：`openrouterX`
+- 代码仓库：[`hackyinge/9router`](https://github.com/hackyinge/9router)
+- 当前分支：[`feat/openrouterx-release`](https://github.com/hackyinge/9router/tree/feat/openrouterx-release)
 - 协议：MIT
+
+## 作者
+
+如果你喜欢这个项目，欢迎到 GitHub 给 [`hackyinge/9router`](https://github.com/hackyinge/9router) 点个 Star。Star 会直接决定作者继续摸鱼写功能的速度。
+
+作者除了写 AI 工具，也在番茄小说写小说。感兴趣可以在番茄小说搜索：**《首席摸鱼》**。
 
 ## License
 
