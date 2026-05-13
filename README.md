@@ -466,7 +466,7 @@ curl http://localhost:20502/v1/models \
 
 如果你喜欢这个项目，欢迎到 GitHub 给 [`hackyinge/9router`](https://github.com/hackyinge/9router) 点个 Star。Star 会直接决定作者继续摸鱼写功能的速度。
 
-作者除了写 AI 工具，也在番茄小说写小说。感兴趣可以在番茄小说搜索：**《首席摸鱼》**。
+作者除了写 AI 工具，也在番茄小说写小说。感兴趣可以在番茄小说搜索作者：**首席摸鱼**。
 
 ## License
 
