@@ -172,6 +172,7 @@ const PROVIDERS = {
       const mapped = {
         accessToken: tokens.access_token,
         refreshToken: tokens.refresh_token,
+        idToken: tokens.id_token,
         expiresIn: tokens.expires_in,
       };
       if (info.email) mapped.email = info.email;

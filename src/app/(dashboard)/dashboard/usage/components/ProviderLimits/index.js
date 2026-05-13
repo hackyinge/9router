@@ -8,18 +8,36 @@ import { parseQuotaData, calculatePercentage } from "./utils";
 import Card from "@/shared/components/Card";
 import { EditConnectionModal } from "@/shared/components";
 import { USAGE_SUPPORTED_PROVIDERS, USAGE_APIKEY_PROVIDERS } from "@/shared/constants/providers";
+import { useNotificationStore } from "@/store/notificationStore";
 
 // Connection is eligible for the quota page when it uses OAuth or is an apikey provider whitelisted for quota
 const isUsageEligible = (conn) =>
   USAGE_SUPPORTED_PROVIDERS.includes(conn.provider) &&
   (conn.authType === "oauth" || USAGE_APIKEY_PROVIDERS.includes(conn.provider));
 
-const REFRESH_INTERVAL_MS = 60000; // 60 seconds
+const REFRESH_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+const REFRESH_INTERVAL_SECONDS = Math.ceil(REFRESH_INTERVAL_MS / 1000);
+const QUOTA_REFRESH_STAGGER_MS = 1800;
+const QUOTA_REFRESH_JITTER_MS = 1200;
 const DEPLETED_QUOTA_THRESHOLD = 5; // percent
 const AUTO_REFRESH_STORAGE_KEY = "quotaAutoRefresh";
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function runStaggeredQuotaRefresh(connections, fetchQuota) {
+  for (let index = 0; index < connections.length; index += 1) {
+    if (index > 0) {
+      const jitter = Math.floor(Math.random() * QUOTA_REFRESH_JITTER_MS);
+      await sleep(QUOTA_REFRESH_STAGGER_MS + jitter);
+    }
+    const conn = connections[index];
+    await fetchQuota(conn.id, conn.provider);
+  }
+}
+
 export default function ProviderLimits({
   readOnly = false,
+  allowCodexActivation = false,
   embedded = false,
   gridClassName = "grid grid-cols-1 md:grid-cols-2 gap-3",
   title = "Provider Limits",
@@ -38,7 +56,7 @@ export default function ProviderLimits({
   });
   const [lastUpdated, setLastUpdated] = useState(null);
   const [refreshingAll, setRefreshingAll] = useState(false);
-  const [countdown, setCountdown] = useState(60);
+  const [countdown, setCountdown] = useState(REFRESH_INTERVAL_SECONDS);
   const [connectionsLoading, setConnectionsLoading] = useState(true);
   const [deletingId, setDeletingId] = useState(null);
   const [togglingId, setTogglingId] = useState(null);
@@ -49,6 +67,9 @@ export default function ProviderLimits({
   const [expiringFirst, setExpiringFirst] = useState(false);
   const [providerMenuOpen, setProviderMenuOpen] = useState(false);
   const [bulkToggling, setBulkToggling] = useState(false);
+  const [activatingCodexId, setActivatingCodexId] = useState(null);
+  const notify = useNotificationStore();
+  const canActivateCodex = !readOnly || allowCodexActivation;
 
   const intervalRef = useRef(null);
   const countdownRef = useRef(null);
@@ -227,6 +248,48 @@ export default function ProviderLimits({
     [selectedConnection, fetchConnections, fetchQuota],
   );
 
+  const handleActivateCodexAccount = useCallback(async (conn) => {
+    if (!conn?.id || activatingCodexId) return;
+    setActivatingCodexId(conn.id);
+    try {
+      const res = await fetch("/api/cli-tools/codex-settings/activate-account", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ connectionId: conn.id, restartCodex: true }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const hints = Array.isArray(data.installHints) && data.installHints.length > 0
+          ? data.installHints
+          : data.installCommand
+            ? [data.installCommand]
+            : [];
+        const installHint = hints.length ? `\nInstall: ${hints.join(" or ")}` : "";
+        throw new Error(`${data.error || "Failed to activate Codex account"}${installHint}`);
+      }
+      const restartNote = data.restart?.success
+        ? "Codex was restarted automatically."
+        : data.restart?.reason
+          ? `Restart Codex manually: ${data.restart.reason}`
+          : "Restart Codex to use it.";
+      const keychainNote = data.keychain?.success
+        ? "Keychain auth was updated."
+        : data.keychain?.reason
+          ? `Keychain auth failed: ${data.keychain.reason}`
+          : "";
+      const message = `${data.account || conn.email || conn.name || "Account"} is now written to local Codex auth. ${keychainNote} ${restartNote}`.trim();
+      if (data.keychain?.success && data.restart?.success) {
+        notify.success(message, "Codex account activated");
+      } else {
+        notify.error(message, "Codex activation incomplete");
+      }
+    } catch (error) {
+      notify.error(error.message || "Failed to activate Codex account", "Codex activation failed");
+    } finally {
+      setActivatingCodexId(null);
+    }
+  }, [activatingCodexId, notify]);
+
   useEffect(() => {
     if (readOnly) return;
     let cancelled = false;
@@ -248,7 +311,7 @@ export default function ProviderLimits({
     if (refreshingAll) return;
 
     setRefreshingAll(true);
-    setCountdown(60);
+    setCountdown(REFRESH_INTERVAL_SECONDS);
 
     try {
       const conns = await fetchConnections();
@@ -256,9 +319,7 @@ export default function ProviderLimits({
       // Filter eligible connections (OAuth + whitelisted apikey)
       const eligibleConnections = conns.filter(isUsageEligible);
 
-      await Promise.all(
-        eligibleConnections.map((conn) => fetchQuota(conn.id, conn.provider)),
-      );
+      await runStaggeredQuotaRefresh(eligibleConnections, fetchQuota);
 
       setLastUpdated(new Date());
     } catch (error) {
@@ -284,9 +345,7 @@ export default function ProviderLimits({
       });
       setLoading(loadingState);
 
-      await Promise.all(
-        eligibleConnections.map((conn) => fetchQuota(conn.id, conn.provider)),
-      );
+      await runStaggeredQuotaRefresh(eligibleConnections, fetchQuota);
       setLastUpdated(new Date());
     };
 
@@ -321,7 +380,7 @@ export default function ProviderLimits({
     // Countdown interval
     countdownRef.current = setInterval(() => {
       setCountdown((prev) => {
-        if (prev <= 1) return 60;
+        if (prev <= 1) return REFRESH_INTERVAL_SECONDS;
         return prev - 1;
       });
     }, 1000);
@@ -348,7 +407,9 @@ export default function ProviderLimits({
         // Resume auto-refresh when tab becomes visible
         intervalRef.current = setInterval(refreshAll, REFRESH_INTERVAL_MS);
         countdownRef.current = setInterval(() => {
-          setCountdown((prev) => (prev <= 1 ? 60 : prev - 1));
+          setCountdown((prev) =>
+            prev <= 1 ? REFRESH_INTERVAL_SECONDS : prev - 1,
+          );
         }, 1000);
       }
     };
@@ -646,6 +707,7 @@ export default function ProviderLimits({
           // Use table layout for all providers
           const isInactive = conn.isActive === false;
           const rowBusy = deletingId === conn.id || togglingId === conn.id;
+          const isCodexActivating = activatingCodexId === conn.id;
 
           return (
             <Card
@@ -682,6 +744,20 @@ export default function ProviderLimits({
                   </div>
 
                   <div className="flex items-center gap-1 shrink-0">
+                    {canActivateCodex && conn.provider === "codex" && (
+                      <button
+                        type="button"
+                        onClick={() => handleActivateCodexAccount(conn)}
+                        disabled={rowBusy || isCodexActivating}
+                        className="h-8 inline-flex items-center gap-1 rounded-lg border border-emerald-500/30 px-2 text-xs font-medium text-emerald-600 hover:bg-emerald-500/10 transition-colors disabled:opacity-50 dark:text-emerald-400"
+                        title="Activate this account in local Codex"
+                      >
+                        <span className={`material-symbols-outlined text-[18px] ${isCodexActivating ? "animate-pulse" : ""}`}>
+                          key
+                        </span>
+                        <span className="hidden xl:inline">Activate</span>
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => refreshProvider(conn.id, conn.provider)}

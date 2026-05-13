@@ -5,6 +5,7 @@ import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider } from "@/sha
 import { PROVIDER_ENDPOINTS } from "@/shared/constants/config";
 import { getDefaultModel } from "open-sse/config/providerModels.js";
 import { resolveOllamaLocalHost } from "open-sse/config/providers.js";
+import { getExternalRequestPaceKey, paceExternalRequest } from "@/lib/externalRequestPacer";
 import {
   GEMINI_CONFIG,
   ANTIGRAVITY_CONFIG,
@@ -625,6 +626,8 @@ export async function testSingleConnection(id) {
 
   const start = Date.now();
   let result;
+
+  await paceExternalRequest(getExternalRequestPaceKey(connection.provider, "connection-test"));
 
   if (connection.authType === "apikey" || connection.authType === "cookie") {
     result = await testApiKeyConnection(connection, effectiveProxy);

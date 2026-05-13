@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { useNotificationStore } from "@/store/notificationStore";
 import Sidebar from "../Sidebar";
@@ -42,6 +42,23 @@ export default function DashboardLayout({ children }) {
   const isFocusUI = pathname === "/dashboard/focus-ui";
   const notifications = useNotificationStore((state) => state.notifications);
   const removeNotification = useNotificationStore((state) => state.removeNotification);
+  const addNotification = useNotificationStore((state) => state.addNotification);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/startup-notices", { cache: "no-store" })
+      .then((res) => res.ok ? res.json() : { notices: [] })
+      .then((data) => {
+        if (cancelled) return;
+        for (const notice of data.notices || []) {
+          addNotification(notice);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [addNotification]);
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-bg">

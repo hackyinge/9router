@@ -10,6 +10,7 @@ const nextConfig = {
   distDir: process.env.NEXT_DIST_DIR || ".next",
   outputFileTracingRoot: new URL(".", import.meta.url).pathname,
   serverExternalPackages: ["better-sqlite3"],
+  generateBuildId: async () => null,
   images: {
     unoptimized: true
   },

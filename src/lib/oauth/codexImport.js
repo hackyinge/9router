@@ -195,6 +195,7 @@ function normalizeRecord(record, { filename = "pasted JSON", parentKey = null } 
     sourceFormat: normalizeSourceFormat(format),
     accessToken,
     refreshToken,
+    idToken,
     expiresAt,
     email: firstString(credentials.email, record.email, user.email, jwtInfo.email),
     displayName: firstString(credentials.displayName, credentials.name, record.displayName, record.name, user.name),

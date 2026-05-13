@@ -42,5 +42,10 @@ function QuotaPageClient() {
   }, []);
 
   if (auth.loading) return <CardSkeleton />;
-  return <ProviderLimits readOnly={auth.role === "sub_user"} />;
+  return (
+    <ProviderLimits
+      readOnly={auth.role === "sub_user"}
+      allowCodexActivation={auth.role === "sub_user"}
+    />
+  );
 }

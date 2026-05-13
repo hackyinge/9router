@@ -6,6 +6,7 @@ import { KiroService } from "@/lib/oauth/services/kiro";
 import { GEMINI_CONFIG } from "@/lib/oauth/constants/oauth";
 import { refreshGoogleToken, updateProviderCredentials, refreshKiroToken } from "@/sse/services/tokenRefresh";
 import { resolveOllamaLocalHost } from "open-sse/config/providers.js";
+import { getExternalRequestPaceKey, paceExternalRequest } from "@/lib/externalRequestPacer";
 
 const GEMINI_CLI_MODELS_URL = "https://cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels";
 
@@ -214,6 +215,8 @@ export async function GET(request, { params }) {
     if (!connection) {
       return NextResponse.json({ error: "Connection not found" }, { status: 404 });
     }
+
+    await paceExternalRequest(getExternalRequestPaceKey(connection.provider, "models"));
 
     if (isOpenAICompatibleProvider(connection.provider)) {
       const baseUrl = connection.providerSpecificData?.baseUrl;

@@ -290,6 +290,29 @@ npm run build
 PORT=20502 HOSTNAME=0.0.0.0 NEXT_PUBLIC_BASE_URL=http://localhost:20502 npm run start
 ```
 
+### 切换端口
+
+默认端口是 `20502`。临时切到其他端口时，同时设置 `PORT` 和对外 base URL：
+
+```bash
+PORT=20600 NEXT_PUBLIC_BASE_URL=http://localhost:20600 npm run dev
+```
+
+生产模式同理：
+
+```bash
+PORT=20600 HOSTNAME=0.0.0.0 NEXT_PUBLIC_BASE_URL=http://localhost:20600 npm run start
+```
+
+如果使用全局安装的 `openrouterX`，端口来自 CLI 内置默认值或启动时的 `PORT` 环境变量。修改默认端口后需要重新 npm 全局安装并重启：
+
+```bash
+npm run release:npm:install-local
+openrouterX restart --no-browser --skip-update
+```
+
+切换端口后，CLI 工具里的 Base URL 也要同步改成新端口，例如 `http://localhost:20600/v1`。
+
 ## 部署
 
 ### PM2

@@ -1,5 +1,3 @@
-"use server";
-
 import { NextResponse } from "next/server";
 import { exec } from "child_process";
 import { promisify } from "util";
@@ -24,6 +22,16 @@ const getCodexConfigPath = () => path.join(getCodexDir(), "config.toml");
 const getCodexAuthPath = () => path.join(getCodexDir(), "auth.json");
 const PROVIDER_KEY = "openrouterx";
 const PROVIDER_LABEL = "OpenrouterX";
+const CODEX_INSTALL_COMMAND = "npm install -g @openai/codex";
+const CODEX_INSTALL_HINTS = os.platform() === "darwin"
+  ? [CODEX_INSTALL_COMMAND, "brew install --cask codex"]
+  : [CODEX_INSTALL_COMMAND];
+const CODEX_MACOS_APP_CANDIDATES = [
+  "/Applications/Codex.app/Contents/MacOS/Codex",
+  path.join(os.homedir(), "Applications/Codex.app/Contents/MacOS/Codex"),
+  "/Applications/Codex.app",
+  path.join(os.homedir(), "Applications/Codex.app"),
+];
 
 const normalizeCodexModel = (model) => {
   if (typeof model !== "string") return model;
@@ -57,7 +65,7 @@ const deleteNestedSection = (obj, dottedKey) => {
   delete cur[keys[keys.length - 1]];
 };
 
-// Check if codex CLI is installed (via which/where or config file exists)
+// Check CLI first, then standard macOS app locations.
 const checkCodexInstalled = async () => {
   try {
     const isWindows = os.platform() === "win32";
@@ -65,15 +73,24 @@ const checkCodexInstalled = async () => {
     const env = isWindows
       ? { ...process.env, PATH: `${process.env.APPDATA}\\npm;${process.env.PATH}` }
       : process.env;
-    await execAsync(command, { windowsHide: true, env });
-    return true;
+    const { stdout } = await execAsync(command, { windowsHide: true, env });
+    const binaryPath = stdout.split(/\r?\n/).find(Boolean)?.trim() || "codex";
+    return { installed: true, source: "cli", binaryPath };
   } catch {
-    try {
-      await fs.access(getCodexConfigPath());
-      return true;
-    } catch {
-      return false;
+    if (os.platform() !== "darwin") {
+      return { installed: false };
     }
+
+    for (const candidate of CODEX_MACOS_APP_CANDIDATES) {
+      try {
+        await fs.access(candidate);
+        return { installed: true, source: "app", binaryPath: candidate };
+      } catch {
+        // Continue probing other standard macOS install locations.
+      }
+    }
+
+    return { installed: false };
   }
 };
 
@@ -101,13 +118,15 @@ export async function GET(request) {
     const { response } = await requirePayload(request);
     if (response) return response;
 
-    const isInstalled = await checkCodexInstalled();
+    const detectedCodex = await checkCodexInstalled();
     
-    if (!isInstalled) {
+    if (!detectedCodex.installed) {
       return NextResponse.json({
         installed: false,
         config: null,
-        message: "Codex CLI is not installed",
+        installCommand: CODEX_INSTALL_COMMAND,
+        installHints: CODEX_INSTALL_HINTS,
+        message: "Local Codex is not installed",
       });
     }
 
@@ -115,6 +134,7 @@ export async function GET(request) {
 
     return NextResponse.json({
       installed: true,
+      detectedCodex,
       config,
       hasOpenRouterX: hasOpenRouterXConfig(config),
       configPath: getCodexConfigPath(),

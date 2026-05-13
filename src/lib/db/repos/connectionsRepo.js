@@ -4,7 +4,7 @@ import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
 
 const OPTIONAL_FIELDS = [
   "displayName", "email", "globalPriority", "defaultModel",
-  "accessToken", "refreshToken", "expiresAt", "tokenType",
+  "accessToken", "refreshToken", "idToken", "expiresAt", "tokenType",
   "scope", "projectId", "apiKey", "testStatus",
   "lastTested", "lastError", "lastErrorAt", "rateLimitedUntil", "expiresIn", "errorCode",
   "consecutiveUseCount",

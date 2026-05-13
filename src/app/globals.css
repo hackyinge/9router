@@ -195,7 +195,7 @@ select {
   --shadow-focus: var(--shadow-focus);
 
   /* Font - Inter primary, Apple system fallback */
-  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', system-ui, sans-serif;
+  --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', system-ui, sans-serif;
 }
 
 /* Base */

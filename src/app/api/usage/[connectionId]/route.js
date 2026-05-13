@@ -7,6 +7,7 @@ import { getExecutor } from "open-sse/executors/index.js";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { USAGE_APIKEY_PROVIDERS } from "@/shared/constants/providers";
 import { isProviderAllowedForSubUser, resolveSubUserAccessContext } from "@/lib/subUserAccess";
+import { getExternalRequestPaceKey, paceExternalRequest } from "@/lib/externalRequestPacer";
 
 // Detect auth-expired messages returned by usage providers instead of throwing
 const AUTH_EXPIRED_PATTERNS = ["expired", "authentication", "unauthorized", "401", "re-authorize"];
@@ -138,6 +139,8 @@ export async function GET(request, { params }) {
       vercelRelayUrl: proxyConfig.vercelRelayUrl || "",
       strictProxy: false,
     };
+
+    await paceExternalRequest(getExternalRequestPaceKey(connection.provider, "usage"));
 
     // Refresh credentials only for OAuth connections (apikey has no token refresh)
     if (isOAuth) {
