@@ -11,7 +11,7 @@ export class CodexTokenRefreshError extends Error {
 }
 
 export function hasCompleteCodexTokenSnapshot(connection) {
-  return !!(connection?.accessToken && connection?.idToken);
+  return !!(connection?.accessToken && connection?.refreshToken);
 }
 
 function decodeJwtExpirationMs(token) {
@@ -96,7 +96,7 @@ export async function ensureCodexActivationTokens(
       return {
         connection,
         tokenSource: "cached_after_refresh_reuse",
-        tokenWarning: "Refresh token was already used; applied the cached Codex token snapshot. Re-import this account if Codex asks for login.",
+        tokenWarning: "Refresh token was already used; applied the cached Codex access token snapshot. Re-import this account if Codex asks for login.",
       };
     }
     throw error;

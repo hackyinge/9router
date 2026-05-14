@@ -62,10 +62,10 @@ describe("codex activation token selection", () => {
 
     expect(result.tokenSource).toBe("cached_after_refresh_reuse");
     expect(result.connection).toBe(expired);
-    expect(result.tokenWarning).toMatch(/cached Codex token snapshot/);
+    expect(result.tokenWarning).toMatch(/cached Codex access token snapshot/);
   });
 
-  it("does not hide refresh_token_reused when no id_token/access_token snapshot exists", async () => {
+  it("does not hide refresh_token_reused when no access_token snapshot exists", async () => {
     const error = new Error("refresh_token_reused");
     error.code = "refresh_token_reused";
     await expect(ensureCodexActivationTokens(
@@ -76,6 +76,23 @@ describe("codex activation token selection", () => {
         }),
       },
     )).rejects.toThrow("refresh_token_reused");
+  });
+
+  it("can activate from a cached access/refresh snapshot without id_token", async () => {
+    const connection = {
+      id: "codex-1",
+      accessToken: unsignedJwt({ exp: Date.parse("2026-05-14T10:20:00.000Z") / 1000 }),
+      refreshToken: "refresh",
+      expiresAt: null,
+    };
+    const refreshTokens = vi.fn();
+    const result = await ensureCodexActivationTokens(connection, {
+      now: Date.parse("2026-05-14T10:00:00.000Z"),
+      refreshTokens,
+    });
+
+    expect(result.tokenSource).toBe("cached");
+    expect(refreshTokens).not.toHaveBeenCalled();
   });
 
   it("recognizes refresh token reuse errors from code or message", () => {

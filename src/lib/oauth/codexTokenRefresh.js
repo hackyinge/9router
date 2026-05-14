@@ -1,3 +1,5 @@
+import { isCodexTokenSnapshotFresh, isRefreshTokenReuseError } from "@/lib/codexActivationTokens.js";
+
 function toExpiresAt(expiresIn, now = Date.now()) {
   if (!expiresIn || !Number.isFinite(Number(expiresIn))) return null;
   return new Date(now + Number(expiresIn) * 1000).toISOString();
@@ -22,6 +24,25 @@ export async function refreshCodexConnections(connections, { refreshToken, updat
   const skipped = [];
   const failed = [];
 
+  async function keepCachedTokenSnapshot(connection, reason) {
+    await updateConnection(connection.id, {
+      testStatus: "active",
+      lastError: null,
+      lastErrorAt: null,
+      errorCode: null,
+      rateLimitedUntil: null,
+    });
+    refreshed.push({
+      id: connection.id,
+      name: labelConnection(connection),
+      email: connection.email,
+      expiresAt: connection.expiresAt || null,
+      refreshTokenRotated: false,
+      tokenSource: "cached_after_refresh_reuse",
+      warning: reason,
+    });
+  }
+
   for (const connection of connections) {
     if (!connection?.id) continue;
     if (!connection.refreshToken) {
@@ -37,6 +58,13 @@ export async function refreshCodexConnections(connections, { refreshToken, updat
       const tokenData = await refreshToken(connection.refreshToken, connection);
       if (!tokenData?.accessToken) {
         const reason = tokenData?.code || tokenData?.error || "Refresh returned no access token";
+        if (
+          isRefreshTokenReuseError({ code: tokenData?.code, message: reason }) &&
+          isCodexTokenSnapshotFresh(connection, { now: now() })
+        ) {
+          await keepCachedTokenSnapshot(connection, reason);
+          continue;
+        }
         const statusUpdate = {
           testStatus: "unavailable",
           lastError: reason,
@@ -74,6 +102,10 @@ export async function refreshCodexConnections(connections, { refreshToken, updat
       });
     } catch (error) {
       const reason = error.message || "Failed to refresh token";
+      if (isRefreshTokenReuseError(error) && isCodexTokenSnapshotFresh(connection, { now: now() })) {
+        await keepCachedTokenSnapshot(connection, reason);
+        continue;
+      }
       await updateConnection(connection.id, {
         testStatus: "unavailable",
         lastError: reason,

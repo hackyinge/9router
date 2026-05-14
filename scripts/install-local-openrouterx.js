@@ -190,6 +190,15 @@ function main() {
   const commandPath = getCommandPath("openrouterX");
   assert(fs.existsSync(commandPath), `openrouterX command was not installed: ${commandPath}`);
 
+  const globalPrefix = run("npm", ["prefix", "-g"], { capture: true }).trim();
+  const globalPackageRoot = process.platform === "win32"
+    ? path.join(globalPrefix, "node_modules", "openrouterx-local")
+    : path.join(globalPrefix, "lib", "node_modules", "openrouterx-local");
+  const installedPostinstall = path.join(globalPackageRoot, "hooks", "postinstall.js");
+  if (fs.existsSync(installedPostinstall)) {
+    run(process.execPath, [installedPostinstall]);
+  }
+
   console.log("openrouterX local install ok");
   console.log(`command: ${commandPath}`);
   console.log("run: openrouterX");

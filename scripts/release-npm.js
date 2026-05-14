@@ -255,49 +255,48 @@ function refreshRuntimePortSettings() {
 
 refreshRuntimePortSettings();
 
-if (!fs.existsSync(betterSqlitePath)) {
-  console.log("better-sqlite3 not found, skipping rebuild");
-  process.exit(0);
-}
-
 function isValidBinary() {
-  const binaryPath = path.join(betterSqlitePath, "build", "Release", "better_sqlite3.node");
-
-  if (!fs.existsSync(binaryPath)) {
+  try {
+    const Database = require(betterSqlitePath);
+    const db = new Database(":memory:");
+    db.close();
+    return true;
+  } catch {
     return false;
   }
+}
 
-  const fd = fs.openSync(binaryPath, "r");
-  const buffer = Buffer.alloc(4);
-  fs.readSync(fd, buffer, 0, 4, 0);
-  fs.closeSync(fd);
-
-  const magic = buffer.toString("hex");
-  const isLinux = magic.startsWith("7f454c46");
-  const isMacOS = magic.startsWith("cffaedfe") || magic.startsWith("cefaedfe");
-  const isWindows = magic.startsWith("4d5a");
-
-  return (process.platform === "linux" && isLinux) ||
-    (process.platform === "darwin" && isMacOS) ||
-    (process.platform === "win32" && isWindows);
+function getBetterSqliteVersion() {
+  try {
+    const appPkg = JSON.parse(fs.readFileSync(path.join(appDir, "package.json"), "utf8"));
+    return appPkg.optionalDependencies?.["better-sqlite3"]
+      || appPkg.dependencies?.["better-sqlite3"]
+      || "latest";
+  } catch {
+    return "latest";
+  }
 }
 
 if (isValidBinary()) {
-  console.log("better-sqlite3 binary is valid for this platform, skipping rebuild");
+  console.log("better-sqlite3 can open a database with this Node runtime, skipping repair");
   process.exit(0);
 }
 
-console.log("Rebuilding better-sqlite3 for current platform...");
+console.log("Repairing better-sqlite3 for current Node runtime...");
 
 try {
-  execSync("npm rebuild better-sqlite3 --build-from-source", {
+  fs.rmSync(betterSqlitePath, { recursive: true, force: true });
+  execSync("npm install better-sqlite3@" + getBetterSqliteVersion() + " --save-optional --ignore-scripts=false --force", {
     cwd: appDir,
     stdio: "inherit",
     timeout: 120000,
   });
-  console.log("better-sqlite3 rebuilt successfully");
+  if (!isValidBinary()) {
+    throw new Error("better-sqlite3 still cannot open a database after repair");
+  }
+  console.log("better-sqlite3 repaired successfully");
 } catch (error) {
-  console.warn("Failed to rebuild better-sqlite3. The app may not work correctly.");
+  console.warn("Failed to repair better-sqlite3. The app may not work correctly.");
   console.warn("Make sure you have build tools installed (python, make, gcc/node-gyp)");
   console.warn("Error:", error.message);
   process.exit(0);

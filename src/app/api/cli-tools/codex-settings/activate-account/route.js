@@ -163,12 +163,61 @@ function getAccountId(connection) {
   );
 }
 
+function getEmailFromTokens(connection) {
+  const accessPayload = decodeJwtPayload(connection.accessToken);
+  const idPayload = decodeJwtPayload(connection.idToken);
+  return connection.email || idPayload?.email || accessPayload?.email || null;
+}
+
 async function readAuthJson() {
   try {
     return JSON.parse(await fs.readFile(getCodexAuthPath(), "utf8"));
   } catch {
     return {};
   }
+}
+
+function codexAuthToConnection(authData) {
+  const tokens = authData?.tokens || {};
+  const providerSpecificData = {};
+  if (tokens.account_id) providerSpecificData.chatgptAccountId = tokens.account_id;
+  return {
+    accessToken: tokens.access_token,
+    refreshToken: tokens.refresh_token,
+    idToken: tokens.id_token,
+    providerSpecificData,
+  };
+}
+
+function connectionsReferToSameCodexAccount(connection, candidate) {
+  if (!candidate?.accessToken && !candidate?.idToken) return false;
+  if (connection.refreshToken && candidate.refreshToken && connection.refreshToken === candidate.refreshToken) {
+    return true;
+  }
+
+  const connectionAccountId = getAccountId(connection);
+  const candidateAccountId = getAccountId(candidate);
+  if (connectionAccountId && candidateAccountId && connectionAccountId === candidateAccountId) {
+    return true;
+  }
+
+  const connectionEmail = getEmailFromTokens(connection);
+  const candidateEmail = getEmailFromTokens(candidate);
+  return !!(connectionEmail && candidateEmail && connectionEmail === candidateEmail);
+}
+
+async function hydrateMissingTokensFromLocalCodexAuth(connection) {
+  const candidate = codexAuthToConnection(await readAuthJson());
+  if (!connectionsReferToSameCodexAccount(connection, candidate)) return connection;
+
+  const updateData = {};
+  if (!connection.accessToken && candidate.accessToken) updateData.accessToken = candidate.accessToken;
+  if (!connection.refreshToken && candidate.refreshToken) updateData.refreshToken = candidate.refreshToken;
+  if (!connection.idToken && candidate.idToken) updateData.idToken = candidate.idToken;
+
+  if (Object.keys(updateData).length === 0) return connection;
+  const updated = await updateProviderConnection(connection.id, updateData);
+  return updated || { ...connection, ...updateData };
 }
 
 async function readOptionalFile(filePath) {
@@ -223,8 +272,8 @@ async function refreshCodexTokens(connection) {
       : connection.expiresAt,
   };
 
-  if (!refreshed.accessToken || !refreshed.idToken) {
-    throw new Error("Codex token refresh did not return a complete id_token/access_token snapshot.");
+  if (!refreshed.accessToken) {
+    throw new Error("Codex token refresh did not return an access_token snapshot.");
   }
 
   const accountId = getAccountId({ ...connection, ...refreshed });
@@ -313,6 +362,7 @@ export async function POST(request) {
     if (subUserContext && !isConnectionAllowedForSubUser(subUserContext, connection)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
+    connection = await hydrateMissingTokensFromLocalCodexAuth(connection);
     if (!connection.refreshToken) {
       return NextResponse.json({ error: "This Codex account is missing refresh_token. Re-authorize or re-import it first." }, { status: 400 });
     }
@@ -341,8 +391,8 @@ export async function POST(request) {
         code: error?.code || null,
       }, { status: 400 });
     }
-    if (!connection.accessToken || !connection.idToken) {
-      return NextResponse.json({ error: "This Codex account is missing id_token/access_token after refresh. Re-authorize or re-import it first." }, { status: 400 });
+    if (!connection.accessToken) {
+      return NextResponse.json({ error: "This Codex account is missing access_token after refresh. Re-authorize or re-import it first." }, { status: 400 });
     }
 
     await fs.mkdir(getCodexDir(), { recursive: true });

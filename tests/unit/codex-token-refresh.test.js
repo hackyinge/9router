@@ -67,4 +67,40 @@ describe("refreshCodexConnections", () => {
       { id: "bad", data: { testStatus: "unavailable", lastError: "invalid_grant" } },
     ]);
   });
+
+  it("keeps a fresh cached access token active when Codex reports refresh_token_reused", async () => {
+    const updates = [];
+    const result = await refreshCodexConnections(
+      [
+        {
+          id: "cached",
+          email: "cached@example.com",
+          accessToken: [
+            Buffer.from(JSON.stringify({ alg: "none" })).toString("base64url"),
+            Buffer.from(JSON.stringify({ exp: Date.parse("2026-05-11T00:30:00.000Z") / 1000 })).toString("base64url"),
+            "",
+          ].join("."),
+          refreshToken: "reused-refresh",
+          expiresAt: null,
+        },
+      ],
+      {
+        now: () => Date.parse("2026-05-11T00:00:00.000Z"),
+        refreshToken: vi.fn(async () => ({ error: "unrecoverable_refresh_error", code: "refresh_token_reused" })),
+        updateConnection: vi.fn(async (id, data) => {
+          updates.push({ id, data });
+          return true;
+        }),
+      }
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.failed).toEqual([]);
+    expect(result.refreshed).toMatchObject([
+      { id: "cached", refreshTokenRotated: false, tokenSource: "cached_after_refresh_reuse" },
+    ]);
+    expect(updates).toMatchObject([
+      { id: "cached", data: { testStatus: "active", lastError: null, errorCode: null } },
+    ]);
+  });
 });
