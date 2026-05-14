@@ -7,6 +7,7 @@ import path from "path";
 import os from "os";
 import crypto from "node:crypto";
 import { getAuthPayload } from "@/dashboardGuard";
+import { ensureCodexActivationTokens, readCodexTokenRefreshError } from "@/lib/codexActivationTokens";
 import { isConnectionAllowedForSubUser, resolveSubUserAccessContext } from "@/lib/subUserAccess";
 import { getProviderConnectionById, updateProviderConnection } from "@/models";
 
@@ -209,8 +210,7 @@ async function refreshCodexTokens(connection) {
   });
 
   if (!response.ok) {
-    const errorText = await response.text().catch(() => "");
-    throw new Error(`Failed to refresh Codex account before activation: ${errorText || response.statusText}`);
+    throw await readCodexTokenRefreshError(response);
   }
 
   const tokens = await response.json();
@@ -326,10 +326,20 @@ export async function POST(request) {
       }, { status: 404 });
     }
 
+    let tokenSource = "unknown";
+    let tokenWarning = null;
     try {
-      connection = await refreshCodexTokens(connection);
+      const tokenResult = await ensureCodexActivationTokens(connection, {
+        refreshTokens: refreshCodexTokens,
+      });
+      connection = tokenResult.connection;
+      tokenSource = tokenResult.tokenSource;
+      tokenWarning = tokenResult.tokenWarning || null;
     } catch (error) {
-      return NextResponse.json({ error: error?.message || "Failed to refresh Codex account before activation" }, { status: 400 });
+      return NextResponse.json({
+        error: error?.message || "Failed to refresh Codex account before activation",
+        code: error?.code || null,
+      }, { status: 400 });
     }
     if (!connection.accessToken || !connection.idToken) {
       return NextResponse.json({ error: "This Codex account is missing id_token/access_token after refresh. Re-authorize or re-import it first." }, { status: 400 });
@@ -372,6 +382,8 @@ export async function POST(request) {
       detectedCodex,
       keychain,
       restart,
+      tokenSource,
+      tokenWarning,
       restartRequired: !restart.success || !keychain.success,
       message: keychain.success && restart.success
         ? "Codex account applied to auth.json and Keychain, then Codex was restarted."

@@ -277,7 +277,8 @@ export default function ProviderLimits({
         : data.keychain?.reason
           ? `Keychain auth failed: ${data.keychain.reason}`
           : "";
-      const message = `${data.account || conn.email || conn.name || "Account"} is now written to local Codex auth. ${keychainNote} ${restartNote}`.trim();
+      const tokenNote = data.tokenWarning ? ` ${data.tokenWarning}` : "";
+      const message = `${data.account || conn.email || conn.name || "Account"} is now written to local Codex auth. ${keychainNote} ${restartNote}${tokenNote}`.trim();
       if (data.keychain?.success && data.restart?.success) {
         notify.success(message, "Codex account activated");
       } else {
