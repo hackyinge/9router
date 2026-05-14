@@ -5,10 +5,10 @@
   "private": true,
   "scripts": {
     "dev": "next dev --webpack --port 20502",
-    "build": "NODE_ENV=production next build --webpack",
+    "build": "NODE_ENV=production node scripts/next-build.js --webpack",
     "start": "NODE_ENV=production next start",
     "dev:bun": "bun --bun next dev --webpack --port 20502",
-    "build:bun": "NODE_ENV=production bun --bun next build --webpack",
+    "build:bun": "NODE_ENV=production bun --bun scripts/next-build.js --webpack",
     "start:bun": "NODE_ENV=production bun ./.next/standalone/server.js",
     "release:npm:prepare": "node scripts/release-npm.js --prepare-only",
     "release:npm:dry": "node scripts/release-npm.js --dry-run",
