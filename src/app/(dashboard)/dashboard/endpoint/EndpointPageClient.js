@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import PropTypes from "prop-types";
-import { Card, Button, Input, Modal, CardSkeleton, Toggle, ConfirmModal } from "@/shared/components";
+import { Badge, Card, Button, Input, Modal, CardSkeleton, Toggle, ConfirmModal } from "@/shared/components";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 
 const TUNNEL_BENEFITS = [
@@ -39,6 +39,16 @@ const CAVEMAN_LEVELS = [
   { id: "lite", label: "Lite", desc: "Drop filler, keep grammar" },
   { id: "full", label: "Full", desc: "Drop articles, fragments OK" },
   { id: "ultra", label: "Ultra", desc: "Telegraphic, max compression" },
+];
+
+const AUTO_ROUTES = [
+  { id: "auto", label: "Balanced", desc: "Default active provider fallback" },
+  { id: "auto/coding", label: "Coding", desc: "Prioritizes coding-capable models" },
+  { id: "auto/fast", label: "Fast", desc: "Low-latency route for quick tasks" },
+  { id: "auto/cheap", label: "Cheap", desc: "Cost-focused active route" },
+  { id: "auto/offline", label: "Offline", desc: "Local or no-auth provider route" },
+  { id: "auto/smart", label: "Smart", desc: "Reasoning-oriented route" },
+  { id: "auto/lkgp", label: "LKGP", desc: "Last-known-good provider route" },
 ];
 export default function APIPageClient({ machineId }) {
   const [keys, setKeys] = useState([]);
@@ -982,6 +992,33 @@ export default function APIPageClient({ machineId }) {
         )}
       </Card>
 
+      {/* Auto Routes */}
+      <Card id="auto-routes">
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <h2 className="flex items-center gap-2 text-lg font-semibold">
+              <span className="material-symbols-outlined text-primary">route</span>
+              Auto Routes
+            </h2>
+            <p className="mt-1 text-sm text-text-muted">
+              Use these values as the OpenAI-compatible <code className="font-mono">model</code> field.
+            </p>
+          </div>
+          <Badge variant="primary" icon="bolt" className="w-fit shrink-0">Virtual combo</Badge>
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-2">
+          {AUTO_ROUTES.map((route) => (
+            <AutoRouteRow
+              key={route.id}
+              route={route}
+              copied={copied}
+              onCopy={copy}
+            />
+          ))}
+        </div>
+      </Card>
+
       {/* Token Saver (RTK + Caveman) */}
       <Card id="rtk">
         <div className="flex items-center justify-between mb-2">
@@ -1387,6 +1424,38 @@ export default function APIPageClient({ machineId }) {
         message={confirmState?.message}
         variant="danger"
       />
+    </div>
+  );
+}
+
+function AutoRouteRow({ route, copied, onCopy }) {
+  const copyId = `auto_route_${route.id}`;
+
+  return (
+    <div className="flex min-w-0 items-center gap-3 rounded-[10px] border border-border-subtle bg-bg p-3">
+      <div className="flex size-9 shrink-0 items-center justify-center rounded-[10px] bg-primary/10 text-primary">
+        <span className="material-symbols-outlined text-[18px]">alt_route</span>
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <code className="truncate font-mono text-sm font-semibold text-text-main">
+            {route.id}
+          </code>
+          <Badge size="sm" variant="default">{route.label}</Badge>
+        </div>
+        <p className="mt-1 truncate text-xs text-text-muted">{route.desc}</p>
+      </div>
+      <button
+        type="button"
+        onClick={() => onCopy(route.id, copyId)}
+        className="flex size-9 shrink-0 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-black/5 hover:text-primary dark:hover:bg-white/5"
+        title="Copy model ID"
+        aria-label={`Copy ${route.id}`}
+      >
+        <span className="material-symbols-outlined text-[18px]">
+          {copied === copyId ? "check" : "content_copy"}
+        </span>
+      </button>
     </div>
   );
 }
