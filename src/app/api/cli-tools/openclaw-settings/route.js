@@ -18,6 +18,15 @@ async function requirePayload(request) {
   return { payload, response: null };
 }
 
+// OpenClaw 2026.5.x writes agents[].model as either a plain string
+// (legacy) or as an object `{ primary, fallbacks }`. Normalize to the
+// string id so downstream consumers can call `.startsWith()` safely.
+const resolveAgentModel = (m) => {
+  if (typeof m === "string") return m;
+  if (m && typeof m === "object") return m.primary ?? "";
+  return "";
+};
+
 const getOpenClawDir = () => path.join(os.homedir(), ".openclaw");
 const getOpenClawSettingsPath = () => path.join(getOpenClawDir(), "openclaw.json");
 const PROVIDER_KEY = "openrouterx";
@@ -93,12 +102,14 @@ export async function GET(request) {
 
     const settings = await readSettings();
 
-    // Enrich agents list with current per-agent model from models.json
+    // Enrich agents list with current per-agent model from models.json.
+    // Coerce agent.model to its string id when OpenClaw stores it as
+    // `{ primary, fallbacks }` so downstream `.startsWith()` calls work.
     const agentList = settings?.agents?.list || [];
     const enrichedAgents = await Promise.all(
       agentList.map(async (agent) => {
         const agentModel = agent.agentDir ? await readAgentModel(agent.agentDir) : null;
-        return { ...agent, currentModel: agentModel };
+        return { ...agent, model: resolveAgentModel(agent.model), currentModel: agentModel };
       })
     );
 
@@ -189,10 +200,12 @@ export async function POST(request) {
       settings.agents.defaults.models[`${PROVIDER_KEY}/${m}`] = {};
     });
 
-    // Remove old openrouterx model from each agent in agents.list
+    // Remove old router model from each agent in agents.list. The model
+    // field may be a plain string or `{ primary, fallbacks }`.
     if (settings.agents.list) {
       settings.agents.list = settings.agents.list.map((agent) => {
-        if (MODEL_PREFIX_RE.test(agent.model || "")) {
+        const agentModel = resolveAgentModel(agent.model);
+        if (MODEL_PREFIX_RE.test(agentModel) || agentModel.startsWith("9router/")) {
           const { model: _, ...rest } = agent;
           return rest;
         }

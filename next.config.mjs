@@ -1,15 +1,25 @@
 import { fileURLToPath } from "node:url";
-import { dirname, resolve } from "node:path";
+import { dirname, join } from "node:path";
 
 const projectRoot = dirname(fileURLToPath(import.meta.url));
-const monorepoRoot = resolve(projectRoot, "..");
+// CLI bundling needs workspace root so tracing includes hoisted node_modules (slim ~50MB).
+// Docker / default uses projectRoot so server.js lands at /app/server.js (not nested).
+const tracingRoot = process.env.NEXT_TRACING_ROOT_MODE === "workspace"
+  ? join(projectRoot, "..")
+  : projectRoot;
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: "standalone",
   distDir: process.env.NEXT_DIST_DIR || ".next",
-  outputFileTracingRoot: new URL(".", import.meta.url).pathname,
-  serverExternalPackages: ["better-sqlite3"],
+  output: "standalone",
+  serverExternalPackages: ["better-sqlite3", "sql.js", "node:sqlite", "bun:sqlite"],
+  turbopack: {
+    root: tracingRoot
+  },
+  outputFileTracingRoot: tracingRoot,
+  outputFileTracingExcludes: {
+    "*": ["./gitbook/**/*"]
+  },
   generateBuildId: async () => null,
   images: {
     unoptimized: true
@@ -25,7 +35,7 @@ const nextConfig = {
       };
     }
     // Exclude logs, .next, gitbook subapp from watcher
-    config.watchOptions = { ...config.watchOptions, ignored: /[\\/](logs|\.next|gitbook)[\\/]/ };
+    config.watchOptions = { ...config.watchOptions, ignored: /[\\/](logs|\.next|gitbook|cli)[\\/]/ };
     return config;
   },
   async rewrites() {

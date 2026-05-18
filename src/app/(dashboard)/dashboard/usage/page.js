@@ -6,6 +6,7 @@ import { UsageStats, RequestLogger, CardSkeleton, SegmentedControl } from "@/sha
 import RequestDetailsTab from "./components/RequestDetailsTab";
 
 const PERIODS = [
+  { value: "today", label: "Today" },
   { value: "24h", label: "24h" },
   { value: "7d", label: "7D" },
   { value: "30d", label: "30D" },
@@ -25,7 +26,7 @@ function UsageContent() {
   const router = useRouter();
 
   const [tabLoading, setTabLoading] = useState(false);
-  const [period, setPeriod] = useState("24h");
+  const [period, setPeriod] = useState("today");
 
   const tabFromUrl = searchParams.get("tab");
   const activeTab = tabFromUrl && ["overview", "logs", "details"].includes(tabFromUrl)
@@ -34,11 +35,9 @@ function UsageContent() {
 
   const handleTabChange = (value) => {
     if (value === activeTab) return;
-    setTabLoading(true);
     const params = new URLSearchParams(searchParams);
     params.set("tab", value);
     router.push(`/dashboard/usage?${params.toString()}`, { scroll: false });
-    setTimeout(() => setTabLoading(false), 300);
   };
 
   return (
@@ -65,19 +64,13 @@ function UsageContent() {
         )}
       </div>
 
-      {tabLoading ? (
-        <CardSkeleton />
-      ) : (
-        <>
-          {activeTab === "overview" && (
-            <Suspense fallback={<CardSkeleton />}>
-              <UsageStats period={period} setPeriod={setPeriod} hidePeriodSelector />
-            </Suspense>
-          )}
-          {activeTab === "logs" && <RequestLogger />}
-          {activeTab === "details" && <RequestDetailsTab />}
-        </>
+      {activeTab === "overview" && (
+        <Suspense fallback={<CardSkeleton />}>
+          <UsageStats period={period} setPeriod={setPeriod} hidePeriodSelector />
+        </Suspense>
       )}
+      {activeTab === "logs" && <RequestLogger />}
+      {activeTab === "details" && <RequestDetailsTab />}
     </div>
   );
 }

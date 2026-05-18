@@ -18,10 +18,30 @@ async function hasValidCliToken(request) {
   return token === await getCliToken();
 }
 
+// Public API paths — no auth required (LLM API has its own key auth inside handler).
+const PUBLIC_API_PATHS = [
+  "/api/health",
+  "/api/init",
+  "/api/locale",
+  "/api/auth/login",
+  "/api/auth/logout",
+  "/api/auth/status",
+  "/api/auth/oidc",
+  "/api/version",
+  "/api/settings/require-login",
+];
+
+// Public top-level prefixes (LLM API endpoints with their own API key auth).
+const PUBLIC_PREFIXES = ["/v1", "/v1beta"];
+
 // Always require JWT token regardless of requireLogin setting
 const ALWAYS_PROTECTED = [
   "/api/shutdown",
   "/api/settings/database",
+  "/api/version/shutdown",
+  "/api/version/update",
+  "/api/oauth/cursor/auto-import",
+  "/api/oauth/kiro/auto-import",
 ];
 
 // Require auth for sensitive dashboard APIs. The dashboard no longer exposes
@@ -29,9 +49,60 @@ const ALWAYS_PROTECTED = [
 const PROTECTED_API_PATHS = [
   "/api/settings",
   "/api/keys",
-  "/api/providers/client",
-  "/api/provider-nodes/validate",
+  "/api/providers",
+  "/api/provider-nodes",
+  "/api/proxy-pools",
+  "/api/combos",
+  "/api/models",
+  "/api/usage",
+  "/api/oauth",
+  "/api/cloud",
+  "/api/media-providers",
+  "/api/pricing",
+  "/api/tags",
+  "/api/cli-tools",
+  "/api/mcp",
+  "/api/translator",
+  "/api/tunnel",
 ];
+
+// Routes that spawn child processes or read host secrets — restrict to localhost.
+const LOCAL_ONLY_PATHS = [
+  "/api/cli-tools/cowork-settings",
+  "/api/cli-tools/antigravity-mitm",
+  "/api/mcp/",
+  "/api/tunnel/tailscale-install",
+  "/api/tunnel/tailscale-enable",
+  "/api/tunnel/tailscale-disable",
+  "/api/tunnel/tailscale-login",
+  "/api/tunnel/tailscale-start-daemon",
+  "/api/tunnel/tailscale-check",
+  "/api/tunnel/enable",
+  "/api/tunnel/disable",
+  "/api/oauth/cursor/auto-import",
+  "/api/oauth/kiro/auto-import",
+];
+
+const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
+
+function isLoopbackHostname(h) {
+  if (!h) return false;
+  const name = h.split(":")[0].replace(/^\[|\]$/g, "").toLowerCase();
+  return LOOPBACK_HOSTS.has(name);
+}
+
+// Same-host gate: Host header must be loopback AND (if present) Origin must match.
+// Defends against tunnel/LAN access, remote browser CSRF, and cross-site form posts.
+function isLocalRequest(request) {
+  if (!isLoopbackHostname(request.headers.get("host"))) return false;
+  const origin = request.headers.get("origin");
+  if (origin) {
+    try {
+      if (!isLoopbackHostname(new URL(origin).hostname)) return false;
+    } catch { return false; }
+  }
+  return true;
+}
 
 async function hasValidToken(request) {
   const token = request.cookies.get("auth_token")?.value;
@@ -60,8 +131,20 @@ export async function getAuthPayload(request) {
   return getDashboardAuthSession(token);
 }
 
+function isPublicApi(pathname) {
+  if (PUBLIC_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`))) return true;
+  return PUBLIC_API_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+}
+
 export async function proxy(request) {
   const { pathname } = request.nextUrl;
+
+  // Local-only gate for spawn-capable / host-secret routes.
+  if (LOCAL_ONLY_PATHS.some((p) => pathname.startsWith(p))) {
+    if (!isLocalRequest(request)) {
+      return NextResponse.json({ error: "Local only: loopback access required" }, { status: 403 });
+    }
+  }
 
   // Always protected - require valid JWT or local CLI token (machineId-based)
   if (ALWAYS_PROTECTED.some((p) => pathname.startsWith(p))) {
@@ -70,9 +153,9 @@ export async function proxy(request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // Protect sensitive API endpoints (allow CLI token, JWT, or requireLogin=false)
-  if (PROTECTED_API_PATHS.some((p) => pathname.startsWith(p))) {
-    if (pathname === "/api/settings/require-login") return NextResponse.next();
+  // Deny-by-default for /api/* — public allow-list bypasses, everything else requires auth.
+  if (pathname.startsWith("/api/")) {
+    if (isPublicApi(pathname)) return NextResponse.next();
     if (await hasValidCliToken(request) || await isAuthenticated(request))
       return NextResponse.next();
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -136,7 +219,3 @@ export async function proxy(request) {
 
   return NextResponse.next();
 }
-
-export const config = {
-  matcher: ["/", "/dashboard/:path*"],
-};

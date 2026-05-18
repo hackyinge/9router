@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import PropTypes from "prop-types";
-import { Card, Badge, Button, Modal, Select, Toggle, EditConnectionModal } from "@/shared/components";
+import { Card, Badge, Button, Modal, Select, Toggle, EditConnectionModal, ConfirmModal } from "@/shared/components";
 
 // ── CooldownTimer ──────────────────────────────────────────────
 function CooldownTimer({ until }) {
@@ -322,6 +322,7 @@ export default function ConnectionsCard({ providerId, providerName, isOAuth }) {
   const [selectedConnection, setSelectedConnection] = useState(null);
   const [providerStrategy, setProviderStrategy] = useState(null);
   const [providerStickyLimit, setProviderStickyLimit] = useState("1");
+  const [confirmState, setConfirmState] = useState(null);
 
   const fetch_ = useCallback(async () => {
     try {
@@ -372,11 +373,17 @@ export default function ConnectionsCard({ providerId, providerName, isOAuth }) {
   };
 
   const handleDelete = async (id) => {
-    if (!confirm("Delete this connection?")) return;
-    try {
-      const res = await fetch(`/api/providers/${id}`, { method: "DELETE" });
-      if (res.ok) setConnections((prev) => prev.filter((c) => c.id !== id));
-    } catch (e) { console.log("delete error:", e); }
+    setConfirmState({
+      title: "Delete Connection",
+      message: "Delete this connection?",
+      onConfirm: async () => {
+        setConfirmState(null);
+        try {
+          const res = await fetch(`/api/providers/${id}`, { method: "DELETE" });
+          if (res.ok) setConnections((prev) => prev.filter((c) => c.id !== id));
+        } catch (e) { console.log("delete error:", e); }
+      }
+    });
   };
 
   const handleToggleActive = async (id, isActive) => {
@@ -484,6 +491,16 @@ export default function ConnectionsCard({ providerId, providerName, isOAuth }) {
         proxyPools={proxyPools}
         onSave={handleUpdateConnection}
         onClose={() => setShowEditModal(false)}
+      />
+
+      {/* Confirm Modal */}
+      <ConfirmModal
+        isOpen={!!confirmState}
+        onClose={() => setConfirmState(null)}
+        onConfirm={confirmState?.onConfirm}
+        title={confirmState?.title || "Confirm"}
+        message={confirmState?.message}
+        variant="danger"
       />
     </>
   );

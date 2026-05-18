@@ -1,23 +1,16 @@
 import { NextResponse } from "next/server";
-import { jwtVerify } from "jose";
 import { getUsageStats } from "@/lib/usageDb";
+import { getDashboardAuthSession } from "@/lib/auth/dashboardSession";
 
-const VALID_PERIODS = new Set(["24h", "7d", "30d", "60d", "all"]);
-const SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || "openrouterx-default-secret-change-me"
-);
+const VALID_PERIODS = new Set(["today", "24h", "7d", "30d", "60d", "all"]);
 
 export const dynamic = "force-dynamic";
 
 async function getSubUserId(request) {
   const token = request.cookies.get("auth_token")?.value;
   if (!token) return null;
-  try {
-    const { payload } = await jwtVerify(token, SECRET);
-    return payload.role === "sub_user" ? payload.userId : null;
-  } catch {
-    return null;
-  }
+  const payload = await getDashboardAuthSession(token);
+  return payload?.role === "sub_user" ? payload.userId : null;
 }
 
 export async function GET(request) {

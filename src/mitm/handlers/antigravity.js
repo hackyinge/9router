@@ -1,4 +1,5 @@
 const { log, err, createResponseDumper } = require("../logger");
+const { IS_DEV } = require("../config");
 const { fetchRouter, pipeSSE } = require("./base");
 
 const NO_CREDENTIALS_MARKER = "No active credentials for provider";
@@ -13,7 +14,7 @@ const NO_CREDENTIALS_MARKER = "No active credentials for provider";
  * without requiring a login in the Router dashboard.
  */
 async function intercept(req, res, bodyBuffer, mappedModel, passthrough) {
-  const dumper = createResponseDumper(req, "intercept-antigravity");
+  const dumper = IS_DEV ? createResponseDumper(req, "intercept-antigravity") : null;
   const isStream = req.url.includes(":streamGenerateContent");
   try {
     const body = JSON.parse(bodyBuffer.toString());

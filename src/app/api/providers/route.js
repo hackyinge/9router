@@ -74,7 +74,7 @@ export async function GET(request) {
     const safeConnections = filterConnectionsForSubUser(connections, subUserContext).map(c => {
       const isCompatible = isOpenAICompatibleProvider(c.provider) || isAnthropicCompatibleProvider(c.provider);
       const name = isCompatible
-        ? (nodeNameMap[c.provider] || c.providerSpecificData?.nodeName || c.provider)
+        ? (c.name || nodeNameMap[c.provider] || c.providerSpecificData?.nodeName || c.provider)
         : c.name;
       return {
         ...c,

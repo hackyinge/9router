@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import PropTypes from "prop-types";
-import { Card, Button, Input, Modal, CardSkeleton, Toggle } from "@/shared/components";
+import { Card, Button, Input, Modal, CardSkeleton, Toggle, ConfirmModal } from "@/shared/components";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 
 const TUNNEL_BENEFITS = [
@@ -14,9 +14,11 @@ const TUNNEL_BENEFITS = [
 
 const TUNNEL_PING_INTERVAL_MS = 2000;
 const TUNNEL_PING_MAX_MS = 300000;
-const STATUS_POLL_INTERVAL_MS = 5000;
+const STATUS_POLL_FAST_MS = 5000;
+const STATUS_POLL_SLOW_MS = 30000;
 const REACHABLE_MISS_THRESHOLD = 5;
-const CLIENT_PING_INTERVAL_MS = 10000;
+const CLIENT_PING_FAST_MS = 10000;
+const CLIENT_PING_SLOW_MS = 60000;
 const CLIENT_PING_TIMEOUT_MS = 5000;
 
 // Browser-side health probe: bypasses backend DNS issues (1.1.1.1 vs OS resolver).
@@ -44,6 +46,7 @@ export default function APIPageClient({ machineId }) {
   const [showAddModal, setShowAddModal] = useState(false);
   const [newKeyName, setNewKeyName] = useState("");
   const [createdKey, setCreatedKey] = useState(null);
+  const [confirmState, setConfirmState] = useState(null);
 
   const [requireApiKey, setRequireApiKey] = useState(false);
   const [requireLogin, setRequireLogin] = useState(true);
@@ -115,22 +118,35 @@ export default function APIPageClient({ machineId }) {
       .catch(() => {});
     fetchData();
     loadSettings();
-    // Poll status periodically + on tab visible to sync after watchdog restarts
-    const interval = setInterval(() => { syncTunnelStatus(); }, STATUS_POLL_INTERVAL_MS);
+  }, []);
+
+  // Adaptive status poll: slow when healthy, fast when degraded; pause when tab hidden.
+  useEffect(() => {
+    const anyEnabled = tunnelEnabled || tsEnabled;
+    if (!anyEnabled) return;
+    const tunnelHealthy = !tunnelEnabled || tunnelReachable;
+    const tsHealthy = !tsEnabled || tsReachable;
+    const allHealthy = tunnelHealthy && tsHealthy;
+    const delay = allHealthy ? STATUS_POLL_SLOW_MS : STATUS_POLL_FAST_MS;
+    let timer = null;
+    const tick = () => { if (!document.hidden) syncTunnelStatus(); };
+    timer = setInterval(tick, delay);
     const onVisible = () => { if (!document.hidden) syncTunnelStatus(); };
     document.addEventListener("visibilitychange", onVisible);
     return () => {
-      clearInterval(interval);
+      if (timer) clearInterval(timer);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, []);
+  }, [tunnelEnabled, tsEnabled, tunnelReachable, tsReachable]);
 
   // Browser-side periodic ping: probes tunnel/tailscale URLs directly so UI stays
   // "reachable" even when backend DNS (1.1.1.1) hiccups on *.ts.net or *.trycloudflare.com.
+  // Adaptive: slow when healthy, fast when degraded; pause when tab hidden.
   useEffect(() => {
     const probeBoth = async () => {
-      if (tunnelEnabled && (tunnelPublicUrl || tunnelUrl)) {
-        const ok = await clientPingUrl(tunnelPublicUrl || tunnelUrl);
+      if (document.hidden) return;
+      if (tunnelEnabled && tunnelUrl) {
+        const ok = await clientPingUrl(tunnelUrl);
         tunnelClientReachableRef.current = ok;
         if (ok) { tunnelMissRef.current = 0; setTunnelReachable(true); if (!tunnelEverReachableRef.current) { tunnelEverReachableRef.current = true; setTunnelEverReachable(true); } }
       } else {
@@ -144,10 +160,16 @@ export default function APIPageClient({ machineId }) {
         tsClientReachableRef.current = false;
       }
     };
+    const anyEnabled = (tunnelEnabled && tunnelUrl) || (tsEnabled && tsUrl);
+    if (!anyEnabled) return;
     probeBoth();
-    const id = setInterval(probeBoth, CLIENT_PING_INTERVAL_MS);
+    const tunnelHealthy = !tunnelEnabled || tunnelReachable;
+    const tsHealthy = !tsEnabled || tsReachable;
+    const allHealthy = tunnelHealthy && tsHealthy;
+    const delay = allHealthy ? CLIENT_PING_SLOW_MS : CLIENT_PING_FAST_MS;
+    const id = setInterval(probeBoth, delay);
     return () => clearInterval(id);
-  }, [tunnelEnabled, tunnelPublicUrl, tunnelUrl, tsEnabled, tsUrl]);
+  }, [tunnelEnabled, tunnelUrl, tsEnabled, tsUrl, tunnelReachable, tsReachable]);
 
   // Effective reachable = serverReachable OR clientReachable (1 of 2 is enough).
   // Miss-debounce: only flip to false after N consecutive misses on BOTH sides.
@@ -174,9 +196,8 @@ export default function APIPageClient({ machineId }) {
       const data = await statusRes.json();
       const tEnabled = data.tunnel?.settingsEnabled ?? data.tunnel?.enabled ?? false;
       const tUrl = data.tunnel?.tunnelUrl || "";
-      const tPublicUrl = data.tunnel?.publicUrl || "";
       setTunnelUrl(tUrl);
-      setTunnelPublicUrl(tPublicUrl);
+      setTunnelPublicUrl(data.tunnel?.publicUrl || "");
       setTunnelEnabled(tEnabled);
       updateReachable(!!data.tunnel?.reachable, tunnelClientReachableRef, tunnelMissRef, setTunnelReachable, tunnelEverReachableRef, setTunnelEverReachable);
 
@@ -209,9 +230,8 @@ export default function APIPageClient({ machineId }) {
         const data = await statusRes.json();
         const tEnabled = data.tunnel?.settingsEnabled ?? data.tunnel?.enabled ?? false;
         const tUrl = data.tunnel?.tunnelUrl || "";
-        const tPublicUrl = data.tunnel?.publicUrl || "";
         setTunnelUrl(tUrl);
-        setTunnelPublicUrl(tPublicUrl);
+        setTunnelPublicUrl(data.tunnel?.publicUrl || "");
         setTunnelEnabled(tEnabled);
         updateReachable(!!data.tunnel?.reachable, tunnelClientReachableRef, tunnelMissRef, setTunnelReachable, tunnelEverReachableRef, setTunnelEverReachable);
 
@@ -378,13 +398,13 @@ export default function APIPageClient({ machineId }) {
         return;
       }
 
-      const url = data.publicUrl || data.tunnelUrl;
+      const url = data.tunnelUrl;
       if (!url) {
         setTunnelStatus({ type: "error", message: "No tunnel URL returned" });
         return;
       }
 
-      setTunnelUrl(data.tunnelUrl || "");
+      setTunnelUrl(url);
       setTunnelPublicUrl(data.publicUrl || "");
       await pingTunnelHealth(url);
     } catch (error) {
@@ -405,7 +425,6 @@ export default function APIPageClient({ machineId }) {
       if (res.ok) {
         setTunnelEnabled(false);
         setTunnelUrl("");
-        setTunnelPublicUrl("");
         setShowDisableTunnelModal(false);
         setTunnelStatus({ type: "success", message: "Tunnel disabled" });
       } else {
@@ -665,22 +684,26 @@ export default function APIPageClient({ machineId }) {
   };
 
   const handleDeleteKey = async (id) => {
-    if (!confirm("Delete this API key?")) return;
-
-    try {
-      const res = await fetch(`/api/keys/${id}`, { method: "DELETE" });
-      if (res.ok) {
-        setKeys(keys.filter((k) => k.id !== id));
-        // Clean up visibility state
-        setVisibleKeys(prev => {
-          const next = new Set(prev);
-          next.delete(id);
-          return next;
-        });
+    setConfirmState({
+      title: "Delete API Key",
+      message: "Delete this API key?",
+      onConfirm: async () => {
+        setConfirmState(null);
+        try {
+          const res = await fetch(`/api/keys/${id}`, { method: "DELETE" });
+          if (res.ok) {
+            setKeys(keys.filter((k) => k.id !== id));
+            setVisibleKeys(prev => {
+              const next = new Set(prev);
+              next.delete(id);
+              return next;
+            });
+          }
+        } catch (error) {
+          console.log("Error deleting key:", error);
+        }
       }
-    } catch (error) {
-      console.log("Error deleting key:", error);
-    }
+    });
   };
 
   const handleToggleKey = async (id, isActive) => {
@@ -1084,7 +1107,7 @@ export default function APIPageClient({ machineId }) {
                     </code>
                     <button
                       onClick={() => toggleKeyVisibility(key.id)}
-                      className="p-1 hover:bg-black/5 dark:hover:bg-white/5 rounded text-text-muted hover:text-primary opacity-0 group-hover:opacity-100 transition-all"
+                      className="p-1 hover:bg-black/5 dark:hover:bg-white/5 rounded text-text-muted hover:text-primary opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all"
                       title={visibleKeys.has(key.id) ? "Hide key" : "Show key"}
                     >
                       <span className="material-symbols-outlined text-[14px]">
@@ -1093,7 +1116,7 @@ export default function APIPageClient({ machineId }) {
                     </button>
                     <button
                       onClick={() => copy(key.key, key.id)}
-                      className="p-1 hover:bg-black/5 dark:hover:bg-white/5 rounded text-text-muted hover:text-primary opacity-0 group-hover:opacity-100 transition-all"
+                      className="p-1 hover:bg-black/5 dark:hover:bg-white/5 rounded text-text-muted hover:text-primary opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all"
                     >
                       <span className="material-symbols-outlined text-[14px]">
                         {copied === key.id ? "check" : "content_copy"}
@@ -1113,9 +1136,14 @@ export default function APIPageClient({ machineId }) {
                     checked={key.isActive ?? true}
                     onChange={(checked) => {
                       if (key.isActive && !checked) {
-                        if (confirm(`Pause API key "${key.name}"?\n\nThis key will stop working immediately but can be resumed later.`)) {
-                          handleToggleKey(key.id, checked);
-                        }
+                        setConfirmState({
+                          title: "Pause API Key",
+                          message: `Pause API key "${key.name}"?\n\nThis key will stop working immediately but can be resumed later.`,
+                          onConfirm: async () => {
+                            setConfirmState(null);
+                            handleToggleKey(key.id, checked);
+                          }
+                        });
                       } else {
                         handleToggleKey(key.id, checked);
                       }
@@ -1124,7 +1152,7 @@ export default function APIPageClient({ machineId }) {
                   />
                   <button
                     onClick={() => handleDeleteKey(key.id)}
-                    className="p-2 hover:bg-red-500/10 rounded text-red-500 opacity-0 group-hover:opacity-100 transition-all"
+                    className="p-2 hover:bg-red-500/10 rounded text-red-500 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all"
                   >
                     <span className="material-symbols-outlined text-[18px]">delete</span>
                   </button>
@@ -1349,6 +1377,16 @@ export default function APIPageClient({ machineId }) {
           </div>
         </div>
       </Modal>
+
+      {/* Confirm Modal */}
+      <ConfirmModal
+        isOpen={!!confirmState}
+        onClose={() => setConfirmState(null)}
+        onConfirm={confirmState?.onConfirm}
+        title={confirmState?.title || "Confirm"}
+        message={confirmState?.message}
+        variant="danger"
+      />
     </div>
   );
 }

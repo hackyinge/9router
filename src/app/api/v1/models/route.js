@@ -12,6 +12,22 @@ import {
   resolveSubUserAccessContext,
 } from "@/lib/subUserAccess";
 import { getModelInfo } from "@/sse/services/model";
+import { getDisabledModels } from "@/lib/disabledModelsDb";
+import { resolveKiroModels } from "open-sse/services/kiroModels.js";
+
+// Per-provider live model resolvers. Each receives a connection record and
+// returns { models: [{ id, name? }, ...] } | null on failure.
+// Adding a provider here makes /v1/models prefer the live catalog for it.
+const LIVE_MODEL_RESOLVERS = {
+  kiro: async (conn) => {
+    const result = await resolveKiroModels({
+      accessToken: conn.accessToken,
+      refreshToken: conn.refreshToken,
+      providerSpecificData: conn.providerSpecificData || {}
+    }, { log: console });
+    return result?.models?.length ? { models: result.models } : null;
+  }
+};
 
 const parseOpenAIStyleModels = (data) => {
   if (Array.isArray(data)) return data;
@@ -162,6 +178,15 @@ export async function buildModelsList(kindFilter, request = null) {
     console.log("Could not fetch model aliases");
   }
 
+  let disabledByAlias = {};
+  try {
+    disabledByAlias = await getDisabledModels();
+  } catch (e) {
+    console.log("Could not fetch disabled models");
+  }
+  const isDisabled = (alias, modelId) =>
+    Array.isArray(disabledByAlias[alias]) && disabledByAlias[alias].includes(modelId);
+
   const activeConnectionByProvider = new Map();
   for (const conn of connections) {
     if (!activeConnectionByProvider.has(conn.provider)) {
@@ -209,6 +234,7 @@ export async function buildModelsList(kindFilter, request = null) {
       if (!providerMatchesKinds(providerId, kindFilter)) continue;
       for (const model of providerModels) {
         if (!kindFilter.includes(modelKind(model))) continue;
+        if (isDisabled(alias, model.id)) continue;
         models.push({
           id: `${alias}/${model.id}`,
           object: "model",
@@ -278,6 +304,21 @@ export async function buildModelsList(kindFilter, request = null) {
         rawModelIds = await fetchCompatibleModelIds(conn);
       }
 
+      // Config-driven live catalog override (e.g. Kiro returns dynamic
+      // -thinking/-agentic variants per account). On failure, fall back to
+      // whatever rawModelIds already holds.
+      const liveResolver = LIVE_MODEL_RESOLVERS[providerId];
+      if (liveResolver && !hasExplicitEnabledModels) {
+        try {
+          const live = await liveResolver(conn);
+          if (live?.models?.length) {
+            rawModelIds = live.models.map((m) => m.id);
+          }
+        } catch (err) {
+          console.log(`Live model fetch failed for ${providerId}: ${err?.message || err}`);
+        }
+      }
+
       const modelIds = rawModelIds
         .map((modelId) => {
           if (modelId.startsWith(`${outputAlias}/`)) {
@@ -331,6 +372,7 @@ export async function buildModelsList(kindFilter, request = null) {
         // Resolve kind: prefer static metadata, otherwise infer from ID heuristics
         const kind = staticModelKindById.get(modelId) || inferKindFromUnknownModelId(modelId);
         if (!kindFilter.includes(kind)) continue;
+        if (isDisabled(outputAlias, modelId) || isDisabled(staticAlias, modelId)) continue;
 
         models.push({
           id: `${outputAlias}/${modelId}`,
@@ -414,152 +456,7 @@ export async function OPTIONS() {
  */
 export async function GET(request) {
   try {
-    const subUserContext = await resolveSubUserAccessContext(request);
-    // Get active provider connections
-    let connections = [];
-    try {
-      connections = await getProviderConnections();
-      // Filter to only active connections
-      connections = connections.filter(c => c.isActive !== false);
-      if (subUserContext) {
-        connections = filterConnectionsForSubUser(connections, subUserContext);
-      }
-    } catch (e) {
-      // If database not available, return all models
-      console.log("Could not fetch providers, returning all models");
-    }
-
-    // Get combos
-    let combos = [];
-    try {
-      combos = await getCombos();
-    } catch (e) {
-      console.log("Could not fetch combos");
-    }
-
-    // Build first active connection per provider (connections already sorted by priority)
-    const activeConnectionByProvider = new Map();
-    for (const conn of connections) {
-      if (!activeConnectionByProvider.has(conn.provider)) {
-        activeConnectionByProvider.set(conn.provider, conn);
-      }
-    }
-
-    // Collect models from active providers (or all if none active)
-    const models = [];
-    const timestamp = Math.floor(Date.now() / 1000);
-
-    // Add combos first (they appear at the top)
-    for (const combo of combos) {
-      if (subUserContext) {
-        let comboAllowed = true;
-        for (const comboModel of combo.models || []) {
-          const comboModelInfo = await getModelInfo(comboModel);
-          if (!comboModelInfo?.provider || !isProviderAllowedForSubUser(subUserContext, comboModelInfo.provider)) {
-            comboAllowed = false;
-            break;
-          }
-        }
-        if (!comboAllowed) continue;
-      }
-
-      models.push({
-        id: combo.name,
-        object: "model",
-        created: timestamp,
-        owned_by: "combo",
-        permission: [],
-        root: combo.name,
-        parent: null,
-      });
-    }
-
-    // Add provider models
-    if (connections.length === 0) {
-      // DB unavailable or no active providers -> return all static models
-      for (const [alias, providerModels] of Object.entries(PROVIDER_MODELS)) {
-        const providerId = Object.entries(PROVIDER_ID_TO_ALIAS).find(
-          ([id, providerAlias]) => providerAlias === alias
-        )?.[0] || alias;
-        if (!isProviderAllowedForSubUser(subUserContext, providerId)) {
-          continue;
-        }
-        for (const model of providerModels) {
-          models.push({
-            id: `${alias}/${model.id}`,
-            object: "model",
-            created: timestamp,
-            owned_by: alias,
-            permission: [],
-            root: model.id,
-            parent: null,
-          });
-        }
-      }
-    } else {
-      for (const [providerId, conn] of activeConnectionByProvider.entries()) {
-        if (!isProviderAllowedForSubUser(subUserContext, providerId)) {
-          continue;
-        }
-        const staticAlias = PROVIDER_ID_TO_ALIAS[providerId] || providerId;
-        const outputAlias = (
-          conn?.providerSpecificData?.prefix
-          || getProviderAlias(providerId)
-          || staticAlias
-        ).trim();
-        const providerModels = PROVIDER_MODELS[staticAlias] || [];
-        const enabledModels = conn?.providerSpecificData?.enabledModels;
-        const hasExplicitEnabledModels =
-          Array.isArray(enabledModels) && enabledModels.length > 0;
-        const isCompatibleProvider =
-          isOpenAICompatibleProvider(providerId) || isAnthropicCompatibleProvider(providerId);
-
-        // Default: if no explicit selection, all static models are active.
-        // For compatible providers with no explicit selection, fetch remote /models dynamically.
-        // If explicit selection exists, expose exactly those model IDs (including non-static IDs).
-        let rawModelIds = hasExplicitEnabledModels
-          ? Array.from(
-              new Set(
-                enabledModels.filter(
-                  (modelId) => typeof modelId === "string" && modelId.trim() !== "",
-                ),
-              ),
-            )
-          : providerModels.map((model) => model.id);
-
-        if (isCompatibleProvider && rawModelIds.length === 0 && !UPSTREAM_CONNECTION_RE.test(providerId)) {
-          rawModelIds = await fetchCompatibleModelIds(conn);
-        }
-
-        const modelIds = rawModelIds
-          .map((modelId) => {
-            if (modelId.startsWith(`${outputAlias}/`)) {
-              return modelId.slice(outputAlias.length + 1);
-            }
-            if (modelId.startsWith(`${staticAlias}/`)) {
-              return modelId.slice(staticAlias.length + 1);
-            }
-            if (modelId.startsWith(`${providerId}/`)) {
-              return modelId.slice(providerId.length + 1);
-            }
-            return modelId;
-          })
-          .filter((modelId) => typeof modelId === "string" && modelId.trim() !== "");
-
-        for (const modelId of modelIds) {
-          models.push({
-            id: `${outputAlias}/${modelId}`,
-            object: "model",
-            created: timestamp,
-            owned_by: outputAlias,
-            permission: [],
-            root: modelId,
-            parent: null,
-          });
-        }
-      }
-    }
-
+    const models = await buildModelsList([LLM_KIND], request);
     return Response.json({
       object: "list",
       data: models,

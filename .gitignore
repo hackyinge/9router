@@ -17,7 +17,9 @@ npm-local/
 
 # next.js
 /.next/
+/.next-cli-build/
 /out/
+cli/.build-home/
 product
 # production
 /build
@@ -56,7 +58,6 @@ docs/*
 !docs/ARCHITECTURE.md
 !docs/LOCAL_NPM_TESTING.md
 test/*
-bin/*
 open-sse/test/*
 RM.vn.md
 RM.md

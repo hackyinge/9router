@@ -1,3 +1,124 @@
+# v0.4.52 (2026-05-17)
+
+## Features
+- Add Vercel AI Gateway provider support (#1183)
+- rtk: Kiro format tool result compression — handle conversationState.history & currentMessage, preserve error results, ~13.6% savings (#1194)
+
+## Fixes
+- openclaw: normalize agent.model object form `{primary, fallbacks}` before .startsWith → fix TypeError & 'not configured' status (#1216)
+- Usage Details pagination: stay inside mobile viewport <640px (#1218)
+- Fix test model error
+- Fix MIMO provider in Codex
+- Disable log file creation when using MITM AG
+
+# v0.4.50 (2026-05-16)
+
+## Fixes
+- Fix duplicate tray icon on macOS when hiding to tray
+- Fix tray not showing in background mode on macOS
+- Fix hide to tray broken on Windows/Linux
+- Fix Shutdown button in web UI not working
+
+# v0.4.49 (2026-05-16)
+
+## Features
+- Add Kiro provider support: full request/response translation, live model listing, reasoning content support
+- Add `buildOutput` RTK filter with autodetect for npm/yarn/cargo build logs
+- Add MITM warning notification in tray and dashboard
+
+## Improvements
+- Add modalities (input/output) to model configuration for OpenCode
+- Fix tray hide-to-tray: keep current process alive instead of spawning detached child (fixes macOS NSStatusItem ghost icon)
+- Fix tray kill: graceful shutdown with SIGTERM/SIGKILL escalation
+- Fix SIGHUP handling so macOS terminal close doesn't kill tray process
+- Hide deprecated providers (qwen, iflow, antigravity)
+- Update i18n across 32 languages
+
+## Fixes
+- Fix model check (test-models) blocked by dashboardGuard: pass machineId-based CLI token in internal self-calls
+
+# v0.4.46 (2026-05-15)
+
+## Breaking Changes
+- Tunnel public URL changed — old tunnel links no longer work, please reconnect to get the new URL
+
+# v0.4.44 (2026-05-15)
+
+## Features
+- Add Blackbox provider with `bb` alias (#1143)
+- Add Xiaomi token plan provider
+- Enhance model select modal UX + modal traffic lights (#1111)
+- Default Usage dashboard period to Today (#1141)
+
+## Fixes
+- Fix Cowork model selection and Windows CLI packaging (#1129)
+- Update provider name retrieval for compatibility provider (#1135)
+- Update JWT_SECRET handling
+
+# v0.4.41 (2026-05-14)
+
+## Features
+- Add jcode CLI tool integration with auto-configuration (#1047)
+- Redesign CLI Tools dashboard: grid layout (1/2/3 cols) + dedicated detail page per tool
+- Add drag-and-drop reordering for combo models (#1108)
+- Add Today period option to Usage & Analytics (#1063)
+- Add DeepSeek V4 Pro effort aliases (#950)
+
+## Fixes
+- fix(autostart): work on nvm + npm 9/10, actually register with launchctl (#1104, fixes #1082)
+- Fix Ollama usage not tracked/shown in UI (#1102)
+- fix(opencode): preserve DeepSeek reasoning content (#1099, fixes #1093)
+- Fix TUI input lag (replace enquirer with native readline, persistent raw mode)
+- fix(ui): show API key row actions on mobile (#1112)
+
+## Improvements
+- Sync DeepSeek TUI card style with other CLI tools (badges, layout, manual config modal)
+- Add official logos for Amp CLI, jcode, Qwen Code (replace generic icons)
+- Resize deepseek-tui icon 1024→128 with padding for visual consistency
+
+# v0.4.39 (2026-05-14)
+
+## Fixes
+- fix(docker): restore `/app/server.js` (v0.4.38 regression)
+
+# v0.4.38 (2026-05-13)
+
+## Features
+- Add DeepSeek TUI as CLI tool in dashboard (#1088)
+
+## Fixes
+- Fix broken Docker image in v0.4.36/v0.4.37 (#1096, #1097)
+
+## Improvements
+- Clean Docker tags + clearer pulls badge
+
+# v0.4.37 (2026-05-13)
+
+## Improvements
+- Security hardening — upgrade recommended
+
+# v0.4.36 (2026-05-13)
+
+## Features
+- Add MiniMax TTS provider support (#1043)
+- Docker images now published on both Docker Hub (`decolua/9router`) and GHCR — pull from your preferred registry
+
+## Improvements
+- Replace browser confirm dialogs with custom ConfirmModal (#1060)
+
+## Fixes
+- Fix Docker `Cannot find module 'next'` error in standalone build
+- Restore /app/server.js in Docker standalone build (#1064, #1067)
+- Fix CLI TUI menu arrow-key escape sequences leaking (^[[A^[[B)
+- Switch macOS/Linux tray to systray2 fork (fixes Kaspersky AV false-positive) (#1080)
+- Fix zoom controls contrast in topology view (#1066)
+
+# v0.4.33 (2026-05-12)
+
+## Improvements
+- Windows: replace systray (Go binary, AV flagged) with native PowerShell NotifyIcon
+- Auto-cleanup legacy `tray_windows.exe` on install/startup
+
 # v0.4.31 (2026-05-12)
 
 ## Features

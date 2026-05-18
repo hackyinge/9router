@@ -4,6 +4,10 @@ import { getAuthPayload } from "@/dashboardGuard";
 import { getModelInfo } from "@/sse/services/model";
 import { resolveSubUserAccessContext, isProviderAllowedForSubUser } from "@/lib/subUserAccess";
 import { getProviderNodeById } from "@/models";
+import { UPDATER_CONFIG } from "@/shared/constants/config";
+import { getConsistentMachineId } from "@/shared/utils/machineId";
+
+const CLI_TOKEN_SALT = "9r-cli-auth";
 
 // POST /api/models/test - Ping a single model via internal completions or embeddings
 export async function POST(request) {
@@ -20,7 +24,7 @@ export async function POST(request) {
     }
 
     const baseUrl = process.env.BASE_URL ||
-      (() => { const u = new URL(request.url); return `${u.protocol}//${u.host}`; })();
+      `http://127.0.0.1:${process.env.PORT || UPDATER_CONFIG.appPort}`;
 
     // Get an active internal API key for auth (if requireApiKey is enabled)
     let apiKey = null;
@@ -34,6 +38,8 @@ export async function POST(request) {
 
     const headers = { "Content-Type": "application/json" };
     if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
+    // Bypass dashboardGuard for internal self-call via CLI token (machineId-based)
+    headers["x-9r-cli-token"] = await getConsistentMachineId(CLI_TOKEN_SALT);
 
     const start = Date.now();
 

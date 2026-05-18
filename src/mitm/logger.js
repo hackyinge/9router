@@ -27,6 +27,16 @@ function ensureDumpDir() {
 
 const DUMP_DIR = ensureDumpDir();
 
+// Clear all files inside DUMP_DIR (called on MITM server start to avoid unbounded growth)
+function clearDumpDir() {
+  try {
+    if (!fs.existsSync(DUMP_DIR)) return;
+    for (const f of fs.readdirSync(DUMP_DIR)) {
+      try { fs.rmSync(path.join(DUMP_DIR, f), { recursive: true, force: true }); } catch { /* ignore */ }
+    }
+  } catch { /* ignore */ }
+}
+
 const EMPTY_BODY_RE = /^\s*(\{\s*\}|\[\s*\]|null)?\s*$/;
 
 function slugify(s, max = 80) {
@@ -106,4 +116,4 @@ function createResponseDumper(req, tag = "raw") {
   };
 }
 
-module.exports = { log, err, dumpRequest, createResponseDumper };
+module.exports = { log, err, dumpRequest, createResponseDumper, clearDumpDir };
