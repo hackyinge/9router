@@ -52,10 +52,25 @@ describe("auto combo routing", () => {
       { id: "codex-1", provider: "codex", isActive: true, priority: 1, testStatus: "active" },
       { id: "openai-1", provider: "openai", isActive: true, priority: 2, testStatus: "active" },
       { id: "ollama-1", provider: "ollama-local", isActive: true, priority: 3, testStatus: "active", defaultModel: "llama3.2" },
+      { id: "opencode-free", provider: "opencode", isActive: true, priority: 4, testStatus: "active", authType: "none" },
     ];
 
     expect(buildAutoComboModelsFromConnections(connections, { variant: "coding" })).toContain("codex/gpt-5.5");
-    expect(buildAutoComboModelsFromConnections(connections, { variant: "offline" })).toEqual(["ollama-local/llama3.2"]);
+    expect(buildAutoComboModelsFromConnections(connections, { variant: "offline" })).toEqual([
+      "opencode/deepseek-v4-flash-free",
+      "ollama-local/llama3.2",
+    ]);
     expect(buildAutoComboModelsFromConnections(connections, { variant: "fast" })).toContain("openai/gpt-5.4-mini");
+  });
+
+  it("prioritizes coding OAuth candidates for default and last-known-good routes", () => {
+    const connections = [
+      { id: "alicode-1", provider: "alicode", isActive: true, priority: 1, testStatus: "active" },
+      { id: "codex-1", provider: "codex", isActive: true, priority: 1, testStatus: "active", authType: "oauth" },
+      { id: "siliconflow-1", provider: "siliconflow", isActive: true, priority: 2, testStatus: "active" },
+    ];
+
+    expect(buildAutoComboModelsFromConnections(connections)[0]).toBe("codex/gpt-5.5");
+    expect(buildAutoComboModelsFromConnections(connections, { variant: "lkgp" })[0]).toBe("codex/gpt-5.5");
   });
 });

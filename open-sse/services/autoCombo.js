@@ -23,7 +23,7 @@ const CODING_PROVIDERS = new Set([
   "deepseek",
 ]);
 
-const OFFLINE_PROVIDERS = new Set(["ollama-local"]);
+const OFFLINE_PROVIDERS = new Set(["ollama-local", "opencode"]);
 const CHEAP_PROVIDER_HINTS = new Set(["openrouter", "gemini", "groq", "deepseek", "glm", "kimi", "minimax", "opencode"]);
 
 function normalizeText(value) {
@@ -108,6 +108,10 @@ function scoreCandidate(connection, model, variant) {
 
   if (connection.lastError) score -= 8;
   if (connection.authType === "none" || connection.id?.startsWith("noauth:")) score += 4;
+  if (!variant || variant === "lkgp") {
+    if (CODING_PROVIDERS.has(provider)) score += 18;
+    if (connection.authType === "oauth") score += 8;
+  }
 
   if (variant === "coding" && CODING_PROVIDERS.has(provider)) score += 18;
   if (variant === "fast" && isFastModel(model)) score += 20;

@@ -197,11 +197,10 @@ export const PROVIDER_MODELS = {
     { id: "minimax-m2.5", name: "MiniMax M2.5", targetFormat: "claude" },
   ],
   oc: [  // OpenCode
-    // { id: "nemotron-3-super-free", name: "Nemotron 3 Super" },
-    // { id: "qwen3.6-plus-free", name: "Qwen 3.6 Plus" },
-    // { id: "big-pickle", name: "Big Pickle", targetFormat: "claude" },
-    // { id: "minimax-m2.5-free", name: "MiniMax M2.5", targetFormat: "claude" },
-    // { id: "trinity-large-preview-free", name: "Trinity Large Preview" },
+    { id: "deepseek-v4-flash-free", name: "DeepSeek V4 Flash Free" },
+    { id: "qwen3.6-plus-free", name: "Qwen 3.6 Plus Free" },
+    { id: "minimax-m2.5-free", name: "MiniMax M2.5 Free", targetFormat: "claude" },
+    { id: "nemotron-3-super-free", name: "Nemotron 3 Super Free" },
   ],
 
   cl: [  // Cline

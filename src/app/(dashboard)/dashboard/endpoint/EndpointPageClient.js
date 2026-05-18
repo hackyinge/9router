@@ -1474,6 +1474,7 @@ export default function APIPageClient({ machineId }) {
 }
 
 function AutoRouteRow({ route, endpoint, copied, onCopy, testResult, isTesting, onTest }) {
+  const [isCurlExpanded, setIsCurlExpanded] = useState(false);
   const modelCopyId = `auto_route_${route.id}`;
   const curlCopyId = `auto_route_curl_${route.id}`;
   const curl = buildAutoRouteCurl(endpoint, route.id);
@@ -1547,22 +1548,48 @@ function AutoRouteRow({ route, endpoint, copied, onCopy, testResult, isTesting, 
       </div>
       <div className="min-w-0 rounded-lg border border-border-subtle bg-black/[0.03] dark:bg-white/[0.04]">
         <div className="flex items-center justify-between border-b border-border-subtle px-3 py-1.5">
-          <span className="text-xs font-medium text-text-muted">Test curl</span>
           <button
             type="button"
-            onClick={() => onCopy(curl, curlCopyId)}
-            className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-text-muted transition-colors hover:bg-black/5 hover:text-primary dark:hover:bg-white/5"
-            title="Copy curl"
+            onClick={() => setIsCurlExpanded((value) => !value)}
+            className="inline-flex min-w-0 items-center gap-1.5 text-left text-xs font-medium text-text-muted transition-colors hover:text-primary"
+            aria-expanded={isCurlExpanded}
           >
-            <span className="material-symbols-outlined text-[14px]">
-              {copied === curlCopyId ? "check" : "content_copy"}
+            <span className="material-symbols-outlined text-[16px]">
+              {isCurlExpanded ? "expand_less" : "expand_more"}
             </span>
-            {copied === curlCopyId ? "Copied!" : "Copy curl"}
+            <span>Test curl</span>
+            <span className="text-[11px] text-text-faint">{isCurlExpanded ? "Collapse" : "Expand"}</span>
           </button>
+          <div className="flex shrink-0 items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setIsCurlExpanded((value) => !value)}
+              className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-text-muted transition-colors hover:bg-black/5 hover:text-primary dark:hover:bg-white/5"
+              title={isCurlExpanded ? "Collapse" : "Expand"}
+            >
+              <span className="material-symbols-outlined text-[14px]">
+                {isCurlExpanded ? "expand_less" : "expand_more"}
+              </span>
+              {isCurlExpanded ? "Collapse" : "Expand"}
+            </button>
+            <button
+              type="button"
+              onClick={() => onCopy(curl, curlCopyId)}
+              className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-text-muted transition-colors hover:bg-black/5 hover:text-primary dark:hover:bg-white/5"
+              title="Copy curl"
+            >
+              <span className="material-symbols-outlined text-[14px]">
+                {copied === curlCopyId ? "check" : "content_copy"}
+              </span>
+              {copied === curlCopyId ? "Copied!" : "Copy curl"}
+            </button>
+          </div>
         </div>
-        <pre className="max-h-28 overflow-auto whitespace-pre-wrap px-3 py-2 font-mono text-[10px] leading-relaxed text-text-muted" data-i18n-skip="true">
-          {curl}
-        </pre>
+        {isCurlExpanded && (
+          <pre className="max-h-28 overflow-auto whitespace-pre-wrap px-3 py-2 font-mono text-[10px] leading-relaxed text-text-muted" data-i18n-skip="true">
+            {curl}
+          </pre>
+        )}
       </div>
     </div>
   );
