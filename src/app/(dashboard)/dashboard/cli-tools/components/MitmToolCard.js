@@ -127,6 +127,7 @@ export default function MitmToolCard({
   const [modalOpen, setModalOpen] = useState(false);
   const [currentEditingAlias, setCurrentEditingAlias] = useState(null);
   const [restarting, setRestarting] = useState(false);
+  const [restartingVsCode, setRestartingVsCode] = useState(false);
   const [launchingNew, setLaunchingNew] = useState(false);
   const [restartMessage, setRestartMessage] = useState(null);
   const [showRestartPathModal, setShowRestartPathModal] = useState(false);
@@ -145,6 +146,7 @@ export default function MitmToolCard({
   const mitmHosts = TOOL_HOSTS[tool.id] ?? [];
   const canRunWithoutPassword = isWin || hasCachedPassword || needsSudoPassword === false;
   const canRestartAntigravity = tool.id === "antigravity";
+  const canRestartVsCode = tool.id === "copilot";
 
   const loadSavedMappings = useCallback(async () => {
     try {
@@ -284,6 +286,26 @@ export default function MitmToolCard({
       return;
     }
     launchAntigravity({ path, mode: restartPathAction });
+  };
+
+  const restartVsCode = async () => {
+    setRestartingVsCode(true);
+    setRestartMessage(null);
+    try {
+      const res = await fetch("/api/cli-tools/copilot-settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "restart-vscode" }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to restart VS Code");
+
+      setRestartMessage({ type: "success", text: data.message || "VS Code restarted." });
+    } catch (error) {
+      setRestartMessage({ type: "error", text: error.message || "Failed to restart VS Code" });
+    } finally {
+      setRestartingVsCode(false);
+    }
   };
 
   const injectAuthKey = async () => {
@@ -579,6 +601,19 @@ export default function MitmToolCard({
                       {injectingAuth ? "progress_activity" : "key"}
                     </span>
                     Inject Auth Key
+                  </button>
+                )}
+                {canRestartVsCode && (
+                  <button
+                    onClick={restartVsCode}
+                    disabled={restartingVsCode}
+                    className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-border bg-surface px-4 py-2 text-xs font-medium text-text-main transition-colors hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:py-1.5"
+                    title="Restart VS Code"
+                  >
+                    <span className={`material-symbols-outlined text-[16px] ${restartingVsCode ? "animate-spin" : ""}`}>
+                      {restartingVsCode ? "progress_activity" : "restart_alt"}
+                    </span>
+                    Restart VS Code
                   </button>
                 )}
               </div>

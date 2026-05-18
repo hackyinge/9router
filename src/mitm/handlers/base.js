@@ -3,8 +3,11 @@ const { log, err } = require("../logger");
 const DEFAULT_LOCAL_ROUTER = "http://localhost:20502";
 const ROUTER_BASE = String(process.env.MITM_ROUTER_BASE || DEFAULT_LOCAL_ROUTER)
   .trim()
+  .replace(/^(['"])(.*)\1$/, "$2")
   .replace(/\/+$/, "") || DEFAULT_LOCAL_ROUTER;
-const API_KEY = process.env.ROUTER_API_KEY;
+const API_KEY = String(process.env.ROUTER_API_KEY || "")
+  .trim()
+  .replace(/^(['"])(.*)\1$/, "$2");
 
 // Headers that must not be forwarded to OpenrouterX
 const STRIP_HEADERS = new Set([

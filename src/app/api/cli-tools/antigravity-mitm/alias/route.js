@@ -2,6 +2,7 @@
 
 import { NextResponse } from "next/server";
 import { getMitmAlias, setMitmAliasAll } from "@/models";
+import { writeAliasForTool } from "@/lib/mitmAliasCache";
 
 const DEFAULT_ANTIGRAVITY_ALIASES = {
   "gemini-3.1-pro-high": "gemini-3.1-pro-high",

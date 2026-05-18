@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  buildCodexChatGptAuthData,
   ensureCodexActivationTokens,
   getCodexTokenSnapshotExpirationMs,
   isCodexTokenSnapshotFresh,
@@ -24,6 +25,28 @@ const futureConnection = {
 };
 
 describe("codex activation token selection", () => {
+  it("builds a complete ChatGPT auth.json snapshot for Codex desktop", () => {
+    const tokens = {
+      access_token: "access",
+      refresh_token: "refresh",
+      id_token: "id",
+      account_id: "account-1",
+    };
+    const result = buildCodexChatGptAuthData(
+      { auth_mode: "apikey", OPENAI_API_KEY: "sk-old", other: true },
+      tokens,
+      new Date("2026-05-14T08:34:00.000Z"),
+    );
+
+    expect(result).toEqual({
+      auth_mode: "chatgpt",
+      OPENAI_API_KEY: null,
+      other: true,
+      tokens,
+      last_refresh: "2026-05-14T08:34:00.000Z",
+    });
+  });
+
   it("uses a fresh local token snapshot without refreshing", async () => {
     const refreshTokens = vi.fn();
     const result = await ensureCodexActivationTokens(futureConnection, {

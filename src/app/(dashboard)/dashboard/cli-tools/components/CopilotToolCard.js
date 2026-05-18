@@ -12,6 +12,7 @@ export default function CopilotToolCard({ tool, isExpanded, onToggle, baseUrl, a
   const [checking, setChecking] = useState(false);
   const [applying, setApplying] = useState(false);
   const [restoring, setRestoring] = useState(false);
+  const [restartingVsCode, setRestartingVsCode] = useState(false);
   const [message, setMessage] = useState(null);
   const [selectedApiKey, setSelectedApiKey] = useState(apiKeys?.[0]?.key || "");
   const [customBaseUrl, setCustomBaseUrl] = useState("");
@@ -163,6 +164,28 @@ export default function CopilotToolCard({ tool, isExpanded, onToggle, baseUrl, a
     }
   };
 
+  const handleRestartVsCode = async () => {
+    setRestartingVsCode(true);
+    setMessage(null);
+    try {
+      const res = await fetch("/api/cli-tools/copilot-settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "restart-vscode" }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setMessage({ type: "success", text: data.message || "VS Code restarted." });
+      } else {
+        setMessage({ type: "error", text: data.error || "Failed to restart VS Code" });
+      }
+    } catch (error) {
+      setMessage({ type: "error", text: error.message });
+    } finally {
+      setRestartingVsCode(false);
+    }
+  };
+
   const getManualConfigs = () => {
     const keyToUse = (selectedApiKey && selectedApiKey.trim())
       ? selectedApiKey
@@ -295,6 +318,12 @@ export default function CopilotToolCard({ tool, isExpanded, onToggle, baseUrl, a
                 </Button>
                 <Button variant="outline" size="sm" onClick={handleReset} disabled={!status?.hasOpenRouterX} loading={restoring}>
                   <span className="material-symbols-outlined text-[14px] mr-1">restore</span>Reset
+                </Button>
+                <Button variant="outline" size="sm" onClick={handleRestartVsCode} loading={restartingVsCode}>
+                  <span className={`material-symbols-outlined text-[14px] mr-1 ${restartingVsCode ? "animate-spin" : ""}`}>
+                    {restartingVsCode ? "progress_activity" : "restart_alt"}
+                  </span>
+                  Restart VS Code
                 </Button>
                 <Button variant="ghost" size="sm" onClick={() => setShowManualConfigModal(true)} disabled={selectedModels.length === 0}>
                   <span className="material-symbols-outlined text-[14px] mr-1">content_copy</span>Manual Config

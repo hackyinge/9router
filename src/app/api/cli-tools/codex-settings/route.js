@@ -1,13 +1,10 @@
 import { NextResponse } from "next/server";
-import { exec } from "child_process";
-import { promisify } from "util";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
 import { parseTOML, stringifyTOML } from "confbox";
 import { getAuthPayload } from "@/dashboardGuard";
-
-const execAsync = promisify(exec);
+import { resolveCliBinary } from "../cliDetection";
 
 async function requirePayload(request) {
   const payload = await getAuthPayload(request);
@@ -27,6 +24,8 @@ const CODEX_INSTALL_HINTS = os.platform() === "darwin"
   ? [CODEX_INSTALL_COMMAND, "brew install --cask codex"]
   : [CODEX_INSTALL_COMMAND];
 const CODEX_MACOS_APP_CANDIDATES = [
+  "/Applications/Codex.app/Contents/Resources/codex",
+  path.join(os.homedir(), "Applications/Codex.app/Contents/Resources/codex"),
   "/Applications/Codex.app/Contents/MacOS/Codex",
   path.join(os.homedir(), "Applications/Codex.app/Contents/MacOS/Codex"),
   "/Applications/Codex.app",
@@ -67,31 +66,9 @@ const deleteNestedSection = (obj, dottedKey) => {
 
 // Check CLI first, then standard macOS app locations.
 const checkCodexInstalled = async () => {
-  try {
-    const isWindows = os.platform() === "win32";
-    const command = isWindows ? "where codex" : "which codex";
-    const env = isWindows
-      ? { ...process.env, PATH: `${process.env.APPDATA}\\npm;${process.env.PATH}` }
-      : process.env;
-    const { stdout } = await execAsync(command, { windowsHide: true, env });
-    const binaryPath = stdout.split(/\r?\n/).find(Boolean)?.trim() || "codex";
-    return { installed: true, source: "cli", binaryPath };
-  } catch {
-    if (os.platform() !== "darwin") {
-      return { installed: false };
-    }
-
-    for (const candidate of CODEX_MACOS_APP_CANDIDATES) {
-      try {
-        await fs.access(candidate);
-        return { installed: true, source: "app", binaryPath: candidate };
-      } catch {
-        // Continue probing other standard macOS install locations.
-      }
-    }
-
-    return { installed: false };
-  }
+  return resolveCliBinary("codex", {
+    fallbackCandidates: os.platform() === "darwin" ? CODEX_MACOS_APP_CANDIDATES : [],
+  });
 };
 
 // Read current config.toml

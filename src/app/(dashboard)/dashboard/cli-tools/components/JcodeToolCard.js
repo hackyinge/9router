@@ -44,6 +44,7 @@ export default function JcodeToolCard({
   };
 
   const configStatus = getConfigStatus();
+  const isJcodeInstalled = jcodeStatus?.installed === true;
 
   useEffect(() => {
     if (apiKeys?.length > 0 && !selectedApiKey) {
@@ -263,7 +264,7 @@ id = "${selectedModel || "cc/claude-opus-4-7"}"`;
             </div>
           )}
 
-          {!checkingJcode && jcodeStatus?.installed && (
+          {!checkingJcode && jcodeStatus && (
             <>
               <div className="flex flex-col gap-2">
                 {/* Info notes */}
@@ -300,7 +301,7 @@ id = "${selectedModel || "cc/claude-opus-4-7"}"`;
                 </div>
 
                 {/* Current configured */}
-                {jcodeStatus?.config?.providers?.["9router"]?.base_url && (
+                {isJcodeInstalled && jcodeStatus?.config?.providers?.["9router"]?.base_url && (
                   <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-[8rem_auto_1fr_auto] sm:items-center sm:gap-2">
                     <span className="text-xs font-semibold text-text-main sm:text-right sm:text-sm">Current</span>
                     <span className="material-symbols-outlined hidden text-text-muted text-[14px] sm:inline">arrow_forward</span>
@@ -329,11 +330,13 @@ id = "${selectedModel || "cc/claude-opus-4-7"}"`;
                 </div>
 
                 {/* Usage hint */}
-                <div className="flex flex-col gap-1 p-3 bg-blue-500/5 border border-blue-500/20 rounded-lg">
-                  <p className="text-xs font-medium text-blue-600 dark:text-blue-400">Usage:</p>
-                  <code className="text-xs font-mono text-text-muted">jcode --provider-profile 9router</code>
-                  <code className="text-xs font-mono text-text-muted">jcode --provider-profile 9router --model {selectedModel || "cc/claude-opus-4-7"}</code>
-                </div>
+                {isJcodeInstalled && (
+                  <div className="flex flex-col gap-1 p-3 bg-blue-500/5 border border-blue-500/20 rounded-lg">
+                    <p className="text-xs font-medium text-blue-600 dark:text-blue-400">Usage:</p>
+                    <code className="text-xs font-mono text-text-muted">jcode --provider-profile 9router</code>
+                    <code className="text-xs font-mono text-text-muted">jcode --provider-profile 9router --model {selectedModel || "cc/claude-opus-4-7"}</code>
+                  </div>
+                )}
               </div>
 
               {message && (
@@ -344,12 +347,16 @@ id = "${selectedModel || "cc/claude-opus-4-7"}"`;
               )}
 
               <div className="grid grid-cols-1 gap-2 sm:flex sm:items-center">
-                <Button variant="primary" size="sm" onClick={handleApplySettings} disabled={!selectedModel} loading={applying}>
-                  <span className="material-symbols-outlined text-[14px] mr-1">save</span>Apply
-                </Button>
-                <Button variant="outline" size="sm" onClick={handleResetSettings} disabled={!jcodeStatus?.has9Router} loading={restoring}>
-                  <span className="material-symbols-outlined text-[14px] mr-1">restore</span>Reset
-                </Button>
+                {isJcodeInstalled && (
+                  <>
+                    <Button variant="primary" size="sm" onClick={handleApplySettings} disabled={!selectedModel} loading={applying}>
+                      <span className="material-symbols-outlined text-[14px] mr-1">save</span>Apply
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={handleResetSettings} disabled={!jcodeStatus?.has9Router} loading={restoring}>
+                      <span className="material-symbols-outlined text-[14px] mr-1">restore</span>Reset
+                    </Button>
+                  </>
+                )}
                 <Button variant="ghost" size="sm" onClick={() => setShowManualConfigModal(true)}>
                   <span className="material-symbols-outlined text-[14px] mr-1">content_copy</span>Manual Config
                 </Button>

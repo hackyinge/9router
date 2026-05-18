@@ -7,9 +7,14 @@ import path from "path";
 import os from "os";
 import crypto from "node:crypto";
 import { getAuthPayload } from "@/dashboardGuard";
-import { ensureCodexActivationTokens, readCodexTokenRefreshError } from "@/lib/codexActivationTokens";
+import {
+  buildCodexChatGptAuthData,
+  ensureCodexActivationTokens,
+  readCodexTokenRefreshError,
+} from "@/lib/codexActivationTokens";
 import { isConnectionAllowedForSubUser, resolveSubUserAccessContext } from "@/lib/subUserAccess";
 import { getProviderConnectionById, updateProviderConnection } from "@/models";
+import { firstExistingCandidate, resolveCliBinary } from "../../cliDetection";
 
 const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
@@ -21,6 +26,8 @@ const CODEX_INSTALL_HINTS = os.platform() === "darwin"
   ? [CODEX_INSTALL_COMMAND, "brew install --cask codex"]
   : [CODEX_INSTALL_COMMAND];
 const CODEX_MACOS_APP_CANDIDATES = [
+  "/Applications/Codex.app/Contents/Resources/codex",
+  path.join(os.homedir(), "Applications/Codex.app/Contents/Resources/codex"),
   "/Applications/Codex.app/Contents/MacOS/Codex",
   path.join(os.homedir(), "Applications/Codex.app/Contents/MacOS/Codex"),
   "/Applications/Codex.app",
@@ -57,34 +64,15 @@ async function requireCodexActivationAccess(request) {
 
 async function detectMacCodexApp() {
   if (os.platform() !== "darwin") return null;
-  for (const candidate of CODEX_MACOS_APP_CANDIDATES) {
-    try {
-      await fs.access(candidate);
-      return candidate;
-    } catch {
-      // Continue probing other standard macOS install locations.
-    }
-  }
-  return null;
+  return firstExistingCandidate(CODEX_MACOS_APP_CANDIDATES);
 }
 
 async function checkCodexInstalled() {
-  try {
-    const isWindows = os.platform() === "win32";
-    const command = isWindows ? "where codex" : "which codex";
-    const env = isWindows
-      ? { ...process.env, PATH: `${process.env.APPDATA}\\npm;${process.env.PATH}` }
-      : process.env;
-    const { stdout } = await execAsync(command, { windowsHide: true, env });
-    const binaryPath = stdout.split(/\r?\n/).find(Boolean)?.trim() || "codex";
-    const appPath = await detectMacCodexApp();
-    return { installed: true, source: "cli", binaryPath, appPath };
-  } catch {
-    const appPath = await detectMacCodexApp();
-    return appPath
-      ? { installed: true, source: "app", binaryPath: appPath, appPath }
-      : { installed: false };
-  }
+  const detectedCodex = await resolveCliBinary("codex", {
+    fallbackCandidates: os.platform() === "darwin" ? CODEX_MACOS_APP_CANDIDATES : [],
+  });
+  const appPath = await detectMacCodexApp();
+  return detectedCodex.installed ? { ...detectedCodex, appPath } : { installed: false };
 }
 
 async function isMacCodexRunning() {
@@ -95,6 +83,26 @@ async function isMacCodexRunning() {
   } catch {
     return false;
   }
+}
+
+async function isMacCodexAppServerRunning() {
+  if (os.platform() !== "darwin") return false;
+  try {
+    await execAsync("pgrep -f 'Codex.app/Contents/Resources/codex app-server'", { timeout: 2000 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function waitForMacCodexStopped() {
+  for (let i = 0; i < 12; i += 1) {
+    const mainRunning = await isMacCodexRunning();
+    const appServerRunning = await isMacCodexAppServerRunning();
+    if (!mainRunning && !appServerRunning) return true;
+    await sleep(300);
+  }
+  return false;
 }
 
 async function restartLocalCodex(detectedCodex) {
@@ -115,16 +123,13 @@ async function restartLocalCodex(detectedCodex) {
     };
   }
 
-  const wasRunning = await isMacCodexRunning();
+  const wasRunning = (await isMacCodexRunning()) || (await isMacCodexAppServerRunning());
   try {
     if (wasRunning) {
       await execAsync("osascript -e 'tell application \"Codex\" to quit'", { timeout: 5000 }).catch(() => null);
-      for (let i = 0; i < 10; i += 1) {
-        if (!(await isMacCodexRunning())) break;
-        await sleep(300);
-      }
-      if (await isMacCodexRunning()) {
+      if (!(await waitForMacCodexStopped())) {
         await execAsync("pkill -x Codex", { timeout: 3000 }).catch(() => null);
+        await execAsync("pkill -f 'Codex.app/Contents/Resources/codex app-server'", { timeout: 3000 }).catch(() => null);
         await sleep(500);
       }
     }
@@ -405,14 +410,11 @@ export async function POST(request) {
     if (connection.idToken) tokens.id_token = connection.idToken;
     if (accountId) tokens.account_id = accountId;
 
-    delete authData.auth_mode;
-    authData.OPENAI_API_KEY = null;
-    authData.tokens = tokens;
-    authData.last_refresh = new Date().toISOString();
+    const nextAuthData = buildCodexChatGptAuthData(authData, tokens);
 
     const previousAuthJson = await readOptionalFile(getCodexAuthPath());
-    await writeAuthJsonAtomic(authData);
-    const keychain = await writeCodexKeychain(authData);
+    await writeAuthJsonAtomic(nextAuthData);
+    const keychain = await writeCodexKeychain(nextAuthData);
     if (!keychain.success) {
       await restoreAuthJsonSnapshot(previousAuthJson).catch(() => null);
       return NextResponse.json({

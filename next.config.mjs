@@ -20,6 +20,9 @@ const nextConfig = {
   outputFileTracingExcludes: {
     "*": ["./gitbook/**/*"]
   },
+  outputFileTracingIncludes: {
+    "*": ["./node_modules/sql.js/dist/sql-wasm.wasm"]
+  },
   generateBuildId: async () => null,
   images: {
     unoptimized: true

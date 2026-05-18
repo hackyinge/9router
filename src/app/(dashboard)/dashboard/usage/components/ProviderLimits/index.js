@@ -15,10 +15,9 @@ const isUsageEligible = (conn) =>
   USAGE_SUPPORTED_PROVIDERS.includes(conn.provider) &&
   (conn.authType === "oauth" || USAGE_APIKEY_PROVIDERS.includes(conn.provider));
 
-const REFRESH_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+const REFRESH_INTERVAL_MS = 1000;
 const REFRESH_INTERVAL_SECONDS = Math.ceil(REFRESH_INTERVAL_MS / 1000);
-const QUOTA_REFRESH_STAGGER_MS = 1800;
-const QUOTA_REFRESH_JITTER_MS = 1200;
+const QUOTA_REFRESH_STAGGER_MS = 1000;
 const DEPLETED_QUOTA_THRESHOLD = 5; // percent
 const AUTO_REFRESH_STORAGE_KEY = "quotaAutoRefresh";
 
@@ -27,8 +26,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 async function runStaggeredQuotaRefresh(connections, fetchQuota) {
   for (let index = 0; index < connections.length; index += 1) {
     if (index > 0) {
-      const jitter = Math.floor(Math.random() * QUOTA_REFRESH_JITTER_MS);
-      await sleep(QUOTA_REFRESH_STAGGER_MS + jitter);
+      await sleep(QUOTA_REFRESH_STAGGER_MS);
     }
     const conn = connections[index];
     await fetchQuota(conn.id, conn.provider);
@@ -744,7 +742,7 @@ export default function ProviderLimits({
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-1 shrink-0">
+                  <div className="flex items-center gap-2 shrink-0">
                     {canActivateCodex && conn.provider === "codex" && (
                       <button
                         type="button"
@@ -756,69 +754,27 @@ export default function ProviderLimits({
                         <span className={`material-symbols-outlined text-[18px] ${isCodexActivating ? "animate-pulse" : ""}`}>
                           key
                         </span>
-                        <span className="hidden xl:inline">Activate</span>
+                        <span>Activate</span>
                       </button>
                     )}
-                    <button
-                      type="button"
-                      onClick={() => refreshProvider(conn.id, conn.provider)}
-                      disabled={isLoading || rowBusy}
-                      className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-colors disabled:opacity-50"
-                      title="Refresh quota"
-                    >
-                      <span
-                        className={`material-symbols-outlined text-[18px] text-text-muted ${isLoading ? "animate-spin" : ""}`}
-                      >
-                        refresh
-                      </span>
-                    </button>
                     {!readOnly && (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSelectedConnection(conn);
-                            setShowEditModal(true);
-                          }}
+                      <div
+                        className="inline-flex items-center"
+                        title={
+                          (conn.isActive ?? true)
+                            ? "Disable connection"
+                            : "Enable connection"
+                        }
+                      >
+                        <Toggle
+                          size="sm"
+                          checked={conn.isActive ?? true}
                           disabled={rowBusy}
-                          className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 text-text-muted hover:text-primary transition-colors disabled:opacity-50"
-                          title="Edit connection"
-                        >
-                          <span className="material-symbols-outlined text-[18px]">
-                            edit
-                          </span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteConnection(conn.id)}
-                          disabled={rowBusy}
-                          className="p-1.5 rounded-lg hover:bg-red-500/10 text-red-500 transition-colors disabled:opacity-50"
-                          title="Delete connection"
-                        >
-                          <span
-                            className={`material-symbols-outlined text-[18px] ${deletingId === conn.id ? "animate-pulse" : ""}`}
-                          >
-                            delete
-                          </span>
-                        </button>
-                        <div
-                          className="inline-flex items-center pl-0.5"
-                          title={
-                            (conn.isActive ?? true)
-                              ? "Disable connection"
-                              : "Enable connection"
+                          onChange={(nextActive) =>
+                            handleToggleConnectionActive(conn.id, nextActive)
                           }
-                        >
-                          <Toggle
-                            size="sm"
-                            checked={conn.isActive ?? true}
-                            disabled={rowBusy}
-                            onChange={(nextActive) =>
-                              handleToggleConnectionActive(conn.id, nextActive)
-                            }
-                          />
-                        </div>
-                      </>
+                        />
+                      </div>
                     )}
                   </div>
                 </div>

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { syncToJson as syncMitmAliasCache } from "@/lib/mitmAliasCache";
 import {
   getMitmStatus,
   startServer,
@@ -122,6 +123,7 @@ export async function POST(request) {
       }
     }
 
+    await syncMitmAliasCache();
     const result = await startServer(apiKey, pwd, !!forceKillPort443);
     if (!isWin) setCachedPassword(pwd);
 

@@ -4,6 +4,10 @@ import { NextResponse } from "next/server";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
+import { execFile } from "child_process";
+import { promisify } from "util";
+
+const execFileAsync = promisify(execFile);
 
 // Resolve chatLanguageModels.json path per OS
 const getConfigPath = () => {
@@ -45,6 +49,79 @@ const getOpenRouterXEntry = (config) => {
   if (!Array.isArray(config)) return null;
   return config.find(isOpenrouterXEntry) || null;
 };
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function pathExists(filePath) {
+  try {
+    await fs.access(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function findMacVsCodeApp() {
+  const candidates = [
+    "/Applications/Visual Studio Code.app",
+    path.join(os.homedir(), "Applications", "Visual Studio Code.app"),
+  ];
+
+  for (const appPath of candidates) {
+    if (await pathExists(appPath)) return appPath;
+  }
+
+  try {
+    const { stdout } = await execFileAsync(
+      "/usr/bin/mdfind",
+      ["kMDItemCFBundleIdentifier == 'com.microsoft.VSCode'"],
+      { timeout: 3000 },
+    );
+    return stdout
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .find(Boolean) || null;
+  } catch {
+    return null;
+  }
+}
+
+async function restartMacVsCode() {
+  const appPath = await findMacVsCodeApp();
+  if (!appPath) {
+    return {
+      success: false,
+      attempted: false,
+      reason: "Visual Studio Code.app was not found.",
+    };
+  }
+
+  await execFileAsync(
+    "/usr/bin/osascript",
+    ["-e", 'tell application "Visual Studio Code" to quit'],
+    { timeout: 5000 },
+  ).catch(() => null);
+  await sleep(900);
+  await execFileAsync("/usr/bin/open", [appPath], { timeout: 5000 });
+
+  return {
+    success: true,
+    attempted: true,
+    method: "restart-macos-app",
+    appPath,
+  };
+}
+
+async function restartVsCode() {
+  const platform = os.platform();
+  if (platform === "darwin") return restartMacVsCode();
+
+  return {
+    success: false,
+    attempted: false,
+    reason: "Automatic VS Code restart is currently supported on macOS only.",
+  };
+}
 
 // GET - Read current copilot config
 export async function GET() {
@@ -122,6 +199,38 @@ export async function POST(request) {
   } catch (error) {
     console.log("Error updating copilot settings:", error);
     return NextResponse.json({ error: "Failed to update copilot settings" }, { status: 500 });
+  }
+}
+
+// PATCH - Local app actions
+export async function PATCH(request) {
+  try {
+    const { action } = await request.json().catch(() => ({}));
+    if (action !== "restart-vscode") {
+      return NextResponse.json({ error: "Unsupported action" }, { status: 400 });
+    }
+
+    const result = await restartVsCode();
+    if (!result.success) {
+      return NextResponse.json(
+        {
+          ...result,
+          error: result.reason || "Failed to restart VS Code",
+        },
+        { status: result.attempted ? 500 : 404 },
+      );
+    }
+
+    return NextResponse.json({
+      ...result,
+      message: "VS Code restarted.",
+    });
+  } catch (error) {
+    console.log("Error restarting VS Code:", error);
+    return NextResponse.json(
+      { success: false, attempted: true, error: error?.message || "Failed to restart VS Code" },
+      { status: 500 },
+    );
   }
 }
 

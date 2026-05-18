@@ -14,6 +14,16 @@ export function hasCompleteCodexTokenSnapshot(connection) {
   return !!(connection?.accessToken && connection?.refreshToken);
 }
 
+export function buildCodexChatGptAuthData(existingAuthData = {}, tokens, now = new Date()) {
+  return {
+    ...(existingAuthData && typeof existingAuthData === "object" ? existingAuthData : {}),
+    auth_mode: "chatgpt",
+    OPENAI_API_KEY: null,
+    tokens,
+    last_refresh: now.toISOString(),
+  };
+}
+
 function decodeJwtExpirationMs(token) {
   try {
     if (!token || typeof token !== "string") return null;

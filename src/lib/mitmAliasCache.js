@@ -1,14 +1,9 @@
-// JSON cache for mitmAlias — read by standalone MITM server (no SQLite native binding).
-// Source of truth = SQLite kv['mitmAlias']. JSON is a read-replica synced on app start
+// JSON cache for mitmAlias — read by standalone MITM server (no DB binding).
+// Source of truth = localDb mitmAlias. JSON is a read-replica synced on app start
 // and after every UI write.
 import fs from "fs";
 import path from "path";
-import os from "os";
-
-const DATA_DIR = process.env.DATA_DIR
-  || (process.platform === "win32"
-    ? path.join(process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming"), "9router")
-    : path.join(os.homedir(), ".9router"));
+import { DATA_DIR } from "@/lib/dataDir.js";
 
 const CACHE_FILE = path.join(DATA_DIR, "mitm", "aliases.json");
 
@@ -23,7 +18,7 @@ function writeAtomic(data) {
 // Sync entire mitmAlias map from DB → JSON file
 export async function syncToJson() {
   try {
-    const { getMitmAlias } = await import("@/lib/db/repos/aliasRepo.js");
+    const { getMitmAlias } = await import("@/lib/localDb.js");
     const all = await getMitmAlias();
     writeAtomic(all || {});
   } catch (e) {

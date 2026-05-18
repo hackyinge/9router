@@ -5,7 +5,8 @@ import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider } from "@/sha
 import { UPDATER_CONFIG } from "@/shared/constants/config";
 import { getConsistentMachineId } from "@/shared/utils/machineId";
 
-const CLI_TOKEN_SALT = "9r-cli-auth";
+const CLI_TOKEN_HEADER = "x-openrouterx-cli-token";
+const CLI_TOKEN_SALT = "openrouterx-cli-auth";
 
 /**
  * Get an active API key to pass through auth when requireApiKey is enabled.
@@ -24,7 +25,7 @@ async function pingModel(modelId, baseUrl, apiKey, cliToken) {
   try {
     const headers = { "Content-Type": "application/json" };
     if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
-    if (cliToken) headers["x-9r-cli-token"] = cliToken;
+    if (cliToken) headers[CLI_TOKEN_HEADER] = cliToken;
     const res = await fetch(`${baseUrl}/api/v1/chat/completions`, {
       method: "POST",
       headers,

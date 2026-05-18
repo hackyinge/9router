@@ -30,11 +30,11 @@ const STATUS_GETTERS = {
 };
 
 // Batch endpoint: gather all CLI tool statuses in one round-trip
-export async function GET() {
+export async function GET(request) {
   const entries = await Promise.all(
     Object.entries(STATUS_GETTERS).map(async ([toolId, getter]) => {
       try {
-        const res = await getter();
+        const res = await getter(request);
         const data = await res.json();
         return [toolId, data];
       } catch {

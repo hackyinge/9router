@@ -1,18 +1,15 @@
 import { cookies } from "next/headers";
-import { jwtVerify } from "jose";
 import { DashboardLayout } from "@/shared/components";
 import { UserRoleProvider } from "@/shared/components/UserRoleProvider";
-
-const SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || "openrouterx-default-secret-change-me"
-);
+import { getDashboardAuthSession } from "@/lib/auth/dashboardSession";
 
 async function getRoleFromCookie() {
   try {
     const cookieStore = await cookies();
     const token = cookieStore.get("auth_token")?.value;
     if (!token) return null;
-    const { payload } = await jwtVerify(token, SECRET);
+    const payload = await getDashboardAuthSession(token);
+    if (!payload) return null;
     return {
       role: payload.role || null,
       userId: payload.userId || null,
@@ -31,4 +28,3 @@ export default async function DashboardRootLayout({ children }) {
     </UserRoleProvider>
   );
 }
-

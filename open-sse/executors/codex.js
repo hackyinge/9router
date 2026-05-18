@@ -6,6 +6,7 @@ import { normalizeResponsesInput } from "../translator/helpers/responsesApiHelpe
 import { fetchImageAsBase64 } from "../translator/helpers/imageHelper.js";
 import { getModelUpstreamId } from "../config/providerModels.js";
 import { getConsistentMachineId } from "../../src/shared/utils/machineId.js";
+import { refreshCodexToken } from "../services/tokenRefresh.js";
 
 // In-memory map: hash(machineId + first assistant content) → { sessionId, lastUsed }
 const SESSION_TTL_MS = 60 * 60 * 1000; // 1 hour
@@ -120,6 +121,11 @@ export class CodexExecutor extends BaseExecutor {
     // Fetch remote images before the synchronous transform/execute pipeline
     await this.prefetchImages(args.body);
     return super.execute(args);
+  }
+
+  async refreshCredentials(credentials, log) {
+    if (!credentials?.refreshToken) return null;
+    return refreshCodexToken(credentials.refreshToken, log);
   }
 
   // Parse Codex usage_limit_reached to extract precise resetsAtMs; fallback to default otherwise

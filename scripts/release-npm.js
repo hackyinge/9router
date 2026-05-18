@@ -50,6 +50,12 @@ function ensureDir(targetPath) {
   fs.mkdirSync(path.dirname(targetPath), { recursive: true });
 }
 
+function copyIfExists(source, target) {
+  if (!fs.existsSync(source)) return false;
+  copy(source, target);
+  return true;
+}
+
 function findStandaloneAppDir(standaloneDir) {
   const directServer = path.join(standaloneDir, "server.js");
   if (fs.existsSync(directServer)) {
@@ -330,6 +336,10 @@ function prepareStagingPackage() {
   }
 
   copy(standaloneAppDir, appDir);
+  copyIfExists(
+    path.join(rootDir, "node_modules", "sql.js", "dist", "sql-wasm.wasm"),
+    path.join(appDir, "node_modules", "sql.js", "dist", "sql-wasm.wasm")
+  );
   ensureDir(path.join(appDir, ".next", "static"));
   copy(path.join(rootDir, ".next", "static"), path.join(appDir, ".next", "static"));
   copy(path.join(rootDir, "public"), path.join(appDir, "public"));
@@ -357,7 +367,7 @@ function prepareStagingPackage() {
 
 function validatePackFiles(files) {
   const paths = files.map((file) => file.path);
-  const required = ["cli.js", "package.json", "app/server.js", "app/package.json", "hooks/postinstall.js", "src/cli/terminalUI.js", "src/cli/tray/icon.png", "src/cli/tray/icon.ico", "README.md", "LICENSE"];
+  const required = ["cli.js", "package.json", "app/server.js", "app/package.json", "app/node_modules/sql.js/dist/sql-wasm.wasm", "hooks/postinstall.js", "src/cli/terminalUI.js", "src/cli/tray/icon.png", "src/cli/tray/icon.ico", "README.md", "LICENSE"];
   const forbiddenPatterns = [/(^|\/)\.env($|\.)/, /^(data|app\/data)\//, /(^|\/)db\.json$/, /(^|\/)\.omc\//, /(^|\/)tests\//, /(^|\/)\.git\//];
 
   for (const file of required) {

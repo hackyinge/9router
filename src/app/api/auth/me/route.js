@@ -1,14 +1,10 @@
 import { NextResponse } from "next/server";
-import { jwtVerify } from "jose";
 import { getSettings, getUserById } from "@/lib/localDb";
+import { getDashboardAuthSession } from "@/lib/auth/dashboardSession";
 import {
   getEffectiveAllowedProviderConnectionIds,
   getEffectiveAllowedProviders,
 } from "@/shared/utils/subUserAccess";
-
-const SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || "openrouterx-default-secret-change-me"
-);
 
 // GET /api/auth/me — return current user info from JWT (no auth check, returns null if not logged in)
 export async function GET(request) {
@@ -16,7 +12,8 @@ export async function GET(request) {
     const token = request.cookies.get("auth_token")?.value;
     if (!token) return NextResponse.json({ role: null, userId: null });
 
-    const { payload } = await jwtVerify(token, SECRET);
+    const payload = await getDashboardAuthSession(token);
+    if (!payload) return NextResponse.json({ role: null, userId: null });
     const currentUser =
       payload.role === "sub_user" && payload.userId
         ? await getUserById(payload.userId)
