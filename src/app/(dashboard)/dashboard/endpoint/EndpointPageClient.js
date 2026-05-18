@@ -64,6 +64,7 @@ function buildAutoRouteCurl(endpoint, model) {
     `  -d '{"model":"${model}","messages":[{"role":"user","content":"Reply exactly OK"}],"max_tokens":2,"stream":false}'`,
   ].join("\n");
 }
+
 export default function APIPageClient({ machineId }) {
   const [keys, setKeys] = useState([]);
   const [loading, setLoading] = useState(true);
