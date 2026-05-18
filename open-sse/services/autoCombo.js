@@ -1,7 +1,7 @@
 import { getModelsByProviderId } from "../config/providerModels.js";
 import { isModelLockActive } from "./accountFallback.js";
 
-export const AUTO_VARIANTS = ["coding", "fast", "cheap", "offline", "smart", "lkgp"];
+export const AUTO_VARIANTS = ["coding", "fast", "cheap", "smart", "lkgp"];
 
 const CODING_PROVIDERS = new Set([
   "claude",
@@ -23,7 +23,6 @@ const CODING_PROVIDERS = new Set([
   "deepseek",
 ]);
 
-const OFFLINE_PROVIDERS = new Set(["ollama-local", "opencode"]);
 const CHEAP_PROVIDER_HINTS = new Set(["openrouter", "gemini", "groq", "deepseek", "glm", "kimi", "minimax", "opencode"]);
 
 function normalizeText(value) {
@@ -87,7 +86,6 @@ function getConnectionDefaultModel(connection, variant) {
 
 function variantAllows(provider, model, variant) {
   if (!variant || variant === "lkgp") return true;
-  if (variant === "offline") return OFFLINE_PROVIDERS.has(provider);
   if (variant === "coding") return CODING_PROVIDERS.has(provider) || normalizeText(model).includes("coder") || normalizeText(model).includes("code");
   if (variant === "fast") return isFastModel(model);
   if (variant === "cheap") return CHEAP_PROVIDER_HINTS.has(provider) || isCheapModel(model);
@@ -107,7 +105,6 @@ function scoreCandidate(connection, model, variant) {
   else score += 10;
 
   if (connection.lastError) score -= 8;
-  if (connection.authType === "none" || connection.id?.startsWith("noauth:")) score += 4;
   if (!variant || variant === "lkgp") {
     if (CODING_PROVIDERS.has(provider)) score += 18;
     if (connection.authType === "oauth") score += 8;
@@ -117,7 +114,6 @@ function scoreCandidate(connection, model, variant) {
   if (variant === "fast" && isFastModel(model)) score += 20;
   if (variant === "cheap" && (CHEAP_PROVIDER_HINTS.has(provider) || isCheapModel(model))) score += 16;
   if (variant === "smart" && isSmartModel(model)) score += 20;
-  if (variant === "offline" && OFFLINE_PROVIDERS.has(provider)) score += 30;
 
   return score;
 }
@@ -130,6 +126,7 @@ export function buildAutoComboModelsFromConnections(connections, options = {}) {
 
   for (const connection of connections || []) {
     if (!connection?.provider || connection.isActive === false) continue;
+    if (connection.authType === "none" || connection.id?.startsWith("noauth:")) continue;
     if (connection.testStatus === "unavailable") continue;
 
     const model = getConnectionDefaultModel(connection, variant);

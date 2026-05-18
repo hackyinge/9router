@@ -61,7 +61,7 @@ describe("combo round-robin routing", () => {
     const response = await handleComboChat({
       body: {},
       models: ["provider/rate-limited", "provider/working"],
-      comboName: "auto/offline",
+      comboName: "auto/cheap",
       comboStrategy: "fallback",
       log: { info() {}, warn() {} },
       handleSingleModel: async (_body, model) => {

@@ -46,7 +46,6 @@ const AUTO_ROUTES = [
   { id: "auto/coding", label: "Coding", desc: "Prioritizes coding-capable models" },
   { id: "auto/fast", label: "Fast", desc: "Low-latency route for quick tasks" },
   { id: "auto/cheap", label: "Cheap", desc: "Cost-focused active route" },
-  { id: "auto/offline", label: "Offline", desc: "Local or no-auth provider route" },
   { id: "auto/smart", label: "Smart", desc: "Reasoning-oriented route" },
   { id: "auto/lkgp", label: "LKGP", desc: "Last-known-good provider route" },
 ];
