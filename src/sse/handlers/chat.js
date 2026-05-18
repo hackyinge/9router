@@ -10,6 +10,7 @@ import {
 import { cacheClaudeHeaders } from "open-sse/utils/claudeHeaderCache.js";
 import { getSettings } from "@/lib/localDb";
 import { getModelInfo, getComboModels } from "../services/model.js";
+import { getAutoComboModels } from "../services/autoCombo.js";
 import { handleChatCore } from "open-sse/handlers/chatCore.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { handleComboChat } from "open-sse/services/combo.js";
@@ -113,6 +114,39 @@ export async function handleChat(request, clientRawRequest = null) {
   const userAgent = request?.headers?.get("user-agent") || "";
   const bypassResponse = handleBypassRequest(body, modelStr, userAgent, !!settings.ccFilterNaming);
   if (bypassResponse) return bypassResponse.response || bypassResponse;
+
+  const autoCombo = await getAutoComboModels(modelStr);
+  if (autoCombo.isAuto) {
+    if (autoCombo.error) {
+      log.warn("CHAT", `Invalid auto model: ${modelStr}`);
+      return errorResponse(HTTP_STATUS.BAD_REQUEST, autoCombo.error);
+    }
+    let autoModels = autoCombo.models || [];
+    if (subUserContext) {
+      const allowedAutoModels = [];
+      for (const autoModel of autoModels) {
+        const autoModelInfo = await getModelInfo(autoModel);
+        if (autoModelInfo?.provider && isProviderAllowedForSubUser(subUserContext, autoModelInfo.provider)) {
+          allowedAutoModels.push(autoModel);
+        }
+      }
+      autoModels = allowedAutoModels;
+    }
+    if (!autoModels.length) {
+      log.warn("CHAT", `No auto candidates for ${modelStr}`);
+      return errorResponse(HTTP_STATUS.NOT_FOUND, `No available providers for ${modelStr}`);
+    }
+    log.info("CHAT", `Auto combo "${modelStr}" with ${autoModels.length} candidates`);
+    return handleComboChat({
+      body,
+      models: autoModels,
+      handleSingleModel: (b, m) => handleSingleModelChat(b, m, clientRawRequest, request, apiKey, subUserContext),
+      log,
+      comboName: modelStr,
+      comboStrategy: "fallback",
+      comboStickyLimit: 1
+    });
+  }
 
   // Check if model is a combo (has multiple models with fallback)
   const comboModels = await getComboModels(modelStr);
