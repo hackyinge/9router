@@ -50,6 +50,16 @@ const AUTO_ROUTES = [
   { id: "auto/smart", label: "Smart", desc: "Reasoning-oriented route" },
   { id: "auto/lkgp", label: "LKGP", desc: "Last-known-good provider route" },
 ];
+
+function buildAutoRouteCurl(endpoint, model) {
+  const baseEndpoint = endpoint || "http://localhost:20502/v1";
+  return [
+    `curl -sS ${baseEndpoint}/chat/completions \\`,
+    "  -H 'Content-Type: application/json' \\",
+    "  -H 'Authorization: Bearer <OPENROUTERX_API_KEY>' \\",
+    `  -d '{"model":"${model}","messages":[{"role":"user","content":"Reply exactly OK"}],"max_tokens":2,"stream":false}'`,
+  ].join("\n");
+}
 export default function APIPageClient({ machineId }) {
   const [keys, setKeys] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -57,6 +67,8 @@ export default function APIPageClient({ machineId }) {
   const [newKeyName, setNewKeyName] = useState("");
   const [createdKey, setCreatedKey] = useState(null);
   const [confirmState, setConfirmState] = useState(null);
+  const [autoRouteTesting, setAutoRouteTesting] = useState(null);
+  const [autoRouteResults, setAutoRouteResults] = useState({});
 
   const [requireApiKey, setRequireApiKey] = useState(false);
   const [requireLogin, setRequireLogin] = useState(true);
@@ -765,6 +777,35 @@ export default function APIPageClient({ machineId }) {
 
   const currentEndpoint = baseUrl;
 
+  const handleTestAutoRoute = async (model) => {
+    if (autoRouteTesting) return;
+    setAutoRouteTesting(model);
+    setAutoRouteResults((prev) => ({ ...prev, [model]: { status: "testing" } }));
+    try {
+      const res = await fetch("/api/models/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model }),
+      });
+      const data = await res.json();
+      setAutoRouteResults((prev) => ({
+        ...prev,
+        [model]: {
+          status: data.ok ? "ok" : "error",
+          latencyMs: data.latencyMs,
+          error: data.error || "",
+        },
+      }));
+    } catch (error) {
+      setAutoRouteResults((prev) => ({
+        ...prev,
+        [model]: { status: "error", error: error.message || "Network error" },
+      }));
+    } finally {
+      setAutoRouteTesting(null);
+    }
+  };
+
   return (
     <div className="flex flex-col gap-8">
       {/* Endpoint Card */}
@@ -1001,7 +1042,7 @@ export default function APIPageClient({ machineId }) {
               Auto Routes
             </h2>
             <p className="mt-1 text-sm text-text-muted">
-              Use these values as the OpenAI-compatible <code className="font-mono">model</code> field.
+              Use these routes as the OpenAI-compatible model field, or run the generated curl to verify routing.
             </p>
           </div>
           <Badge variant="primary" icon="bolt" className="w-fit shrink-0">Virtual combo</Badge>
@@ -1014,6 +1055,10 @@ export default function APIPageClient({ machineId }) {
               route={route}
               copied={copied}
               onCopy={copy}
+              endpoint={currentEndpoint}
+              testResult={autoRouteResults[route.id]}
+              isTesting={autoRouteTesting === route.id}
+              onTest={() => handleTestAutoRoute(route.id)}
             />
           ))}
         </div>
@@ -1428,34 +1473,97 @@ export default function APIPageClient({ machineId }) {
   );
 }
 
-function AutoRouteRow({ route, copied, onCopy }) {
-  const copyId = `auto_route_${route.id}`;
+function AutoRouteRow({ route, endpoint, copied, onCopy, testResult, isTesting, onTest }) {
+  const modelCopyId = `auto_route_${route.id}`;
+  const curlCopyId = `auto_route_curl_${route.id}`;
+  const curl = buildAutoRouteCurl(endpoint, route.id);
+  const status = testResult?.status;
+  const borderColor = status === "ok"
+    ? "border-green-500/40"
+    : status === "error"
+    ? "border-red-500/40"
+    : "border-border-subtle";
+  const icon = status === "ok" ? "check_circle" : status === "error" ? "cancel" : "alt_route";
+  const iconColor = status === "ok" ? "text-green-500" : status === "error" ? "text-red-500" : "text-primary";
 
   return (
-    <div className="flex min-w-0 items-center gap-3 rounded-[10px] border border-border-subtle bg-bg p-3">
-      <div className="flex size-9 shrink-0 items-center justify-center rounded-[10px] bg-primary/10 text-primary">
-        <span className="material-symbols-outlined text-[18px]">alt_route</span>
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <code className="truncate font-mono text-sm font-semibold text-text-main">
-            {route.id}
-          </code>
-          <Badge size="sm" variant="default">{route.label}</Badge>
+    <div className={`flex min-w-0 flex-col gap-3 rounded-[10px] border ${borderColor} bg-bg p-3`}>
+      <div className="flex min-w-0 items-start gap-3">
+        <div className={`flex size-9 shrink-0 items-center justify-center rounded-[10px] bg-primary/10 ${iconColor}`}>
+          <span className={`material-symbols-outlined text-[18px] ${isTesting ? "animate-spin" : ""}`}>
+            {isTesting ? "progress_activity" : icon}
+          </span>
         </div>
-        <p className="mt-1 truncate text-xs text-text-muted">{route.desc}</p>
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <code className="truncate font-mono text-sm font-semibold text-text-main" data-i18n-skip="true">
+              {route.id}
+            </code>
+            <Badge size="sm" variant="default">{route.label}</Badge>
+          </div>
+          <p className="mt-1 truncate text-xs text-text-muted">{route.desc}</p>
+          {status && (
+            <p className={`mt-1 text-xs ${status === "ok" ? "text-green-600 dark:text-green-400" : "text-red-500"}`}>
+              {status === "ok" ? (
+                <>
+                  <span>Test passed</span>
+                  {testResult?.latencyMs ? <span data-i18n-skip="true"> · {testResult.latencyMs}ms</span> : null}
+                </>
+              ) : (
+                <>
+                  <span>Test failed</span>
+                  {testResult?.error ? <span data-i18n-skip="true"> · {testResult.error}</span> : null}
+                </>
+              )}
+            </p>
+          )}
+        </div>
+        <div className="flex shrink-0 items-center gap-1">
+          <button
+            type="button"
+            onClick={() => onCopy(route.id, modelCopyId)}
+            className="flex size-8 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-black/5 hover:text-primary dark:hover:bg-white/5"
+            title="Copy model ID"
+            aria-label={`Copy ${route.id}`}
+          >
+            <span className="material-symbols-outlined text-[18px]">
+              {copied === modelCopyId ? "check" : "content_copy"}
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={onTest}
+            disabled={isTesting}
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2 text-xs font-medium text-text-muted transition-colors hover:bg-black/5 hover:text-primary disabled:opacity-60 dark:hover:bg-white/5"
+            title="Test route"
+            aria-label={`Test ${route.id}`}
+          >
+            <span className={`material-symbols-outlined text-[18px] ${isTesting ? "animate-spin" : ""}`}>
+              {isTesting ? "progress_activity" : "science"}
+            </span>
+            <span>{isTesting ? "Testing..." : "Test"}</span>
+          </button>
+        </div>
       </div>
-      <button
-        type="button"
-        onClick={() => onCopy(route.id, copyId)}
-        className="flex size-9 shrink-0 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-black/5 hover:text-primary dark:hover:bg-white/5"
-        title="Copy model ID"
-        aria-label={`Copy ${route.id}`}
-      >
-        <span className="material-symbols-outlined text-[18px]">
-          {copied === copyId ? "check" : "content_copy"}
-        </span>
-      </button>
+      <div className="min-w-0 rounded-lg border border-border-subtle bg-black/[0.03] dark:bg-white/[0.04]">
+        <div className="flex items-center justify-between border-b border-border-subtle px-3 py-1.5">
+          <span className="text-xs font-medium text-text-muted">Test curl</span>
+          <button
+            type="button"
+            onClick={() => onCopy(curl, curlCopyId)}
+            className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-text-muted transition-colors hover:bg-black/5 hover:text-primary dark:hover:bg-white/5"
+            title="Copy curl"
+          >
+            <span className="material-symbols-outlined text-[14px]">
+              {copied === curlCopyId ? "check" : "content_copy"}
+            </span>
+            {copied === curlCopyId ? "Copied!" : "Copy curl"}
+          </button>
+        </div>
+        <pre className="max-h-28 overflow-auto whitespace-pre-wrap px-3 py-2 font-mono text-[10px] leading-relaxed text-text-muted" data-i18n-skip="true">
+          {curl}
+        </pre>
+      </div>
     </div>
   );
 }
