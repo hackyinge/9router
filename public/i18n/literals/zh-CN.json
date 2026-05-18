@@ -968,5 +968,8 @@
   "Test curl": "测试 curl",
   "Copy curl": "复制 curl",
   "Test route": "测试路由",
-  "Copy model ID": "复制模型 ID"
+  "Copy model ID": "复制模型 ID",
+  "Route responded": "路由已响应",
+  "Provider responded without completion choices yet": "提供商已响应，但暂未返回 completion choices",
+  "Provider responded without message content yet": "提供商已响应，但暂未返回消息内容"
 }

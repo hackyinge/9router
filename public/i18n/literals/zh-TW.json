@@ -282,5 +282,8 @@
   "Test curl": "測試 curl",
   "Copy curl": "複製 curl",
   "Test route": "測試路由",
-  "Copy model ID": "複製模型 ID"
+  "Copy model ID": "複製模型 ID",
+  "Route responded": "路由已回應",
+  "Provider responded without completion choices yet": "提供商已回應，但暫未返回 completion choices",
+  "Provider responded without message content yet": "提供商已回應，但暫未返回訊息內容"
 }

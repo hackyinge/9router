@@ -51,6 +51,11 @@ const AUTO_ROUTES = [
   { id: "auto/lkgp", label: "LKGP", desc: "Last-known-good provider route" },
 ];
 
+const AUTO_ROUTE_WARNING_LABELS = {
+  no_completion_choices: "Provider responded without completion choices yet",
+  no_message_content: "Provider responded without message content yet",
+};
+
 function buildAutoRouteCurl(endpoint, model) {
   const baseEndpoint = endpoint || "http://localhost:20502/v1";
   return [
@@ -791,9 +796,11 @@ export default function APIPageClient({ machineId }) {
       setAutoRouteResults((prev) => ({
         ...prev,
         [model]: {
-          status: data.ok ? "ok" : "error",
+          status: data.ok ? (data.warning ? "warning" : "ok") : "error",
           latencyMs: data.latencyMs,
           error: data.error || "",
+          warning: data.warning || "",
+          warningCode: data.warningCode || "",
         },
       }));
     } catch (error) {
@@ -1481,11 +1488,15 @@ function AutoRouteRow({ route, endpoint, copied, onCopy, testResult, isTesting, 
   const status = testResult?.status;
   const borderColor = status === "ok"
     ? "border-green-500/40"
+    : status === "warning"
+    ? "border-amber-500/40"
+    : status === "testing"
+    ? "border-primary/30"
     : status === "error"
     ? "border-red-500/40"
     : "border-border-subtle";
-  const icon = status === "ok" ? "check_circle" : status === "error" ? "cancel" : "alt_route";
-  const iconColor = status === "ok" ? "text-green-500" : status === "error" ? "text-red-500" : "text-primary";
+  const icon = status === "ok" ? "check_circle" : status === "warning" ? "info" : status === "error" ? "cancel" : "alt_route";
+  const iconColor = status === "ok" ? "text-green-500" : status === "warning" ? "text-amber-500" : status === "error" ? "text-red-500" : "text-primary";
 
   return (
     <div className={`flex min-w-0 flex-col gap-3 rounded-[10px] border ${borderColor} bg-bg p-3`}>
@@ -1504,12 +1515,33 @@ function AutoRouteRow({ route, endpoint, copied, onCopy, testResult, isTesting, 
           </div>
           <p className="mt-1 truncate text-xs text-text-muted">{route.desc}</p>
           {status && (
-            <p className={`mt-1 text-xs ${status === "ok" ? "text-green-600 dark:text-green-400" : "text-red-500"}`}>
+            <p className={`mt-1 text-xs ${
+              status === "ok"
+                ? "text-green-600 dark:text-green-400"
+                : status === "warning"
+                ? "text-amber-600 dark:text-amber-400"
+                : status === "testing"
+                ? "text-primary"
+                : "text-red-500"
+            }`}>
               {status === "ok" ? (
                 <>
                   <span>Test passed</span>
                   {testResult?.latencyMs ? <span data-i18n-skip="true"> · {testResult.latencyMs}ms</span> : null}
                 </>
+              ) : status === "warning" ? (
+                <>
+                  <span>Route responded</span>
+                  {testResult?.latencyMs ? <span data-i18n-skip="true"> · {testResult.latencyMs}ms</span> : null}
+                  {testResult?.warningCode || testResult?.warning ? (
+                    <>
+                      <span> · </span>
+                      <span>{AUTO_ROUTE_WARNING_LABELS[testResult.warningCode] || testResult.warning}</span>
+                    </>
+                  ) : null}
+                </>
+              ) : status === "testing" ? (
+                <span>Testing...</span>
               ) : (
                 <>
                   <span>Test failed</span>

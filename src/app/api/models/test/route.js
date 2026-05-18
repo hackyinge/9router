@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getApiKeys } from "@/lib/localDb";
 import { getAuthPayload } from "@/dashboardGuard";
 import { getModelInfo } from "@/sse/services/model";
+import { getAutoComboModels } from "@/sse/services/autoCombo";
 import { resolveSubUserAccessContext, isProviderAllowedForSubUser } from "@/lib/subUserAccess";
 import { getProviderNodeById } from "@/models";
 import { UPDATER_CONFIG } from "@/shared/constants/config";
@@ -9,6 +10,124 @@ import { getConsistentMachineId } from "@/shared/utils/machineId";
 
 const CLI_TOKEN_HEADER = "x-openrouterx-cli-token";
 const CLI_TOKEN_SALT = "openrouterx-cli-auth";
+
+async function testChatModel({ baseUrl, headers, model, startedAt }) {
+  const res = await fetch(`${baseUrl}/api/v1/chat/completions`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      model,
+      max_tokens: 1,
+      stream: false,
+      messages: [{ role: "user", content: "hi" }],
+    }),
+    signal: AbortSignal.timeout(15000),
+  });
+  const latencyMs = Date.now() - startedAt;
+
+  const rawText = await res.text().catch(() => "");
+  let parsed = null;
+  try {
+    parsed = rawText ? JSON.parse(rawText) : null;
+  } catch {}
+
+  if (!res.ok) {
+    const detail = parsed?.error?.message || parsed?.msg || parsed?.message || parsed?.error || rawText;
+    const error = `HTTP ${res.status}${detail ? `: ${String(detail).slice(0, 240)}` : ""}`;
+    return { ok: false, latencyMs, error, status: res.status, model };
+  }
+
+  // Some providers may return HTTP 200 but not a real completion for invalid models.
+  const providerStatus = parsed?.status;
+  const providerMsg = parsed?.msg || parsed?.message;
+  const hasProviderErrorStatus = providerStatus !== undefined
+    && providerStatus !== null
+    && String(providerStatus) !== "200"
+    && String(providerStatus) !== "0";
+  if (hasProviderErrorStatus && providerMsg) {
+    return {
+      ok: false,
+      latencyMs,
+      status: res.status,
+      error: `Provider status ${providerStatus}: ${String(providerMsg).slice(0, 240)}`,
+      model,
+    };
+  }
+
+  if (parsed?.error) {
+    const providerError = parsed?.error?.message || parsed?.error || "Provider returned an error";
+    return {
+      ok: false,
+      latencyMs,
+      status: res.status,
+      error: String(providerError).slice(0, 240),
+      model,
+    };
+  }
+
+  const hasChoices = Array.isArray(parsed?.choices) && parsed.choices.length > 0;
+  if (!hasChoices) {
+    return {
+      ok: true,
+      latencyMs,
+      status: res.status,
+      warning: "Provider responded but did not return completion choices yet",
+      warningCode: "no_completion_choices",
+      model,
+    };
+  }
+
+  const hasMessage = parsed.choices.some((choice) => {
+    const content = choice?.message?.content ?? choice?.delta?.content ?? choice?.text;
+    return typeof content === "string" ? content.trim().length > 0 : content !== undefined && content !== null;
+  });
+
+  return {
+    ok: true,
+    latencyMs,
+    error: null,
+    status: res.status,
+    warning: hasMessage ? null : "Provider responded but did not return message content yet",
+    warningCode: hasMessage ? null : "no_message_content",
+    model,
+  };
+}
+
+async function testChatModelWithAutoFallback({ baseUrl, headers, model, startedAt }) {
+  const autoCombo = await getAutoComboModels(model);
+  if (!autoCombo.isAuto) {
+    return testChatModel({ baseUrl, headers, model, startedAt });
+  }
+  if (autoCombo.error) {
+    return { ok: false, latencyMs: Date.now() - startedAt, status: 400, error: autoCombo.error };
+  }
+
+  const candidates = autoCombo.models || [];
+  if (!candidates.length) {
+    return { ok: false, latencyMs: Date.now() - startedAt, status: 404, error: `No available providers for ${model}` };
+  }
+
+  let bestWarning = null;
+  let lastError = null;
+  for (const candidate of candidates) {
+    const result = await testChatModel({ baseUrl, headers, model: candidate, startedAt });
+    if (result.ok && !result.warning) {
+      return { ...result, routedModel: candidate };
+    }
+    if (result.ok) {
+      bestWarning = { ...result, routedModel: candidate };
+      continue;
+    }
+    lastError = { ...result, routedModel: candidate };
+  }
+
+  return bestWarning || lastError || {
+    ok: false,
+    latencyMs: Date.now() - startedAt,
+    status: 503,
+    error: `No usable providers for ${model}`,
+  };
+}
 
 // POST /api/models/test - Ping a single model via internal completions or embeddings
 export async function POST(request) {
@@ -116,68 +235,7 @@ export async function POST(request) {
     }
 
     // Default: chat completions
-    const res = await fetch(`${baseUrl}/api/v1/chat/completions`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        model,
-        max_tokens: 1,
-        stream: false,
-        messages: [{ role: "user", content: "hi" }],
-      }),
-      signal: AbortSignal.timeout(15000),
-    });
-    const latencyMs = Date.now() - start;
-
-    const rawText = await res.text().catch(() => "");
-    let parsed = null;
-    try {
-      parsed = rawText ? JSON.parse(rawText) : null;
-    } catch {}
-
-    if (!res.ok) {
-      const detail = parsed?.error?.message || parsed?.msg || parsed?.message || parsed?.error || rawText;
-      const error = `HTTP ${res.status}${detail ? `: ${String(detail).slice(0, 240)}` : ""}`;
-      return NextResponse.json({ ok: false, latencyMs, error, status: res.status });
-    }
-
-    // Some providers may return HTTP 200 but not a real completion for invalid models.
-    const providerStatus = parsed?.status;
-    const providerMsg = parsed?.msg || parsed?.message;
-    const hasProviderErrorStatus = providerStatus !== undefined
-      && providerStatus !== null
-      && String(providerStatus) !== "200"
-      && String(providerStatus) !== "0";
-    if (hasProviderErrorStatus && providerMsg) {
-      return NextResponse.json({
-        ok: false,
-        latencyMs,
-        status: res.status,
-        error: `Provider status ${providerStatus}: ${String(providerMsg).slice(0, 240)}`,
-      });
-    }
-
-    if (parsed?.error) {
-      const providerError = parsed?.error?.message || parsed?.error || "Provider returned an error";
-      return NextResponse.json({
-        ok: false,
-        latencyMs,
-        status: res.status,
-        error: String(providerError).slice(0, 240),
-      });
-    }
-
-    const hasChoices = Array.isArray(parsed?.choices) && parsed.choices.length > 0;
-    if (!hasChoices) {
-      return NextResponse.json({
-        ok: false,
-        latencyMs,
-        status: res.status,
-        error: "Provider returned no completion choices for this model",
-      });
-    }
-
-    return NextResponse.json({ ok: true, latencyMs, error: null, status: res.status });
+    return NextResponse.json(await testChatModelWithAutoFallback({ baseUrl, headers, model, startedAt: start }));
   } catch (err) {
     return NextResponse.json({ ok: false, error: err.message }, { status: 500 });
   }

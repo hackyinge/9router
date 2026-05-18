@@ -229,5 +229,8 @@
   "Test curl": "Test curl",
   "Copy curl": "Copy curl",
   "Test route": "Test route",
-  "Copy model ID": "Copy model ID"
+  "Copy model ID": "Copy model ID",
+  "Route responded": "Route responded",
+  "Provider responded without completion choices yet": "Provider responded without completion choices yet",
+  "Provider responded without message content yet": "Provider responded without message content yet"
 }

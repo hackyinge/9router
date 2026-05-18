@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 
-import { getRotatedModels, resetComboRotation } from "../../open-sse/services/combo.js";
+import { getRotatedModels, handleComboChat, resetComboRotation } from "../../open-sse/services/combo.js";
 
 describe("combo round-robin routing", () => {
   beforeEach(() => {
@@ -54,5 +54,32 @@ describe("combo round-robin routing", () => {
 
     expect(getRotatedModels(models, "code-xhigh", "fallback", 2)).toEqual(models);
     expect(getRotatedModels(models, "code-xhigh", "fallback", 2)).toEqual(models);
+  });
+
+  it("falls back to the next combo model after provider rate limits", async () => {
+    const tried = [];
+    const response = await handleComboChat({
+      body: {},
+      models: ["provider/rate-limited", "provider/working"],
+      comboName: "auto/offline",
+      comboStrategy: "fallback",
+      log: { info() {}, warn() {} },
+      handleSingleModel: async (_body, model) => {
+        tried.push(model);
+        if (model === "provider/rate-limited") {
+          return new Response(JSON.stringify({ error: { message: "Rate limit exceeded" } }), {
+            status: 429,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+        return new Response(JSON.stringify({ choices: [{ message: { content: "OK" } }] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      },
+    });
+
+    expect(response.ok).toBe(true);
+    expect(tried).toEqual(["provider/rate-limited", "provider/working"]);
   });
 });
